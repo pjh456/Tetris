@@ -62,6 +62,7 @@ namespace tetris::net
         i8 y;              // 坐标 Y
         Piece hold;        // Hold 槽的方块
         bool hold_used;
+        Piece next[3];
         u8 pending_garbage; // 正在排队等待进入场地的垃圾行
         u32 rng_state;      // 当前随机数状态，用于严格校验
     };

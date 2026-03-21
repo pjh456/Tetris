@@ -9,7 +9,8 @@
 
 namespace tetris
 {
-    enum class Action
+    // 强制占 1 字节，完美契合网络发包 (3 字节大小)
+    enum class Action : u8
     {
         MoveLeft,
         MoveRight,
@@ -62,14 +63,7 @@ namespace tetris
 
         AttackResult lock_and_spawn()
         {
-            // 注意：因为 lock_piece 后当前方块的信息会被清除，
-            // 但计算 T-spin 需要用到它，所以把整个 state 传进去
-            // 我们要在清行之前进行 T-spin 检测，但具体行数要在清行后知道。
-            // 幸好 check_t_spin 只看 x,y 坐标，我们在 calculate_attack 里做了。
-
             int lines_cleared = lock_piece(state);
-
-            // 将整个状态扔给规则计算器
             auto attack_res = calculate_attack(state, lines_cleared);
 
             // 垃圾行抵消 (Canceling)
@@ -129,10 +123,12 @@ namespace tetris
                 game_over = true;
         }
 
-        void handle_action(Action act)
+        // 修改为返回 AttackResult，方便向网络发送攻击包
+        AttackResult handle_action(Action act)
         {
+            AttackResult res{};
             if (game_over)
-                return;
+                return res;
 
             switch (act)
             {
@@ -148,18 +144,16 @@ namespace tetris
             case Action::HardDrop:
             {
                 hard_drop(state);
-                auto res = lock_and_spawn();
+                res = lock_and_spawn();
                 break;
             }
             case Action::RotateCW:
                 _try_rotate_wrapped(
-                    static_cast<Rot>(
-                        ((int)state.rot + 1) & 3));
+                    static_cast<Rot>(((int)state.rot + 1) & 3));
                 break;
             case Action::RotateCCW:
                 _try_rotate_wrapped(
-                    static_cast<Rot>(
-                        ((int)state.rot + 3) & 3));
+                    static_cast<Rot>(((int)state.rot + 3) & 3));
                 break;
             case Action::Hold:
                 if (!state.hold_used)
@@ -181,19 +175,24 @@ namespace tetris
                         has_hold = true;
                         spawn();
                     }
-                    state.hold_used = true; // 覆盖 spawn() 中的重置
+                    state.hold_used = true;
                 }
                 break;
             }
+            return res;
         }
 
-        void tick()
+        // 修改为返回 AttackResult (自然下落到底也可能触发消行)
+        AttackResult tick()
         {
+            AttackResult res{};
             if (game_over)
-                return;
+                return res;
 
             if (!try_move(state, 0, 1))
-                lock_and_spawn();
+                res = lock_and_spawn();
+
+            return res;
         }
 
     private:

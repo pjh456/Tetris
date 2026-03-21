@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include <cstring>
+#include <algorithm>
 
 #include <enet/enet.h>
 
@@ -55,7 +56,6 @@ int _getch()
 using namespace tetris;
 using namespace tetris::net;
 
-// --- 局域网广播搜房助手类 (直接利用 ENet 的底层 Socket 实现跨平台) ---
 class LANDraw
 {
 public:
@@ -63,7 +63,6 @@ public:
     static constexpr const char *PING_MSG = "TETRIS_PING";
     static constexpr const char *PONG_MSG = "TETRIS_PONG";
 
-    // 房主：在后台线程监听广播，并回发 PONG
     static void host_discovery_loop(bool &running)
     {
         ENetSocket sock = enet_socket_create(ENET_SOCKET_TYPE_DATAGRAM);
@@ -84,7 +83,6 @@ public:
             int len = enet_socket_receive(sock, &sender, &buf, 1);
             if (len > 0 && strncmp(data, PING_MSG, strlen(PING_MSG)) == 0)
             {
-                // 收到搜房请求，回发 PONG
                 ENetBuffer reply;
                 reply.data = (void *)PONG_MSG;
                 reply.dataLength = strlen(PONG_MSG);
@@ -95,7 +93,6 @@ public:
         enet_socket_destroy(sock);
     }
 
-    // 客机：发送广播并收集回应的 IP
     static std::vector<std::string> scan_for_hosts()
     {
         std::vector<std::string> hosts;
@@ -110,7 +107,7 @@ public:
         ENetBuffer req;
         req.data = (void *)PING_MSG;
         req.dataLength = strlen(PING_MSG);
-        enet_socket_send(sock, &bcast, &req, 1); // 发送 PING 广播
+        enet_socket_send(sock, &bcast, &req, 1);
 
         std::cout << "Scanning LAN for Tetris hosts for 2 seconds...\n";
 
@@ -142,18 +139,9 @@ public:
     }
 };
 
-// --- TUI 渲染系统 ---
-void move_cursor(int x, int y)
-{
-    std::cout << "\033[" << y << ";" << x << "H";
-}
+void move_cursor(int x, int y) { std::cout << "\033[" << y << ";" << x << "H"; }
+void clear_screen() { std::cout << "\033[2J\033[H"; }
 
-void clear_screen()
-{
-    std::cout << "\033[2J\033[H";
-}
-
-// 绘制单个玩家的盘面
 void render_board(const State<10, 20> &st, int offset_x, int offset_y, const std::string &title)
 {
     move_cursor(offset_x, offset_y);
@@ -162,7 +150,6 @@ void render_board(const State<10, 20> &st, int offset_x, int offset_y, const std
     int ghost_y = get_ghost_y(st);
     const auto &shape = PIECES[(int)st.piece].rot[(int)st.rot];
 
-    // ANSI 颜色：0=空, 1=I(青), 2=O(黄), 3=T(紫), 4=S(绿), 5=Z(红), 6=J(蓝), 7=L(白)
     const char *colors[] = {
         "\033[0m", "\033[46m", "\033[43m", "\033[45m",
         "\033[42m", "\033[41m", "\033[44m", "\033[47m"};
@@ -170,50 +157,42 @@ void render_board(const State<10, 20> &st, int offset_x, int offset_y, const std
     for (int y = 0; y < 20; ++y)
     {
         move_cursor(offset_x, offset_y + 1 + y);
-        std::cout << "<!"; // 左边框
+        std::cout << "<!";
 
         for (int x = 0; x < 10; ++x)
         {
             bool is_active = false;
             bool is_ghost = false;
 
-            // 检查是否是当前正在控制的方块
             if (y >= st.y && y < st.y + 4 && x >= st.x && x < st.x + 4)
-            {
                 if (shape.row[y - st.y] & (1 << (x - st.x)))
                     is_active = true;
-            }
-            // 检查是否是 Ghost 方块 (投影)
+
             if (!is_active && y >= ghost_y && y < ghost_y + 4 && x >= st.x && x < st.x + 4)
-            {
                 if (shape.row[y - ghost_y] & (1 << (x - st.x)))
                     is_ghost = true;
-            }
 
             if (is_active)
-            {
                 std::cout << colors[(int)st.piece + 1] << "  " << "\033[0m";
-            }
             else if (is_ghost)
-            {
-                std::cout << "\033[90m[]\033[0m"; // 灰色中括号表示投影
-            }
+                std::cout << "\033[90m[]\033[0m";
             else if (st.board.rows[y] & (1ULL << x))
-            {
-                std::cout << "\033[47m  \033[0m"; // 已锁定的方块用白色
-            }
+                std::cout << "\033[47m  \033[0m";
             else
-            {
-                std::cout << " ."; // 空地
-            }
+                std::cout << " .";
         }
-        std::cout << "!>"; // 右边框
+        std::cout << "!>";
+
+        // 在右侧显示垃圾行警告槽
+        if (y >= 20 - st.pending_garbage)
+            std::cout << "\033[31m*\033[0m";
+        else
+            std::cout << " ";
     }
     move_cursor(offset_x, offset_y + 21);
     std::cout << "==========================";
 }
 
-// --- 游戏主程序 ---
 int main()
 {
 #ifdef _WIN32
@@ -227,7 +206,6 @@ int main()
     }
 #endif
 
-    // 扩大标准输出的缓冲区大小到 64KB，防止高帧率下 ANSI 序列被截断
     static char stdout_buffer[65536];
     setvbuf(stdout, stdout_buffer, _IOFBF, sizeof(stdout_buffer));
 
@@ -252,8 +230,6 @@ int main()
             return 1;
         }
         std::cout << "Waiting for a player to join...\n";
-
-        // 开启后台 UDP 答复线程
         discovery_thread = std::thread(LANDraw::host_discovery_loop, std::ref(discovery_running));
     }
     else
@@ -277,12 +253,10 @@ int main()
         }
     }
 
-    // --- 游戏状态初始化 ---
     Engine<10, 20> local_engine;
     Engine<10, 20> remote_engine;
     bool game_started = false;
 
-    // 网络事件绑定
     net.on_game_start = [&](uint32_t seed)
     {
         local_engine.reset(seed);
@@ -303,17 +277,29 @@ int main()
         else if (header->type == PacketType::PlayerAction)
         {
             auto *pkt = reinterpret_cast<const PktPlayerAction *>(data);
+            // 这里我们不需要处理 remote_engine 打出的垃圾行，避免双倍计算
             remote_engine.handle_action(pkt->action);
+        }
+        else if (header->type == PacketType::PlayerAttack)
+        {
+            // --- 联机对战核心逻辑：收到对手攻击包，挂载到垃圾行等待列 ---
+            auto *pkt = reinterpret_cast<const PktPlayerAttack *>(data);
+            local_engine.state.pending_garbage += pkt->lines;
         }
         else if (header->type == PacketType::StateSync)
         {
             auto *pkt = reinterpret_cast<const PktStateSync<10, 20> *>(data);
-            // 兜底同步：直接覆盖远端状态
             std::memcpy(remote_engine.state.board.rows, pkt->board_rows, sizeof(pkt->board_rows));
             remote_engine.state.piece = pkt->piece;
             remote_engine.state.rot = pkt->rot;
             remote_engine.state.x = pkt->x;
             remote_engine.state.y = pkt->y;
+
+            // 补充漏掉的对齐和状态字段
+            remote_engine.state.hold = pkt->hold;
+            remote_engine.state.hold_used = pkt->hold_used;
+            remote_engine.state.pending_garbage = pkt->pending_garbage;
+            remote_engine.state.rng = pkt->rng_state;
         }
     };
 
@@ -325,13 +311,12 @@ int main()
         exit(0);
     };
 
-    // --- 主循环 ---
     auto last_tick = std::chrono::steady_clock::now();
     auto last_sync = std::chrono::steady_clock::now();
 
     while (true)
     {
-        net.tick(); // 维持 ENet 心跳与事件收发
+        net.tick();
 
         if (!game_started)
         {
@@ -341,71 +326,162 @@ int main()
 
         auto now = std::chrono::steady_clock::now();
 
-        // 1. 处理本地输入
+        // 1. 处理本地输入 (处理上下左右被误解析的 Bug)
         if (_kbhit())
         {
-            char c = _getch();
+            int c = _getch();
             Action act;
-            bool valid_action = true;
-            switch (c)
+            bool valid_action = false;
+
+#ifdef _WIN32
+            // 拦截 Windows 方向键前缀 0 / 224
+            if (c == 0 || c == 224)
             {
-            case 'a':
-            case 'A':
-                act = Action::MoveLeft;
-                break;
-            case 'd':
-            case 'D':
-                act = Action::MoveRight;
-                break;
-            case 's':
-            case 'S':
-                act = Action::SoftDrop;
-                break;
-            case 'w':
-            case 'W':
-            case ' ':
-                act = Action::HardDrop;
-                break;
-            case 'j':
-            case 'J':
-                act = Action::RotateCCW;
-                break;
-            case 'k':
-            case 'K':
-                act = Action::RotateCW;
-                break;
-            case 'l':
-            case 'L':
-                act = Action::Hold;
-                break;
-            case 'q':
-                exit(0);
-            default:
-                valid_action = false;
-                break;
+                int arrow = _getch();
+                if (arrow == 72)
+                {
+                    act = Action::RotateCW;
+                    valid_action = true;
+                } // Up
+                else if (arrow == 80)
+                {
+                    act = Action::SoftDrop;
+                    valid_action = true;
+                } // Down
+                else if (arrow == 75)
+                {
+                    act = Action::MoveLeft;
+                    valid_action = true;
+                } // Left
+                else if (arrow == 77)
+                {
+                    act = Action::MoveRight;
+                    valid_action = true;
+                } // Right
+            }
+#else
+            // 拦截 Linux / macOS ANSI 转义序列 (\033[A ...)
+            if (c == 27)
+            {
+                if (_kbhit() && _getch() == '[')
+                {
+                    if (_kbhit())
+                    {
+                        int arrow = _getch();
+                        if (arrow == 'A')
+                        {
+                            act = Action::RotateCW;
+                            valid_action = true;
+                        } // Up
+                        else if (arrow == 'B')
+                        {
+                            act = Action::SoftDrop;
+                            valid_action = true;
+                        } // Down
+                        else if (arrow == 'D')
+                        {
+                            act = Action::MoveLeft;
+                            valid_action = true;
+                        } // Left
+                        else if (arrow == 'C')
+                        {
+                            act = Action::MoveRight;
+                            valid_action = true;
+                        } // Right
+                    }
+                }
+            }
+#endif
+            else
+            {
+                switch (c)
+                {
+                case 'a':
+                case 'A':
+                    act = Action::MoveLeft;
+                    valid_action = true;
+                    break;
+                case 'd':
+                case 'D':
+                    act = Action::MoveRight;
+                    valid_action = true;
+                    break;
+                case 's':
+                case 'S':
+                    act = Action::SoftDrop;
+                    valid_action = true;
+                    break;
+                case ' ':
+                    act = Action::HardDrop;
+                    valid_action = true;
+                    break;
+                case 'j':
+                case 'J':
+                    act = Action::RotateCCW;
+                    valid_action = true;
+                    break;
+                case 'w':
+                case 'W':
+                case 'k':
+                case 'K':
+                    act = Action::RotateCW;
+                    valid_action = true;
+                    break;
+                case 'l':
+                case 'L':
+                case 'c':
+                case 'C':
+                    act = Action::Hold;
+                    valid_action = true;
+                    break;
+                case 'q':
+                case 'Q':
+                    exit(0);
+                }
             }
 
             if (valid_action && !local_engine.game_over)
             {
-                local_engine.handle_action(act);
+                auto res = local_engine.handle_action(act);
 
-                // 立即将操作发送给对手 (Channel 1, 保证顺序)
+                // 发送操作包同步姿态
                 PktPlayerAction action_pkt;
                 action_pkt.header = {PacketType::PlayerAction, (u8)net.get_role()};
                 action_pkt.action = act;
                 net.send_packet(action_pkt, 1, true);
+
+                // ！！关键修复：如果有伤害，发送给对手 ！！
+                if (res.damage > 0)
+                {
+                    PktPlayerAttack atk_pkt;
+                    atk_pkt.header = {PacketType::PlayerAttack, (u8)net.get_role()};
+                    atk_pkt.lines = res.damage;
+                    atk_pkt.hole_x = local_engine.state.rng % 10;
+                    net.send_packet(atk_pkt, 1, true);
+                }
             }
         }
 
         // 2. 游戏自然下落 (重力 Tick)
         if (now - last_tick > std::chrono::milliseconds(500))
         {
-            local_engine.tick();
-            remote_engine.tick(); // 本地傀儡也必须下落，保证视觉同步
+            auto res = local_engine.tick();
+            remote_engine.tick();
+
+            // 自然下落也可能锁定方块并造成伤害，同理发送
+            if (res.damage > 0)
+            {
+                PktPlayerAttack atk_pkt;
+                atk_pkt.header = {PacketType::PlayerAttack, (u8)net.get_role()};
+                atk_pkt.lines = res.damage;
+                atk_pkt.hole_x = local_engine.state.rng % 10;
+                net.send_packet(atk_pkt, 1, true);
+            }
+
             last_tick = now;
         }
 
-        // 3. 状态快照兜底同步 (每秒发 5 次 StateSync 包给对面)
+        // 3. 状态快照兜底同步 (完善了遗漏的数据结构传输)
         if (now - last_sync > std::chrono::milliseconds(200))
         {
             PktStateSync<10, 20> sync_pkt;
@@ -415,7 +491,13 @@ int main()
             sync_pkt.rot = local_engine.state.rot;
             sync_pkt.x = local_engine.state.x;
             sync_pkt.y = local_engine.state.y;
-            // Channel 2, 不可靠传输，丢弃也没事，保证最新即可
+
+            // 加上核心字段
+            sync_pkt.hold = local_engine.state.hold;
+            sync_pkt.hold_used = local_engine.state.hold_used;
+            sync_pkt.pending_garbage = local_engine.state.pending_garbage;
+            sync_pkt.rng_state = local_engine.state.rng;
+
             net.send_packet(sync_pkt, 2, false);
             last_sync = now;
         }
@@ -425,16 +507,19 @@ int main()
         render_board(remote_engine.state, 40, 2, "OPPONENT (Remote)");
 
         move_cursor(5, 25);
-        std::cout << "Controls: A/D(Move) S(Soft) W/Space(Hard) J/K(Rotate) L(Hold) Q(Quit)";
-
-        // 这一帧的所有内容拼接完毕后，一次性发送给终端，避免画面撕裂和错乱
+        std::cout << "Controls: \033[36mArrow Keys / WASD\033[0m(Move&Drop) "
+                     "\033[36mJ/K/W\033[0m(Rotate) "
+                     "\033[36mL/C\033[0m(Hold) "
+                     "\033[36mQ\033[0m(Quit)";
         std::cout << std::flush;
 
         std::this_thread::sleep_for(std::chrono::milliseconds(16)); // ~60FPS
     }
 
+    // 退出程序前的清理
     discovery_running = false;
     if (discovery_thread.joinable())
         discovery_thread.join();
+
     return 0;
 }
