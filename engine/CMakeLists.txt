@@ -51,6 +51,13 @@ else()
         -static)
 endif()
 
+# TUI Tetris executable
+add_executable(tetris src/main.cpp)
+target_link_libraries(tetris
+    PRIVATE
+    tetris::engine
+)
+
 # Link dependency
 # target_link_libraries()
 if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
