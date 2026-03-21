@@ -13,6 +13,8 @@ file(GLOB_RECURSE TETRIS_SOURCE
     CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
 )
+list(FILTER TETRIS_SOURCE EXCLUDE REGEX ".*wasm_binding\\.cpp$")
+list(FILTER TETRIS_SOURCE EXCLUDE REGEX ".*main\\.cpp$")
 
 # Library
 add_library(tetris_engine ${TETRIS_SOURCE})
@@ -30,10 +32,23 @@ target_compile_features(tetris_engine PUBLIC cxx_std_20)
 
 # Compiler optimization
 if(TETRIS_ENABLE_OPTIMIZATION)
-    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-        target_compile_options(tetris_engine PUBLIC -O3 -march=native -ffast-math)
+    if(EMSCRIPTEN)
+        target_compile_options(tetris_engine PUBLIC
+            -O3
+            -ffast-math
+        )
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(tetris_engine PUBLIC
+            -O3
+            -march=native
+            -ffast-math
+        )
     elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-        target_compile_options(tetris_engine PUBLIC /O3 /arch:AVX2 /fp:fast)
+        target_compile_options(tetris_engine PUBLIC
+            /O3
+            /arch:AVX2
+            /fp:fast
+        )
     endif()
 endif()
 
@@ -52,14 +67,37 @@ else()
 endif()
 
 # TUI Tetris executable
-add_executable(tetris src/main.cpp)
-target_link_libraries(tetris
-    PRIVATE
-    tetris::engine
-)
+if(NOT EMSCRIPTEN)
+    add_executable(tetris src/main.cpp)
+    target_link_libraries(tetris
+        PRIVATE
+        tetris::engine
+    )
+endif()
 
-# Link dependency
-# target_link_libraries()
+# WASM Tetris executable
+if(EMSCRIPTEN)
+    message(STATUS "Building WASM target")
+
+    add_executable(tetris_wasm src/wasm_binding.cpp)
+
+    target_link_libraries(tetris_wasm
+        PRIVATE
+        tetris::engine
+    )
+
+    target_compile_options(tetris_wasm PRIVATE
+        -O3
+    )
+
+    target_link_options(tetris_wasm PRIVATE
+        --bind
+        -sMODULARIZE=1
+        -sEXPORT_NAME="TetrisModule"
+        -sENVIRONMENT=web
+    )
+endif()
+
 if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
     enable_testing()
 

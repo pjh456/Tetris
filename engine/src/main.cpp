@@ -44,6 +44,9 @@ void init_terminal()
     fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK);
     std::cout << "\033[?25l"; // 隐藏光标
 }
+#else
+// wasm
+void init_terminal() {}
 #endif
 
 bool read_key(char &c)
@@ -57,6 +60,8 @@ bool read_key(char &c)
         return true;
     }
     return false;
+#else
+    return false; // wasm
 #endif
 }
 
