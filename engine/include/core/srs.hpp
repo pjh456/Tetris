@@ -20,10 +20,14 @@ namespace tetris
         return {(i8)-k.dx, (i8)-k.dy};
     }
 
-    // JLSTZ base: 0 -> R
-    constexpr Kick JLSTZ_0R[5] = {
-        {0, 0}, {-1, 0}, {-1, 1}, {0, -2}, {-1, -2}};
-
+    constexpr Kick JLSTZ_0_1[5] =
+        {{0, 0}, {-1, 0}, {-1, 1}, {0, -2}, {-1, -2}};
+    constexpr Kick JLSTZ_1_2[5] =
+        {{0, 0}, {1, 0}, {1, -1}, {0, 2}, {1, 2}};
+    constexpr Kick JLSTZ_2_3[5] =
+        {{0, 0}, {1, 0}, {1, 1}, {0, -2}, {1, -2}};
+    constexpr Kick JLSTZ_3_0[5] =
+        {{0, 0}, {-1, 0}, {-1, -1}, {0, 2}, {-1, 2}};
     constexpr Kick I_0R[5] = {
         {0, 0}, {-2, 0}, {1, 0}, {-2, -1}, {1, 2}};
 
@@ -42,10 +46,10 @@ namespace tetris
 
     constexpr void fill_jlstz(Kick out[4][4][5])
     {
-        fill_pair(out, 0, 1, JLSTZ_0R);
-        fill_pair(out, 1, 2, JLSTZ_0R);
-        fill_pair(out, 2, 3, JLSTZ_0R);
-        fill_pair(out, 3, 0, JLSTZ_0R);
+        fill_pair(out, 0, 1, JLSTZ_0_1);
+        fill_pair(out, 1, 2, JLSTZ_1_2);
+        fill_pair(out, 2, 3, JLSTZ_2_3);
+        fill_pair(out, 3, 0, JLSTZ_3_0);
     }
 
     constexpr void fill_I(Kick out[4][4][5])
