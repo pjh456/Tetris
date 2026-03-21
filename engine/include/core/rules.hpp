@@ -22,20 +22,56 @@ namespace tetris
         const auto &shape =
             PIECES[(int)st.piece].rot[(int)rot];
 
+        constexpr u16 FULL = (1u << W) - 1;
+
         for (int i = 0; i < 4; i++)
         {
+            u16 row = shape.row[i];
+            if (!row)
+                continue; // 跳过空行
+
             int yy = y + i;
-            if (yy < 0 || yy >= H)
+
+            // 底部越界 → 失败
+            if (yy >= H)
                 return false;
 
-            u16 mask = shape.row[i] << x;
+            // 顶部溢出 → 允许（跳过碰撞检测）
+            if (yy < 0)
+                continue;
 
-            if (mask & ~((1u << W) - 1))
-                return false;
+            // ===== 横向处理=====
+            u16 shifted;
 
-            if (st.board.rows[yy] & mask)
+            if (x >= 0)
+            {
+                // 右移进棋盘
+                if (x >= W)
+                    return false; // 完全在右边外
+                shifted = row << x;
+
+                // 右越界检测
+                if (shifted & ~FULL)
+                    return false;
+            }
+            else
+            {
+                // 左越界，需要右移 row
+                int sx = -x;
+
+                if (sx >= 4)
+                    return false; // 整块在左边外
+                if (row & ((1u << (-x)) - 1))
+                    return false; // 检测是否有被截断的 bit
+
+                shifted = row >> sx;
+            }
+
+            // ===== 碰撞检测 =====
+            if (st.board.rows[yy] & shifted)
                 return false;
         }
+
         return true;
     }
 
@@ -62,6 +98,18 @@ namespace tetris
     }
 
     template <u8 W, u8 H>
+    bool try_move(State<W, H> &st, int dx, int dy)
+    {
+        if (can_place(st, st.x + dx, st.y + dy, st.rot))
+        {
+            st.x += dx;
+            st.y += dy;
+            return true;
+        }
+        return false;
+    }
+
+    template <u8 W, u8 H>
     void hard_drop(State<W, H> &st)
     {
         while (can_place(
@@ -76,14 +124,38 @@ namespace tetris
         const auto &shape =
             PIECES[(int)st.piece].rot[(int)st.rot];
 
+        constexpr u16 FULL = (1u << W) - 1;
+
         for (int i = 0; i < 4; i++)
         {
+            u16 row = shape.row[i];
+            if (!row)
+                continue;
+
             int yy = st.y + i;
             if (yy < 0 || yy >= H)
                 continue;
 
-            u16 mask = shape.row[i] << st.x;
-            st.board.rows[yy] |= mask;
+            u16 shifted;
+
+            if (st.x >= 0)
+            {
+                if (st.x >= W)
+                    continue;
+                shifted = row << st.x;
+
+                // 裁剪掉越界部分
+                shifted &= FULL;
+            }
+            else
+            {
+                int sx = -st.x;
+                if (sx >= 4)
+                    continue;
+                shifted = row >> sx;
+            }
+
+            st.board.rows[yy] |= shifted;
         }
 
         return st.board.clear_lines();

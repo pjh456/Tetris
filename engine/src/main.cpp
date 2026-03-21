@@ -152,11 +152,11 @@ int main()
         while (read_key(c))
         {
             if (c == 'a')
-                game.x--;
+                try_move(game, -1, 0);
             if (c == 'd')
-                game.x++;
+                try_move(game, 1, 0);
             if (c == 's')
-                game.y++;
+                try_move(game, 0, 1);
             if (c == 'w')
                 try_rotate(
                     game,
@@ -168,7 +168,9 @@ int main()
 
         // ===== 重力 =====
         auto now = std::chrono::steady_clock::now();
-        if (std::chrono::duration_cast<std::chrono::milliseconds>(now - last).count() > 500)
+        if (std::chrono::duration_cast<
+                std::chrono::milliseconds>(now - last)
+                .count() > 500)
         {
             if (can_place(game, game.x, game.y + 1, game.rot))
             {
