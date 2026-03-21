@@ -1,0 +1,3 @@
+[submodule "engine/thirdparty/enet"]
+	path = engine/thirdparty/enet
+	url = https://github.com/lsalzman/enet
