@@ -118,6 +118,15 @@ namespace tetris
 
         return st.board.clear_lines();
     }
+
+    template <u8 W, u8 H>
+    int get_ghost_y(const State<W, H> &st)
+    {
+        int gy = st.y;
+        while (can_place(st, st.x, gy + 1, st.rot))
+            gy++;
+        return gy;
+    }
 }
 
 #endif // INCLUDE_TETRIS_RULES_HPP

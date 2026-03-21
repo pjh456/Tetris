@@ -2,6 +2,8 @@
 #include <chrono>
 #include <thread>
 #include <string>
+#include <sstream>
+#include <cstdlib>
 
 #include "core/types.hpp"
 #include "core/config.hpp"
@@ -20,8 +22,19 @@ using namespace tetris;
 #include <windows.h>
 #endif
 
-// ====== 非阻塞输入 ======
-#ifdef __linux__
+// ====== 终端与非阻塞输入 ======
+#ifdef _WIN32
+void init_terminal()
+{
+    // 激活 Windows 终端的 ANSI 颜色支持
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD dwMode = 0;
+    GetConsoleMode(hOut, &dwMode);
+    dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+    SetConsoleMode(hOut, dwMode);
+    std::cout << "\033[?25l"; // 隐藏光标
+}
+#elif defined(__linux__)
 void init_terminal()
 {
     termios tt{};
@@ -29,6 +42,7 @@ void init_terminal()
     tt.c_lflag &= ~(ICANON | ECHO);
     tcsetattr(STDIN_FILENO, TCSANOW, &tt);
     fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK);
+    std::cout << "\033[?25l"; // 隐藏光标
 }
 #endif
 
@@ -43,75 +57,188 @@ bool read_key(char &c)
         return true;
     }
     return false;
-#else
-    return false;
 #endif
 }
 
-void reset_cursor()
+// ====== 视觉样式与颜色映射 ======
+const char *get_color(Piece p)
 {
-#ifdef __linux__
-    std::cout << "\033[1;1H"; // 移至行首，避免 system("clear") 导致的闪屏
-#elif defined(_WIN32)
-    SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), {0, 0});
-#endif
+    switch (p)
+    {
+    case Piece::I:
+        return "\033[96m"; // 青色
+    case Piece::O:
+        return "\033[93m"; // 黄色
+    case Piece::T:
+        return "\033[95m"; // 紫色
+    case Piece::S:
+        return "\033[92m"; // 绿色
+    case Piece::Z:
+        return "\033[91m"; // 红色
+    case Piece::J:
+        return "\033[94m"; // 蓝色
+    case Piece::L:
+        return "\033[38;5;208m"; // 橘色 (256色)
+    }
+    return "\033[0m";
 }
 
-// ====== 游戏参数 ======
+// 渲染侧边栏的迷你方块
+std::string render_mini(Piece p, int row, bool active)
+{
+    if (!active)
+        return "        "; // 8个空格占位
+
+    // 严格控制每行 8 字符宽度
+    const char *shapes[7][2] = {
+        {"[][][][]", "        "}, // I
+        {"  [][]  ", "  [][]  "}, // O
+        {"  []    ", "[][][]  "}, // T
+        {"  [][]  ", "[][]    "}, // S
+        {"[][]    ", "  [][]  "}, // Z
+        {"[]      ", "[][][]  "}, // J
+        {"[]  ", "[][][]  "}      // L
+    };
+
+    return std::string(get_color(p)) + shapes[(int)p][row] + "\033[0m";
+}
+
 constexpr int W = 10;
 constexpr int H = 20;
 
-// ====== 渲染 ======
+// ====== 无闪烁的 TUI 渲染 ======
 void render(const Engine<W, H> &engine)
 {
-    reset_cursor();
-    const auto &s = engine.state;
+    std::ostringstream out;
+    out << "\033[1;1H"; // 光标移至左上角（而非 clear），避免闪烁
 
-    auto p2c = [](Piece p)
-    { return "IOTSZJL"[(int)p]; };
-    std::cout << "Hold: " << (engine.has_hold ? std::string(1, p2c(s.hold)) : " ")
-              << " | Next: " << p2c(s.next[0]) << " \n";
+    const auto &s = engine.state;
+    int ghost_y = get_ghost_y(s);
+
+    // 0: 空, 1: 锁定块, 2: 幽灵块, 3: 活动块
+    int grid[H][W] = {0};
+
+    // 1. 填入已锁定的死区方块
+    for (int y = 0; y < H; y++)
+    {
+        for (int x = 0; x < W; x++)
+        {
+            if ((s.board.rows[y] >> x) & 1)
+                grid[y][x] = 1;
+        }
+    }
+
+    if (!engine.game_over)
+    {
+        const auto &shape = PIECES[(int)s.piece].rot[(int)s.rot];
+
+        // 2. 填入 Ghost 块
+        for (int i = 0; i < 4; i++)
+        {
+            for (int j = 0; j < 4; j++)
+            {
+                if (shape.row[i] & (1 << j))
+                {
+                    int xx = s.x + j, yy = ghost_y + i;
+                    if (yy >= 0 && yy < H && xx >= 0 && xx < W)
+                        grid[yy][xx] = 2;
+                }
+            }
+        }
+
+        // 3. 填入 Active 块 (会覆盖该位置的 Ghost 块)
+        for (int i = 0; i < 4; i++)
+        {
+            for (int j = 0; j < 4; j++)
+            {
+                if (shape.row[i] & (1 << j))
+                {
+                    int xx = s.x + j, yy = s.y + i;
+                    if (yy >= 0 && yy < H && xx >= 0 && xx < W)
+                        grid[yy][xx] = 3;
+                }
+            }
+        }
+    }
+
+    // --- 开始逐行绘制 ---
+    out << "           ╔════════════════════╗\n";
 
     for (int y = 0; y < H; y++)
     {
-        std::cout << "|";
+        // [左侧面板: HOLD] (宽 11 字符)
+        if (y == 1)
+            out << "   HOLD    ";
+        else if (y == 2)
+            out << " " << render_mini(s.hold, 0, engine.has_hold) << "  ";
+        else if (y == 3)
+            out << " " << render_mini(s.hold, 1, engine.has_hold) << "  ";
+        else
+            out << "           ";
+
+        // [棋盘区]
+        out << "║";
         for (int x = 0; x < W; x++)
         {
-            bool filled = (s.board.rows[y] >> x) & 1;
-
-            if (!engine.game_over)
-            {
-                const auto &shape = PIECES[(int)s.piece].rot[(int)s.rot];
-                for (int i = 0; i < 4; i++)
-                {
-                    if (s.y + i != y)
-                        continue;
-                    for (int j = 0; j < 4; j++)
-                    {
-                        if ((shape.row[i] & (1 << j)) && (s.x + j == x))
-                            filled = true;
-                    }
-                }
-            }
-            std::cout << (filled ? "[]" : " .");
+            if (grid[y][x] == 0)
+                out << " .";
+            else if (grid[y][x] == 1)
+                out << "\033[37m[]\033[0m"; // 锁定块：白色
+            else if (grid[y][x] == 2)
+                out << "\033[90m[]\033[0m"; // Ghost：深灰色
+            else if (grid[y][x] == 3)
+                out << get_color(s.piece) << "[]\033[0m"; // 当前块：高亮色
         }
-        std::cout << "|\n";
+        out << "║";
+
+        // [右侧面板: NEXT]
+        if (y == 1)
+            out << "   NEXT";
+        else if (y == 2)
+            out << " " << render_mini(s.next[0], 0, true);
+        else if (y == 3)
+            out << " " << render_mini(s.next[0], 1, true);
+        else if (y == 5)
+            out << " " << render_mini(s.next[1], 0, true);
+        else if (y == 6)
+            out << " " << render_mini(s.next[1], 1, true);
+        else if (y == 8)
+            out << " " << render_mini(s.next[2], 0, true);
+        else if (y == 9)
+            out << " " << render_mini(s.next[2], 1, true);
+
+        out << "\n";
     }
-    std::cout << "+--------------------+\n";
+
+    out << "           ╚════════════════════╝\n";
+
     if (engine.game_over)
-        std::cout << "==== GAME OVER! ====\n";
+    {
+        out << "              \033[91m=== GAME OVER ===\033[0m\n";
+    }
+    else
+    {
+        out << "            [a/d] Move  [w] Rotate\n"
+            << "            [s] Drop    [SPACE] Hard Drop\n"
+            << "            [c] Hold    [q] Quit\n";
+    }
+
+    // 只有一次 IO 操作，彻底杜绝闪屏
+    std::cout << out.str() << std::flush;
 }
 
 // ====== 主程序 ======
 int main()
 {
-#ifdef __linux__
-    std::cout << "\033[2J"; // 初始化清屏一次
+    // 注册退出时恢复光标
+    std::atexit([]()
+                { std::cout << "\033[?25h\n"; });
+
     init_terminal();
-#endif
+    std::cout << "\033[2J"; // 清空整个屏幕
 
     Engine<W, H> engine;
-    engine.reset(1337);
+    engine.reset(1337); // 固定种子或换成 time(0)
 
     auto last = std::chrono::steady_clock::now();
 
