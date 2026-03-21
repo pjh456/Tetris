@@ -92,8 +92,10 @@ if(EMSCRIPTEN)
 
     target_link_options(tetris_wasm PRIVATE
         --bind
+        -lembind
         -sMODULARIZE=1
         -sEXPORT_NAME="TetrisModule"
+        -sEXPORT_ES6=1
         -sENVIRONMENT=web
     )
 endif()
