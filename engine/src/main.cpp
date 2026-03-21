@@ -97,7 +97,7 @@ std::string render_mini(Piece p, int row, bool active)
         {"  [][]  ", "[][]    "}, // S
         {"[][]    ", "  [][]  "}, // Z
         {"[]      ", "[][][]  "}, // J
-        {"[]  ", "[][][]  "}      // L
+        {"    []  ", "[][][]  "}  // L (修复: 补齐为8字符，并修正形状)
     };
 
     return std::string(get_color(p)) + shapes[(int)p][row] + "\033[0m";
@@ -110,7 +110,7 @@ constexpr int H = 20;
 void render(const Engine<W, H> &engine)
 {
     std::ostringstream out;
-    out << "\033[1;1H"; // 光标移至左上角（而非 clear），避免闪烁
+    out << "\033[1;1H"; // 光标移至左上角，避免闪烁
 
     const auto &s = engine.state;
     int ghost_y = get_ghost_y(s);
@@ -162,7 +162,7 @@ void render(const Engine<W, H> &engine)
     }
 
     // --- 开始逐行绘制 ---
-    out << "           ╔════════════════════╗\n";
+    out << "           ╔════════════════════╗\033[K\n";
 
     for (int y = 0; y < H; y++)
     {
@@ -207,20 +207,20 @@ void render(const Engine<W, H> &engine)
         else if (y == 9)
             out << " " << render_mini(s.next[2], 1, true);
 
-        out << "\n";
+        out << "\033[K\n";
     }
 
-    out << "           ╚════════════════════╝\n";
+    out << "           ╚════════════════════╝\033[K\n";
 
     if (engine.game_over)
     {
-        out << "              \033[91m=== GAME OVER ===\033[0m\n";
+        out << "              \033[91m=== GAME OVER ===\033[0m\033[K\n";
     }
     else
     {
-        out << "            [a/d] Move  [w] Rotate\n"
-            << "            [s] Drop    [SPACE] Hard Drop\n"
-            << "            [c] Hold    [q] Quit\n";
+        out << "            [a/d] Move  [w] Rotate\033[K\n"
+            << "            [s] Drop    [SPACE] Hard Drop\033[K\n"
+            << "            [c] Hold    [q] Quit\033[K\n";
     }
 
     // 只有一次 IO 操作，彻底杜绝闪屏
@@ -231,8 +231,9 @@ void render(const Engine<W, H> &engine)
 int main()
 {
     // 注册退出时恢复光标
-    std::atexit([]()
-                { std::cout << "\033[?25h\n"; });
+    std::atexit(
+        []()
+        { std::cout << "\033[?25h\n"; });
 
     init_terminal();
     std::cout << "\033[2J"; // 清空整个屏幕
@@ -269,12 +270,15 @@ int main()
         if (engine.game_over)
         {
             render(engine);
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds(100));
             continue;
         }
 
         auto now = std::chrono::steady_clock::now();
-        if (std::chrono::duration_cast<std::chrono::milliseconds>(now - last).count() > 500)
+        if (std::chrono::duration_cast<
+                std::chrono::milliseconds>(now - last)
+                .count() > 500)
         {
             engine.tick();
             last = now;
