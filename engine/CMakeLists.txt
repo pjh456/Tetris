@@ -25,6 +25,7 @@ target_include_directories(
     tetris_engine
     PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/enet/include
 )
 
 # Set C++ standard
@@ -66,12 +67,16 @@ else()
         -static)
 endif()
 
+# Dependency
+add_subdirectory(thirdparty/enet)
+
 # TUI Tetris executable
 if(NOT EMSCRIPTEN)
     add_executable(tetris src/main.cpp)
     target_link_libraries(tetris
         PRIVATE
         tetris::engine
+        enet
     )
 endif()
 
@@ -84,6 +89,7 @@ if(EMSCRIPTEN)
     target_link_libraries(tetris_wasm
         PRIVATE
         tetris::engine
+        enet
     )
 
     target_compile_options(tetris_wasm PRIVATE

@@ -5,6 +5,7 @@
 
 #include "core/state.hpp"
 #include "core/rules.hpp"
+#include "core/attack.hpp"
 
 namespace tetris
 {
@@ -59,11 +60,42 @@ namespace tetris
             return bag[bag_idx++];
         }
 
-        void lock_and_spawn()
+        AttackResult lock_and_spawn()
         {
-            int lines = lock_piece(state);
-            state.combo = (lines > 0) ? state.combo + 1 : 0;
-            spawn();
+            // 注意：因为 lock_piece 后当前方块的信息会被清除，
+            // 但计算 T-spin 需要用到它，所以把整个 state 传进去
+            // 我们要在清行之前进行 T-spin 检测，但具体行数要在清行后知道。
+            // 幸好 check_t_spin 只看 x,y 坐标，我们在 calculate_attack 里做了。
+
+            int lines_cleared = lock_piece(state);
+
+            // 将整个状态扔给规则计算器
+            auto attack_res = calculate_attack(state, lines_cleared);
+
+            // 垃圾行抵消 (Canceling)
+            if (attack_res.damage > 0 && state.pending_garbage > 0)
+            {
+                if (attack_res.damage >= state.pending_garbage)
+                {
+                    attack_res.damage -= state.pending_garbage;
+                    state.pending_garbage = 0;
+                }
+                else
+                {
+                    state.pending_garbage -= attack_res.damage;
+                    attack_res.damage = 0;
+                }
+            }
+            else if (lines_cleared == 0 && state.pending_garbage > 0)
+            {
+                // 如果没有消除，且有待处理的垃圾行，则场地吃垃圾
+                u8 hole_x = next_rand() % W;
+                state.board.insert_garbage(state.pending_garbage, hole_x);
+                state.pending_garbage = 0;
+            }
+
+            spawn(); // 内部会重置 state.last_move_was_rotation = false
+            return attack_res;
         }
 
     public:
@@ -105,27 +137,27 @@ namespace tetris
             switch (act)
             {
             case Action::MoveLeft:
-                try_move(state, -1, 0);
+                _try_move_wrapped(-1, 0);
                 break;
             case Action::MoveRight:
-                try_move(state, 1, 0);
+                _try_move_wrapped(1, 0);
                 break;
             case Action::SoftDrop:
-                try_move(state, 0, 1);
+                _try_move_wrapped(0, 1);
                 break;
             case Action::HardDrop:
+            {
                 hard_drop(state);
-                lock_and_spawn();
+                auto res = lock_and_spawn();
                 break;
+            }
             case Action::RotateCW:
-                try_rotate(
-                    state,
+                _try_rotate_wrapped(
                     static_cast<Rot>(
                         ((int)state.rot + 1) & 3));
                 break;
             case Action::RotateCCW:
-                try_rotate(
-                    state,
+                _try_rotate_wrapped(
                     static_cast<Rot>(
                         ((int)state.rot + 3) & 3));
                 break;
@@ -162,6 +194,27 @@ namespace tetris
 
             if (!try_move(state, 0, 1))
                 lock_and_spawn();
+        }
+
+    private:
+        bool _try_move_wrapped(int dx, int dy)
+        {
+            if (try_move(state, dx, dy))
+            {
+                state.last_move_was_rotation = false; // 平移打破旋转标记
+                return true;
+            }
+            return false;
+        }
+
+        bool _try_rotate_wrapped(Rot to)
+        {
+            if (try_rotate(state, to))
+            {
+                state.last_move_was_rotation = true; // 记录最后一步是旋转
+                return true;
+            }
+            return false;
         }
     };
 }

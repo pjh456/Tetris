@@ -24,6 +24,9 @@ namespace tetris
         u32 rng;
         int combo;
         bool b2b;
+
+        u8 pending_garbage = 0;              // 正在排队等待进入场地的垃圾行数
+        bool last_move_was_rotation = false; // 判定 T-Spin 核心标记
     };
 }
 

@@ -30,7 +30,18 @@ namespace tetris
             return rows[y] == FULL;
         }
 
-        u8 clear_lines()
+        bool is_empty() const noexcept
+        {
+            for (int i = 0; i < H; ++i)
+            {
+                if (rows[i] != 0)
+                    return false;
+            }
+            return true;
+        }
+
+    public:
+        u8 clear_lines() noexcept
         {
             int write = H - 1;
             u8 cleared = 0;
@@ -47,6 +58,24 @@ namespace tetris
                 rows[write--] = 0;
 
             return cleared;
+        }
+
+        // 从底部插入垃圾行
+        void insert_garbage(u8 lines, u8 hole_x) noexcept
+        {
+            if (lines == 0)
+                return;
+
+            // 1. 现有场地整体上移 (溢出部分直接丢弃/导致死亡)
+            for (int y = 0; y <= H - 1 - lines; ++y)
+                rows[y] = rows[y + lines];
+
+            // 2. 在底部生成垃圾行
+            // 生成一行除了 hole_x 位置为 0，其他位置为 1 的掩码
+            u64 garbage_row = FULL & ~(1ULL << hole_x);
+
+            for (int y = H - lines; y < H; ++y)
+                rows[y] = garbage_row;
         }
     };
 }

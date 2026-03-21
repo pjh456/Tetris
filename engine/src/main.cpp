@@ -1,296 +1,440 @@
 #include <iostream>
-#include <chrono>
 #include <thread>
+#include <chrono>
+#include <vector>
 #include <string>
-#include <sstream>
-#include <cstdlib>
+#include <cstring>
 
-#include "core/types.hpp"
-#include "core/config.hpp"
+#include <enet/enet.h>
+
 #include "core/engine.hpp"
+#include "network/network_manager.hpp"
+#include "network/protocol.hpp"
 
-using namespace tetris;
-
-#ifdef __linux__
+// --- 跨平台非阻塞键盘输入 (kbhit / getch) ---
+#ifdef _WIN32
+#include <conio.h>
+#else
 #include <termios.h>
 #include <unistd.h>
 #include <fcntl.h>
-#endif
-
-#ifdef _WIN32
-#include <conio.h>
-#include <windows.h>
-#endif
-
-// ====== 终端与非阻塞输入 ======
-#ifdef _WIN32
-void init_terminal()
+int _kbhit()
 {
-    // 激活 Windows 终端的 ANSI 颜色支持
+    struct termios oldt, newt;
+    int ch, oldf;
+    tcgetattr(STDIN_FILENO, &oldt);
+    newt = oldt;
+    newt.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+    oldf = fcntl(STDIN_FILENO, F_GETFL, 0);
+    fcntl(STDIN_FILENO, F_SETFL, oldf | O_NONBLOCK);
+    ch = getchar();
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+    fcntl(STDIN_FILENO, F_SETFL, oldf);
+    if (ch != EOF)
+    {
+        ungetc(ch, stdin);
+        return 1;
+    }
+    return 0;
+}
+int _getch()
+{
+    struct termios oldt, newt;
+    int ch;
+    tcgetattr(STDIN_FILENO, &oldt);
+    newt = oldt;
+    newt.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+    ch = getchar();
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+    return ch;
+}
+#endif
+
+using namespace tetris;
+using namespace tetris::net;
+
+// --- 局域网广播搜房助手类 (直接利用 ENet 的底层 Socket 实现跨平台) ---
+class LANDraw
+{
+public:
+    static constexpr uint16_t DISCOVERY_PORT = 7776;
+    static constexpr const char *PING_MSG = "TETRIS_PING";
+    static constexpr const char *PONG_MSG = "TETRIS_PONG";
+
+    // 房主：在后台线程监听广播，并回发 PONG
+    static void host_discovery_loop(bool &running)
+    {
+        ENetSocket sock = enet_socket_create(ENET_SOCKET_TYPE_DATAGRAM);
+        ENetAddress addr;
+        addr.host = ENET_HOST_ANY;
+        addr.port = DISCOVERY_PORT;
+        enet_socket_bind(sock, &addr);
+        enet_socket_set_option(sock, ENET_SOCKOPT_NONBLOCK, 1);
+
+        ENetBuffer buf;
+        char data[64];
+        buf.data = data;
+        buf.dataLength = sizeof(data);
+
+        while (running)
+        {
+            ENetAddress sender;
+            int len = enet_socket_receive(sock, &sender, &buf, 1);
+            if (len > 0 && strncmp(data, PING_MSG, strlen(PING_MSG)) == 0)
+            {
+                // 收到搜房请求，回发 PONG
+                ENetBuffer reply;
+                reply.data = (void *)PONG_MSG;
+                reply.dataLength = strlen(PONG_MSG);
+                enet_socket_send(sock, &sender, &reply, 1);
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        enet_socket_destroy(sock);
+    }
+
+    // 客机：发送广播并收集回应的 IP
+    static std::vector<std::string> scan_for_hosts()
+    {
+        std::vector<std::string> hosts;
+        ENetSocket sock = enet_socket_create(ENET_SOCKET_TYPE_DATAGRAM);
+        enet_socket_set_option(sock, ENET_SOCKOPT_BROADCAST, 1);
+        enet_socket_set_option(sock, ENET_SOCKOPT_NONBLOCK, 1);
+
+        ENetAddress bcast;
+        bcast.host = ENET_HOST_BROADCAST;
+        bcast.port = DISCOVERY_PORT;
+
+        ENetBuffer req;
+        req.data = (void *)PING_MSG;
+        req.dataLength = strlen(PING_MSG);
+        enet_socket_send(sock, &bcast, &req, 1); // 发送 PING 广播
+
+        std::cout << "Scanning LAN for Tetris hosts for 2 seconds...\n";
+
+        auto start = std::chrono::steady_clock::now();
+        while (std::chrono::steady_clock::now() - start < std::chrono::seconds(2))
+        {
+            ENetAddress sender;
+            ENetBuffer reply;
+            char data[64];
+            reply.data = data;
+            reply.dataLength = sizeof(data);
+
+            int len = enet_socket_receive(sock, &sender, &reply, 1);
+            if (len > 0 && strncmp(data, PONG_MSG, strlen(PONG_MSG)) == 0)
+            {
+                char ip[64];
+                enet_address_get_host_ip(&sender, ip, sizeof(ip));
+                std::string ip_str(ip);
+                if (std::find(hosts.begin(), hosts.end(), ip_str) == hosts.end())
+                {
+                    hosts.push_back(ip_str);
+                    std::cout << "Found Host at: " << ip_str << std::endl;
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+        enet_socket_destroy(sock);
+        return hosts;
+    }
+};
+
+// --- TUI 渲染系统 ---
+void move_cursor(int x, int y)
+{
+    std::cout << "\033[" << y << ";" << x << "H";
+}
+
+void clear_screen()
+{
+    std::cout << "\033[2J\033[H";
+}
+
+// 绘制单个玩家的盘面
+void render_board(const State<10, 20> &st, int offset_x, int offset_y, const std::string &title)
+{
+    move_cursor(offset_x, offset_y);
+    std::cout << "=== " << title << " ===";
+
+    int ghost_y = get_ghost_y(st);
+    const auto &shape = PIECES[(int)st.piece].rot[(int)st.rot];
+
+    // ANSI 颜色：0=空, 1=I(青), 2=O(黄), 3=T(紫), 4=S(绿), 5=Z(红), 6=J(蓝), 7=L(白)
+    const char *colors[] = {
+        "\033[0m", "\033[46m", "\033[43m", "\033[45m",
+        "\033[42m", "\033[41m", "\033[44m", "\033[47m"};
+
+    for (int y = 0; y < 20; ++y)
+    {
+        move_cursor(offset_x, offset_y + 1 + y);
+        std::cout << "<!"; // 左边框
+
+        for (int x = 0; x < 10; ++x)
+        {
+            bool is_active = false;
+            bool is_ghost = false;
+
+            // 检查是否是当前正在控制的方块
+            if (y >= st.y && y < st.y + 4 && x >= st.x && x < st.x + 4)
+            {
+                if (shape.row[y - st.y] & (1 << (x - st.x)))
+                    is_active = true;
+            }
+            // 检查是否是 Ghost 方块 (投影)
+            if (!is_active && y >= ghost_y && y < ghost_y + 4 && x >= st.x && x < st.x + 4)
+            {
+                if (shape.row[y - ghost_y] & (1 << (x - st.x)))
+                    is_ghost = true;
+            }
+
+            if (is_active)
+            {
+                std::cout << colors[(int)st.piece + 1] << "  " << "\033[0m";
+            }
+            else if (is_ghost)
+            {
+                std::cout << "\033[90m[]\033[0m"; // 灰色中括号表示投影
+            }
+            else if (st.board.rows[y] & (1ULL << x))
+            {
+                std::cout << "\033[47m  \033[0m"; // 已锁定的方块用白色
+            }
+            else
+            {
+                std::cout << " ."; // 空地
+            }
+        }
+        std::cout << "!>"; // 右边框
+    }
+    move_cursor(offset_x, offset_y + 21);
+    std::cout << "==========================";
+}
+
+// --- 游戏主程序 ---
+int main()
+{
+#ifdef _WIN32
     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-    DWORD dwMode = 0;
-    GetConsoleMode(hOut, &dwMode);
-    dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
-    SetConsoleMode(hOut, dwMode);
-    std::cout << "\033[?25l"; // 隐藏光标
-}
-#elif defined(__linux__)
-void init_terminal()
-{
-    termios tt{};
-    tcgetattr(STDIN_FILENO, &tt);
-    tt.c_lflag &= ~(ICANON | ECHO);
-    tcsetattr(STDIN_FILENO, TCSANOW, &tt);
-    fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK);
-    std::cout << "\033[?25l"; // 隐藏光标
-}
-#else
-// wasm
-void init_terminal() {}
+    if (hOut != INVALID_HANDLE_VALUE)
+    {
+        DWORD mode = 0;
+        GetConsoleMode(hOut, &mode);
+        mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+        SetConsoleMode(hOut, mode);
+    }
 #endif
 
-bool read_key(char &c)
-{
-#ifdef __linux__
-    return read(STDIN_FILENO, &c, 1) > 0;
-#elif defined(_WIN32)
-    if (_kbhit())
+    // 扩大标准输出的缓冲区大小到 64KB，防止高帧率下 ANSI 序列被截断
+    static char stdout_buffer[65536];
+    setvbuf(stdout, stdout_buffer, _IOFBF, sizeof(stdout_buffer));
+
+    clear_screen();
+    std::cout << "=== TETRIS LAN MULTIPLAYER ===\n";
+    std::cout << "[0] Host Game (Create Room)\n";
+    std::cout << "[1] Join Game (Search LAN)\n";
+    std::cout << "Select (0/1): " << std::flush;
+
+    int choice;
+    std::cin >> choice;
+
+    NetworkManager net;
+    bool discovery_running = true;
+    std::thread discovery_thread;
+
+    if (choice == 0)
     {
-        c = _getch();
-        return true;
-    }
-    return false;
-#else
-    return false; // wasm
-#endif
-}
-
-// ====== 视觉样式与颜色映射 ======
-const char *get_color(Piece p)
-{
-    switch (p)
-    {
-    case Piece::I:
-        return "\033[96m"; // 青色
-    case Piece::O:
-        return "\033[93m"; // 黄色
-    case Piece::T:
-        return "\033[95m"; // 紫色
-    case Piece::S:
-        return "\033[92m"; // 绿色
-    case Piece::Z:
-        return "\033[91m"; // 红色
-    case Piece::J:
-        return "\033[94m"; // 蓝色
-    case Piece::L:
-        return "\033[38;5;208m"; // 橘色 (256色)
-    }
-    return "\033[0m";
-}
-
-// 渲染侧边栏的迷你方块
-std::string render_mini(Piece p, int row, bool active)
-{
-    if (!active)
-        return "        "; // 8个空格占位
-
-    // 严格控制每行 8 字符宽度
-    const char *shapes[7][2] = {
-        {"[][][][]", "        "}, // I
-        {"  [][]  ", "  [][]  "}, // O
-        {"  []    ", "[][][]  "}, // T
-        {"  [][]  ", "[][]    "}, // S
-        {"[][]    ", "  [][]  "}, // Z
-        {"[]      ", "[][][]  "}, // J
-        {"    []  ", "[][][]  "}  // L (修复: 补齐为8字符，并修正形状)
-    };
-
-    return std::string(get_color(p)) + shapes[(int)p][row] + "\033[0m";
-}
-
-constexpr int W = 10;
-constexpr int H = 20;
-
-// ====== 无闪烁的 TUI 渲染 ======
-void render(const Engine<W, H> &engine)
-{
-    std::ostringstream out;
-    out << "\033[1;1H"; // 光标移至左上角，避免闪烁
-
-    const auto &s = engine.state;
-    int ghost_y = get_ghost_y(s);
-
-    // 0: 空, 1: 锁定块, 2: 幽灵块, 3: 活动块
-    int grid[H][W] = {0};
-
-    // 1. 填入已锁定的死区方块
-    for (int y = 0; y < H; y++)
-    {
-        for (int x = 0; x < W; x++)
+        if (!net.start_server(7777))
         {
-            if ((s.board.rows[y] >> x) & 1)
-                grid[y][x] = 1;
+            std::cout << "Failed to start server.\n";
+            return 1;
         }
-    }
+        std::cout << "Waiting for a player to join...\n";
 
-    if (!engine.game_over)
-    {
-        const auto &shape = PIECES[(int)s.piece].rot[(int)s.rot];
-
-        // 2. 填入 Ghost 块
-        for (int i = 0; i < 4; i++)
-        {
-            for (int j = 0; j < 4; j++)
-            {
-                if (shape.row[i] & (1 << j))
-                {
-                    int xx = s.x + j, yy = ghost_y + i;
-                    if (yy >= 0 && yy < H && xx >= 0 && xx < W)
-                        grid[yy][xx] = 2;
-                }
-            }
-        }
-
-        // 3. 填入 Active 块 (会覆盖该位置的 Ghost 块)
-        for (int i = 0; i < 4; i++)
-        {
-            for (int j = 0; j < 4; j++)
-            {
-                if (shape.row[i] & (1 << j))
-                {
-                    int xx = s.x + j, yy = s.y + i;
-                    if (yy >= 0 && yy < H && xx >= 0 && xx < W)
-                        grid[yy][xx] = 3;
-                }
-            }
-        }
-    }
-
-    // --- 开始逐行绘制 ---
-    out << "           ╔════════════════════╗\033[K\n";
-
-    for (int y = 0; y < H; y++)
-    {
-        // [左侧面板: HOLD] (宽 11 字符)
-        if (y == 1)
-            out << "   HOLD    ";
-        else if (y == 2)
-            out << " " << render_mini(s.hold, 0, engine.has_hold) << "  ";
-        else if (y == 3)
-            out << " " << render_mini(s.hold, 1, engine.has_hold) << "  ";
-        else
-            out << "           ";
-
-        // [棋盘区]
-        out << "║";
-        for (int x = 0; x < W; x++)
-        {
-            if (grid[y][x] == 0)
-                out << " .";
-            else if (grid[y][x] == 1)
-                out << "\033[37m[]\033[0m"; // 锁定块：白色
-            else if (grid[y][x] == 2)
-                out << "\033[90m[]\033[0m"; // Ghost：深灰色
-            else if (grid[y][x] == 3)
-                out << get_color(s.piece) << "[]\033[0m"; // 当前块：高亮色
-        }
-        out << "║";
-
-        // [右侧面板: NEXT]
-        if (y == 1)
-            out << "   NEXT";
-        else if (y == 2)
-            out << " " << render_mini(s.next[0], 0, true);
-        else if (y == 3)
-            out << " " << render_mini(s.next[0], 1, true);
-        else if (y == 5)
-            out << " " << render_mini(s.next[1], 0, true);
-        else if (y == 6)
-            out << " " << render_mini(s.next[1], 1, true);
-        else if (y == 8)
-            out << " " << render_mini(s.next[2], 0, true);
-        else if (y == 9)
-            out << " " << render_mini(s.next[2], 1, true);
-
-        out << "\033[K\n";
-    }
-
-    out << "           ╚════════════════════╝\033[K\n";
-
-    if (engine.game_over)
-    {
-        out << "              \033[91m=== GAME OVER ===\033[0m\033[K\n";
+        // 开启后台 UDP 答复线程
+        discovery_thread = std::thread(LANDraw::host_discovery_loop, std::ref(discovery_running));
     }
     else
     {
-        out << "            [a/d] Move  [w] Rotate\033[K\n"
-            << "            [s] Drop    [SPACE] Hard Drop\033[K\n"
-            << "            [c] Hold    [q] Quit\033[K\n";
+        auto hosts = LANDraw::scan_for_hosts();
+        if (hosts.empty())
+        {
+            std::cout << "No hosts found on LAN.\n";
+            return 1;
+        }
+        std::cout << "Select host to join (0-" << hosts.size() - 1 << "): ";
+        int host_idx;
+        std::cin >> host_idx;
+        if (host_idx < 0 || host_idx >= hosts.size())
+            return 1;
+
+        if (!net.connect_to_server(hosts[host_idx].c_str(), 7777))
+        {
+            std::cout << "Failed to connect.\n";
+            return 1;
+        }
     }
 
-    // 只有一次 IO 操作，彻底杜绝闪屏
-    std::cout << out.str() << std::flush;
-}
+    // --- 游戏状态初始化 ---
+    Engine<10, 20> local_engine;
+    Engine<10, 20> remote_engine;
+    bool game_started = false;
 
-// ====== 主程序 ======
-int main()
-{
-    // 注册退出时恢复光标
-    std::atexit(
-        []()
-        { std::cout << "\033[?25h\n"; });
+    // 网络事件绑定
+    net.on_game_start = [&](uint32_t seed)
+    {
+        local_engine.reset(seed);
+        remote_engine.reset(seed);
+        game_started = true;
+        clear_screen();
+    };
 
-    init_terminal();
-    std::cout << "\033[2J"; // 清空整个屏幕
+    net.on_packet_received = [&](const uint8_t *data, size_t size)
+    {
+        auto *header = reinterpret_cast<const PacketHeader *>(data);
+        if (header->type == PacketType::GameStart)
+        {
+            auto *pkt = reinterpret_cast<const PktGameStart *>(data);
+            if (net.on_game_start)
+                net.on_game_start(pkt->random_seed);
+        }
+        else if (header->type == PacketType::PlayerAction)
+        {
+            auto *pkt = reinterpret_cast<const PktPlayerAction *>(data);
+            remote_engine.handle_action(pkt->action);
+        }
+        else if (header->type == PacketType::StateSync)
+        {
+            auto *pkt = reinterpret_cast<const PktStateSync<10, 20> *>(data);
+            // 兜底同步：直接覆盖远端状态
+            std::memcpy(remote_engine.state.board.rows, pkt->board_rows, sizeof(pkt->board_rows));
+            remote_engine.state.piece = pkt->piece;
+            remote_engine.state.rot = pkt->rot;
+            remote_engine.state.x = pkt->x;
+            remote_engine.state.y = pkt->y;
+        }
+    };
 
-    Engine<W, H> engine;
-    engine.reset(1337); // 固定种子或换成 time(0)
+    net.on_disconnected = [&]()
+    {
+        game_started = false;
+        clear_screen();
+        std::cout << "\nPlayer disconnected. Game Over.\n";
+        exit(0);
+    };
 
-    auto last = std::chrono::steady_clock::now();
+    // --- 主循环 ---
+    auto last_tick = std::chrono::steady_clock::now();
+    auto last_sync = std::chrono::steady_clock::now();
 
     while (true)
     {
-        char c;
-        while (read_key(c))
-        {
-            if (c == 'q')
-                return 0;
-            if (engine.game_over)
-                continue;
+        net.tick(); // 维持 ENet 心跳与事件收发
 
-            if (c == 'a')
-                engine.handle_action(Action::MoveLeft);
-            if (c == 'd')
-                engine.handle_action(Action::MoveRight);
-            if (c == 's')
-                engine.handle_action(Action::SoftDrop);
-            if (c == 'w')
-                engine.handle_action(Action::RotateCW);
-            if (c == ' ')
-                engine.handle_action(Action::HardDrop);
-            if (c == 'c')
-                engine.handle_action(Action::Hold);
-        }
-
-        if (engine.game_over)
+        if (!game_started)
         {
-            render(engine);
-            std::this_thread::sleep_for(
-                std::chrono::milliseconds(100));
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
             continue;
         }
 
         auto now = std::chrono::steady_clock::now();
-        if (std::chrono::duration_cast<
-                std::chrono::milliseconds>(now - last)
-                .count() > 500)
+
+        // 1. 处理本地输入
+        if (_kbhit())
         {
-            engine.tick();
-            last = now;
+            char c = _getch();
+            Action act;
+            bool valid_action = true;
+            switch (c)
+            {
+            case 'a':
+            case 'A':
+                act = Action::MoveLeft;
+                break;
+            case 'd':
+            case 'D':
+                act = Action::MoveRight;
+                break;
+            case 's':
+            case 'S':
+                act = Action::SoftDrop;
+                break;
+            case 'w':
+            case 'W':
+            case ' ':
+                act = Action::HardDrop;
+                break;
+            case 'j':
+            case 'J':
+                act = Action::RotateCCW;
+                break;
+            case 'k':
+            case 'K':
+                act = Action::RotateCW;
+                break;
+            case 'l':
+            case 'L':
+                act = Action::Hold;
+                break;
+            case 'q':
+                exit(0);
+            default:
+                valid_action = false;
+                break;
+            }
+
+            if (valid_action && !local_engine.game_over)
+            {
+                local_engine.handle_action(act);
+
+                // 立即将操作发送给对手 (Channel 1, 保证顺序)
+                PktPlayerAction action_pkt;
+                action_pkt.header = {PacketType::PlayerAction, (u8)net.get_role()};
+                action_pkt.action = act;
+                net.send_packet(action_pkt, 1, true);
+            }
         }
 
-        render(engine);
-        std::this_thread::sleep_for(std::chrono::milliseconds(16));
+        // 2. 游戏自然下落 (重力 Tick)
+        if (now - last_tick > std::chrono::milliseconds(500))
+        {
+            local_engine.tick();
+            remote_engine.tick(); // 本地傀儡也必须下落，保证视觉同步
+            last_tick = now;
+        }
+
+        // 3. 状态快照兜底同步 (每秒发 5 次 StateSync 包给对面)
+        if (now - last_sync > std::chrono::milliseconds(200))
+        {
+            PktStateSync<10, 20> sync_pkt;
+            sync_pkt.header = {PacketType::StateSync, (u8)net.get_role()};
+            std::memcpy(sync_pkt.board_rows, local_engine.state.board.rows, sizeof(sync_pkt.board_rows));
+            sync_pkt.piece = local_engine.state.piece;
+            sync_pkt.rot = local_engine.state.rot;
+            sync_pkt.x = local_engine.state.x;
+            sync_pkt.y = local_engine.state.y;
+            // Channel 2, 不可靠传输，丢弃也没事，保证最新即可
+            net.send_packet(sync_pkt, 2, false);
+            last_sync = now;
+        }
+
+        // 4. 渲染画面
+        render_board(local_engine.state, 5, 2, "YOU (Local)");
+        render_board(remote_engine.state, 40, 2, "OPPONENT (Remote)");
+
+        move_cursor(5, 25);
+        std::cout << "Controls: A/D(Move) S(Soft) W/Space(Hard) J/K(Rotate) L(Hold) Q(Quit)";
+
+        // 这一帧的所有内容拼接完毕后，一次性发送给终端，避免画面撕裂和错乱
+        std::cout << std::flush;
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(16)); // ~60FPS
     }
+
+    discovery_running = false;
+    if (discovery_thread.joinable())
+        discovery_thread.join();
     return 0;
 }
