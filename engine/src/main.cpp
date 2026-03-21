@@ -1,15 +1,11 @@
 #include <iostream>
 #include <chrono>
 #include <thread>
-#include <cstdlib>
+#include <string>
 
 #include "core/types.hpp"
 #include "core/config.hpp"
-#include "core/piece.hpp"
-#include "core/srs.hpp"
-#include "core/board.hpp"
-#include "core/state.hpp"
-#include "core/rules.hpp"
+#include "core/engine.hpp"
 
 using namespace tetris;
 
@@ -24,7 +20,7 @@ using namespace tetris;
 #include <windows.h>
 #endif
 
-// ====== 非阻塞输入（Linux）======
+// ====== 非阻塞输入 ======
 #ifdef __linux__
 void init_terminal()
 {
@@ -32,7 +28,6 @@ void init_terminal()
     tcgetattr(STDIN_FILENO, &tt);
     tt.c_lflag &= ~(ICANON | ECHO);
     tcsetattr(STDIN_FILENO, TCSANOW, &tt);
-
     fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK);
 }
 #endif
@@ -53,19 +48,12 @@ bool read_key(char &c)
 #endif
 }
 
-void clear_screen()
+void reset_cursor()
 {
 #ifdef __linux__
-    system("clear");
+    std::cout << "\033[1;1H"; // 移至行首，避免 system("clear") 导致的闪屏
 #elif defined(_WIN32)
-    HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
-    CONSOLE_SCREEN_BUFFER_INFO csbi;
-    GetConsoleScreenBufferInfo(h, &csbi);
-
-    DWORD size = csbi.dwSize.X * csbi.dwSize.Y;
-    DWORD written;
-    FillConsoleOutputCharacter(h, ' ', size, {0, 0}, &written);
-    SetConsoleCursorPosition(h, {0, 0});
+    SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), {0, 0});
 #endif
 }
 
@@ -73,129 +61,100 @@ void clear_screen()
 constexpr int W = 10;
 constexpr int H = 20;
 
-using Game = State<W, H>;
-
-// ====== 随机 piece ======
-Piece rand_piece()
-{
-    return static_cast<Piece>(rand() % 7);
-}
-
 // ====== 渲染 ======
-void render(const Game &s)
+void render(const Engine<W, H> &engine)
 {
-    clear_screen();
+    reset_cursor();
+    const auto &s = engine.state;
+
+    auto p2c = [](Piece p)
+    { return "IOTSZJL"[(int)p]; };
+    std::cout << "Hold: " << (engine.has_hold ? std::string(1, p2c(s.hold)) : " ")
+              << " | Next: " << p2c(s.next[0]) << " \n";
 
     for (int y = 0; y < H; y++)
     {
         std::cout << "|";
-
         for (int x = 0; x < W; x++)
         {
             bool filled = (s.board.rows[y] >> x) & 1;
 
-            // 当前方块
-            const auto &shape =
-                PIECES[(int)s.piece].rot[(int)s.rot];
-
-            for (int i = 0; i < 4; i++)
+            if (!engine.game_over)
             {
-                int yy = s.y + i;
-                if (yy != y)
-                    continue;
-
-                for (int j = 0; j < 4; j++)
+                const auto &shape = PIECES[(int)s.piece].rot[(int)s.rot];
+                for (int i = 0; i < 4; i++)
                 {
-                    if (shape.row[i] & (1 << j))
+                    if (s.y + i != y)
+                        continue;
+                    for (int j = 0; j < 4; j++)
                     {
-                        int xx = s.x + j;
-                        if (xx == x)
+                        if ((shape.row[i] & (1 << j)) && (s.x + j == x))
                             filled = true;
                     }
                 }
             }
-
-            std::cout << (filled ? "#" : " ");
+            std::cout << (filled ? "[]" : " .");
         }
-
         std::cout << "|\n";
     }
-
-    std::cout << "+----------+\n";
-}
-
-// ====== 初始化 ======
-void spawn(Game &s)
-{
-    s.piece = rand_piece();
-    s.rot = Rot::R0;
-    s.x = 3;
-    s.y = 0;
+    std::cout << "+--------------------+\n";
+    if (engine.game_over)
+        std::cout << "==== GAME OVER! ====\n";
 }
 
 // ====== 主程序 ======
 int main()
 {
 #ifdef __linux__
+    std::cout << "\033[2J"; // 初始化清屏一次
     init_terminal();
 #endif
 
-    Game game{};
-    spawn(game);
+    Engine<W, H> engine;
+    engine.reset(1337);
 
     auto last = std::chrono::steady_clock::now();
 
     while (true)
     {
-        // ===== 输入 =====
         char c;
         while (read_key(c))
         {
+            if (c == 'q')
+                return 0;
+            if (engine.game_over)
+                continue;
+
             if (c == 'a')
-                try_move(game, -1, 0);
+                engine.handle_action(Action::MoveLeft);
             if (c == 'd')
-                try_move(game, 1, 0);
+                engine.handle_action(Action::MoveRight);
             if (c == 's')
-                try_move(game, 0, 1);
+                engine.handle_action(Action::SoftDrop);
             if (c == 'w')
-                try_rotate(
-                    game,
-                    static_cast<Rot>(
-                        ((int)game.rot + 1) & 3));
+                engine.handle_action(Action::RotateCW);
             if (c == ' ')
-                hard_drop(game);
+                engine.handle_action(Action::HardDrop);
+            if (c == 'c')
+                engine.handle_action(Action::Hold);
         }
 
-        // ===== 重力 =====
-        auto now = std::chrono::steady_clock::now();
-        if (std::chrono::duration_cast<
-                std::chrono::milliseconds>(now - last)
-                .count() > 500)
+        if (engine.game_over)
         {
-            if (can_place(game, game.x, game.y + 1, game.rot))
-            {
-                game.y++;
-            }
-            else
-            {
-                lock_piece(game);
-                spawn(game);
+            render(engine);
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            continue;
+        }
 
-                if (!can_place(game, game.x, game.y, game.rot))
-                {
-                    std::cout << "Game Over\n";
-                    break;
-                }
-            }
-
+        auto now = std::chrono::steady_clock::now();
+        if (std::chrono::duration_cast<std::chrono::milliseconds>(now - last).count() > 500)
+        {
+            engine.tick();
             last = now;
         }
 
-        // ===== 渲染 =====
-        render(game);
-
+        render(engine);
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
     }
-
     return 0;
 }

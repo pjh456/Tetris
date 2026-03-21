@@ -7,68 +7,39 @@
 
 namespace tetris
 {
-    struct StepResult
-    {
-        int lines;
-        int attack;
-        bool game_over;
-    };
-
     template <u8 W, u8 H>
-    bool can_place(
-        const State<W, H> &st,
-        int x, int y, Rot rot)
+    bool can_place(const State<W, H> &st, int x, int y, Rot rot)
     {
-        const auto &shape =
-            PIECES[(int)st.piece].rot[(int)rot];
+        const auto &shape = PIECES[(int)st.piece].rot[(int)rot];
 
-        constexpr u16 FULL = (1u << W) - 1;
+        // 预先计算墙壁碰撞掩码
+        u16 wall_mask = 0;
+        if (x < 0)
+            wall_mask |= (1 << -x) - 1; // 左墙遮挡位
+        if (x + 4 > W)
+            wall_mask |= (0xFFFF << std::max(0, W - x)); // 右墙遮挡位
 
         for (int i = 0; i < 4; i++)
         {
             u16 row = shape.row[i];
             if (!row)
-                continue; // 跳过空行
-
-            int yy = y + i;
-
-            // 底部越界 → 失败
-            if (yy >= H)
-                return false;
-
-            // 顶部溢出 → 允许（跳过碰撞检测）
-            if (yy < 0)
                 continue;
 
-            // ===== 横向处理=====
-            u16 shifted;
+            // 墙壁碰撞检测
+            if (row & wall_mask)
+                return false;
 
-            if (x >= 0)
-            {
-                // 右移进棋盘
-                if (x >= W)
-                    return false; // 完全在右边外
-                shifted = row << x;
+            int yy = y + i;
+            if (yy >= H)
+                return false; // 底部越界
+            if (yy < 0)
+                continue; // 顶部上方允许溢出
 
-                // 右越界检测
-                if (shifted & ~FULL)
-                    return false;
-            }
-            else
-            {
-                // 左越界，需要右移 row
-                int sx = -x;
+            // 实体碰撞检测：反向平移棋盘对齐方块
+            u64 b_row = st.board.rows[yy];
+            u16 overlap = (x >= 0) ? (b_row >> x) : (b_row << -x);
 
-                if (sx >= 4)
-                    return false; // 整块在左边外
-                if (row & ((1u << (-x)) - 1))
-                    return false; // 检测是否有被截断的 bit
-
-                shifted = row >> sx;
-            }
-
-            // ===== 碰撞检测 =====
-            if (st.board.rows[yy] & shifted)
+            if (overlap & row)
                 return false;
         }
 
@@ -110,12 +81,15 @@ namespace tetris
     }
 
     template <u8 W, u8 H>
-    void hard_drop(State<W, H> &st)
+    int hard_drop(State<W, H> &st)
     {
-        while (can_place(
-            st,
-            st.x, st.y + 1, st.rot))
+        int dist = 0;
+        while (can_place(st, st.x, st.y + 1, st.rot))
+        {
             st.y++;
+            dist++;
+        }
+        return dist;
     }
 
     template <u8 W, u8 H>
@@ -123,8 +97,6 @@ namespace tetris
     {
         const auto &shape =
             PIECES[(int)st.piece].rot[(int)st.rot];
-
-        constexpr u16 FULL = (1u << W) - 1;
 
         for (int i = 0; i < 4; i++)
         {
@@ -136,26 +108,12 @@ namespace tetris
             if (yy < 0 || yy >= H)
                 continue;
 
-            u16 shifted;
-
             if (st.x >= 0)
-            {
-                if (st.x >= W)
-                    continue;
-                shifted = row << st.x;
-
-                // 裁剪掉越界部分
-                shifted &= FULL;
-            }
+                st.board.rows[yy] |=
+                    ((u64)row << st.x) & Board<W, H>::FULL;
             else
-            {
-                int sx = -st.x;
-                if (sx >= 4)
-                    continue;
-                shifted = row >> sx;
-            }
-
-            st.board.rows[yy] |= shifted;
+                st.board.rows[yy] |=
+                    ((u64)row >> -st.x) & Board<W, H>::FULL;
         }
 
         return st.board.clear_lines();
