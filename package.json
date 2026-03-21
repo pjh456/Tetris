@@ -1,0 +1,26 @@
+{
+  "name": "tetris",
+  "version": "1.0.0",
+  "description": "使用 C++ 实现的高性能联机俄罗斯方块后端，并提供了编译为 WebAssembly 提供支持的 WebUI",
+  "main": "index.js",
+  "scripts": {
+    "build:wasm": "node scripts/build_wasm.js",
+    "build:native": "node scripts/build_native.js",
+    "build:wasm:debug": "node scripts/build_wasm.js Debug",
+    "build:native:debug": "node scripts/build_native.js Debug",
+    "build": "npm run build:wasm",
+    "dev": "npm run build:wasm:debug"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pjh456/Tetris.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/pjh456/Tetris/issues"
+  },
+  "homepage": "https://github.com/pjh456/Tetris#readme"
+}
