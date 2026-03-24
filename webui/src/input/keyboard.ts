@@ -4,6 +4,8 @@ type KeyboardTargets = {
   handleAction: (action: ActionValue) => void;
   isGameOver: () => boolean;
   render: () => void;
+  onPress?: (action: ActionValue) => void;
+  onRelease?: (action: ActionValue) => void;
 };
 
 export function bindKeyboard(targets: KeyboardTargets) {
@@ -55,6 +57,7 @@ export function bindKeyboard(targets: KeyboardTargets) {
         e.preventDefault();
         if (!held.has(Actions.MoveLeft)) {
           held.set(Actions.MoveLeft, { pressedAt: performance.now(), lastFire: performance.now() });
+          if (targets.onPress) targets.onPress(Actions.MoveLeft);
           fire(Actions.MoveLeft);
         }
         break;
@@ -63,6 +66,7 @@ export function bindKeyboard(targets: KeyboardTargets) {
         e.preventDefault();
         if (!held.has(Actions.MoveRight)) {
           held.set(Actions.MoveRight, { pressedAt: performance.now(), lastFire: performance.now() });
+          if (targets.onPress) targets.onPress(Actions.MoveRight);
           fire(Actions.MoveRight);
         }
         break;
@@ -71,6 +75,7 @@ export function bindKeyboard(targets: KeyboardTargets) {
         e.preventDefault();
         if (!held.has(Actions.SoftDrop)) {
           held.set(Actions.SoftDrop, { pressedAt: performance.now(), lastFire: performance.now() });
+          if (targets.onPress) targets.onPress(Actions.SoftDrop);
           fire(Actions.SoftDrop);
         }
         break;
@@ -79,6 +84,7 @@ export function bindKeyboard(targets: KeyboardTargets) {
         e.preventDefault();
         if (!oneShotActive.has(Actions.RotateCW)) {
           oneShotActive.add(Actions.RotateCW);
+          if (targets.onPress) targets.onPress(Actions.RotateCW);
           fire(Actions.RotateCW);
         }
         break;
@@ -86,6 +92,7 @@ export function bindKeyboard(targets: KeyboardTargets) {
         e.preventDefault();
         if (!oneShotActive.has(Actions.HardDrop)) {
           oneShotActive.add(Actions.HardDrop);
+          if (targets.onPress) targets.onPress(Actions.HardDrop);
           fire(Actions.HardDrop);
         }
         break;
@@ -93,6 +100,7 @@ export function bindKeyboard(targets: KeyboardTargets) {
         e.preventDefault();
         if (!oneShotActive.has(Actions.Hold)) {
           oneShotActive.add(Actions.Hold);
+          if (targets.onPress) targets.onPress(Actions.Hold);
           fire(Actions.Hold);
         }
         break;
@@ -107,29 +115,35 @@ export function bindKeyboard(targets: KeyboardTargets) {
       case 'a':
         e.preventDefault();
         held.delete(Actions.MoveLeft);
+        if (targets.onRelease) targets.onRelease(Actions.MoveLeft);
         break;
       case 'ArrowRight':
       case 'd':
         e.preventDefault();
         held.delete(Actions.MoveRight);
+        if (targets.onRelease) targets.onRelease(Actions.MoveRight);
         break;
       case 'ArrowDown':
       case 's':
         e.preventDefault();
         held.delete(Actions.SoftDrop);
+        if (targets.onRelease) targets.onRelease(Actions.SoftDrop);
         break;
       case 'ArrowUp':
       case 'w':
         e.preventDefault();
         oneShotActive.delete(Actions.RotateCW);
+        if (targets.onRelease) targets.onRelease(Actions.RotateCW);
         break;
       case ' ':
         e.preventDefault();
         oneShotActive.delete(Actions.HardDrop);
+        if (targets.onRelease) targets.onRelease(Actions.HardDrop);
         break;
       case 'c':
         e.preventDefault();
         oneShotActive.delete(Actions.Hold);
+        if (targets.onRelease) targets.onRelease(Actions.Hold);
         break;
       default:
         break;

@@ -2,6 +2,7 @@ import './style.css';
 
 import createTetrisModule from '@engine/tetris_wasm.js';
 import wasmUrl from '@engine/tetris_wasm.wasm?url';
+import { Actions } from './game/actions';
 import { bindKeyboard } from './input/keyboard';
 import { createBoardRenderer } from './render/board';
 import { createNextStackRenderer, createPreviewRenderer } from './render/preview';
@@ -108,6 +109,7 @@ async function startSingleGame(root: HTMLElement) {
   boardCanvas.style.border = '3px solid rgba(140, 200, 255, 0.95)';
   boardCanvas.style.background = 'rgba(5, 8, 15, 0.95)';
   boardCanvas.style.boxShadow = '0 0 20px rgba(80, 160, 255, 0.45)';
+  boardCanvas.style.transition = 'transform 80ms ease';
 
   const nextColumn = document.createElement('div');
   nextColumn.style.display = 'flex';
@@ -164,10 +166,65 @@ async function startSingleGame(root: HTMLElement) {
     nextRenderer.render(next);
   };
 
+  const appRoot = document.getElementById('app');
+  if (appRoot) {
+    appRoot.style.willChange = 'transform';
+  }
+
+  let edgeActive = false;
+  let edgeHeld = 0;
+  const edgeBump = (dir: number) => {
+    if (!appRoot || edgeActive) return;
+    edgeActive = true;
+    edgeHeld = dir;
+    appRoot.style.transition = 'transform 160ms ease-out';
+    appRoot.style.transform = `translateX(${dir * 14}px)`;
+    window.setTimeout(() => {
+      edgeActive = false;
+      if (!appRoot) return;
+      if (edgeHeld === dir) {
+        appRoot.style.transition = 'transform 40ms ease-out';
+        appRoot.style.transform = `translateX(${dir * 14}px)`;
+      }
+    }, 160);
+  };
+
+  const edgeRelease = (dir: number) => {
+    if (!appRoot) return;
+    if (edgeHeld !== dir) return;
+    edgeHeld = 0;
+    appRoot.style.transition = 'transform 70ms ease-in';
+    appRoot.style.transform = 'translateX(0px)';
+  };
+
   bindKeyboard({
-    handleAction: (action) => game.handleAction(action),
+    handleAction: (action) => {
+      if (action === Actions.MoveLeft && game.wouldHitWall(-1)) {
+        edgeBump(-1);
+      } else if (action === Actions.MoveRight && game.wouldHitWall(1)) {
+        edgeBump(1);
+      } else if (action === Actions.HardDrop) {
+        if (appRoot) {
+          appRoot.style.transition = 'transform 60ms ease-out';
+          appRoot.style.transform = 'translateY(10px)';
+          window.setTimeout(() => {
+            if (!appRoot) return;
+            appRoot.style.transition = 'transform 80ms ease-in';
+            appRoot.style.transform = 'translateY(0px)';
+          }, 70);
+        }
+      }
+      game.handleAction(action);
+    },
     isGameOver: () => game.isGameOver(),
-    render
+    render,
+    onRelease: (action) => {
+      if (action === Actions.MoveLeft) {
+        edgeRelease(-1);
+      } else if (action === Actions.MoveRight) {
+        edgeRelease(1);
+      }
+    }
   });
 
   let lastTick = performance.now();

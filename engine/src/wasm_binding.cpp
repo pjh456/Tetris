@@ -105,6 +105,24 @@ public:
             next_buffer[i] = static_cast<int>(s.next[i]);
         return val(typed_memory_view(next_buffer.size(), next_buffer.data()));
     }
+
+    bool wouldHitWall(int dx)
+    {
+        const auto &s = session.state();
+        const auto &shape = PIECES[(int)s.piece].rot[(int)s.rot];
+        for (int i = 0; i < 4; i++)
+        {
+            for (int j = 0; j < 4; j++)
+            {
+                if (!(shape.row[i] & (1 << j)))
+                    continue;
+                int nx = s.x + j + dx;
+                if (nx < 0 || nx >= 10)
+                    return true;
+            }
+        }
+        return false;
+    }
 };
 
 // 导出模块
@@ -118,5 +136,6 @@ EMSCRIPTEN_BINDINGS(tetris_module)
         .function("isGameOver", &WebTetris::isGameOver)
         .function("getGrid", &WebTetris::getGrid)
         .function("getHold", &WebTetris::getHold)
-        .function("getNext", &WebTetris::getNext);
+        .function("getNext", &WebTetris::getNext)
+        .function("wouldHitWall", &WebTetris::wouldHitWall);
 }
