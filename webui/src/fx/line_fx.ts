@@ -28,9 +28,15 @@ export class LineFx {
   }
 
   update(dt: number) {
-    this.flashes = this.flashes
-      .map((f) => ({ ...f, ttl: Math.max(0, f.ttl - dt) }))
-      .filter((f) => f.ttl > 0);
+    let write = 0;
+    for (let i = 0; i < this.flashes.length; i++) {
+      const f = this.flashes[i];
+      f.ttl = Math.max(0, f.ttl - dt);
+      if (f.ttl > 0) {
+        this.flashes[write++] = f;
+      }
+    }
+    this.flashes.length = write;
 
     const next: Particle[] = [];
     for (const p of this.particles) {
