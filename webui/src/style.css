@@ -28,7 +28,8 @@ body {
   font-family: 'Rajdhani', sans-serif;
 }
 
-html, body {
+html,
+body {
   width: 100%;
   height: 100%;
 }
@@ -94,48 +95,61 @@ html, body {
 .home {
   margin-top: 26px;
   display: grid;
-  gap: 14px;
-  width: 100%;
+  gap: 28px;
+  width: 60%;
+  margin-left: auto;
+  margin-right: 0;
   flex: 1;
+  overflow: hidden;
+  padding-left: 24px;
 }
 
 .menu-card {
   display: grid;
   grid-template-columns: 120px 1fr;
-  min-height: 92px;
-  width: 100%;
+  height: 150px;
+  width: calc(100% + 48px);
+  margin-left: 0;
   border: 1px solid rgba(120, 140, 170, 0.45);
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 8px 14px rgba(0, 0, 0, 0.45);
   cursor: pointer;
   overflow: hidden;
+  transform: translateX(0);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.menu-card:hover {
+  transform: translateX(-18px);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.55);
 }
 
 .menu-left {
   display: grid;
   place-items: center;
   font-family: 'Oxanium', sans-serif;
-  font-size: 34px;
+  font-size: 26px;
   letter-spacing: 2px;
   color: rgba(255, 255, 255, 0.35);
   background: rgba(0, 0, 0, 0.25);
 }
 
 .menu-body {
-  padding: 16px 18px;
+  padding: 6px 14px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
+  justify-content: center;
 }
 
 .menu-title {
   font-family: 'Oxanium', sans-serif;
-  font-size: 24px;
+  font-size: 16px;
   letter-spacing: 2px;
 }
 
 .menu-sub {
   color: var(--muted);
-  font-size: 14px;
+  font-size: 11px;
   letter-spacing: 1px;
 }
 
@@ -153,6 +167,14 @@ html, body {
 
 .menu-solo .menu-title {
   color: #a8b2ff;
+}
+
+.menu-settings {
+  background: linear-gradient(90deg, #1f3d3a, #1a2b2f);
+}
+
+.menu-settings .menu-title {
+  color: #7fffe1;
 }
 
 .modal-overlay {

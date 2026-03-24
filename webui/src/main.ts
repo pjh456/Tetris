@@ -20,6 +20,16 @@ function createHomeScreen(onSingle: () => void, onMulti: () => void) {
   const container = document.createElement('div');
   container.className = 'home';
 
+  const settingsCard = document.createElement('div');
+  settingsCard.className = 'menu-card menu-settings';
+  settingsCard.innerHTML = `
+    <div class="menu-left">CFG</div>
+    <div class="menu-body">
+      <div class="menu-title">SETTINGS</div>
+      <div class="menu-sub">TWEAK YOUR EXPERIENCE</div>
+    </div>
+  `;
+
   const multiCard = document.createElement('div');
   multiCard.className = 'menu-card menu-multi';
   multiCard.onclick = onMulti;
@@ -44,6 +54,7 @@ function createHomeScreen(onSingle: () => void, onMulti: () => void) {
 
   container.appendChild(multiCard);
   container.appendChild(soloCard);
+  container.appendChild(settingsCard);
   return container;
 }
 
