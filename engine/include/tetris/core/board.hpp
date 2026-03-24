@@ -10,7 +10,8 @@ namespace tetris::core
     {
     public:
         static_assert(W < 64, "Board is too wide to calculate!");
-        static constexpr u64 FULL = (1u << W) - 1;
+        static_assert(H <= 32, "Clear mask uses 32 bits; increase mask width or reduce board height.");
+        static constexpr u64 FULL = (1ULL << W) - 1;
 
         u64 rows[H] = {};
 
