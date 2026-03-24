@@ -11,17 +11,31 @@ class WebTetris
 private:
     GameSession<10, 20> session;
     std::vector<int> grid_buffer; // 用于传递给前端的 10x20 数组
+    std::vector<int> next_buffer; // 5 个 Next 方块
+    bool has_hold = false;
 
 public:
     WebTetris(uint32_t seed)
     {
         session.reset(seed);
         grid_buffer.resize(10 * 20);
+        next_buffer.resize(5);
+        has_hold = false;
     }
 
-    void reset(uint32_t seed) { session.reset(seed); }
+    void reset(uint32_t seed)
+    {
+        session.reset(seed);
+        has_hold = false;
+    }
     void tick() { session.tick(); }
-    void handleAction(int action_val) { session.handle_action(static_cast<Action>(action_val)); }
+    void handleAction(int action_val)
+    {
+        auto act = static_cast<Action>(action_val);
+        session.handle_action(act);
+        if (act == Action::Hold)
+            has_hold = true;
+    }
     bool isGameOver() const { return session.is_game_over(); }
 
     // render 逻辑简化，生成一个数字网格交由 JS 渲染
@@ -76,6 +90,21 @@ public:
         // 转化为 JS 的 TypedArray，性能极高
         return val(typed_memory_view(grid_buffer.size(), grid_buffer.data()));
     }
+
+    int getHold()
+    {
+        if (!has_hold)
+            return -1;
+        return static_cast<int>(session.state().hold);
+    }
+
+    val getNext()
+    {
+        const auto &s = session.state();
+        for (int i = 0; i < 5; ++i)
+            next_buffer[i] = static_cast<int>(s.next[i]);
+        return val(typed_memory_view(next_buffer.size(), next_buffer.data()));
+    }
 };
 
 // 导出模块
@@ -87,5 +116,7 @@ EMSCRIPTEN_BINDINGS(tetris_module)
         .function("tick", &WebTetris::tick)
         .function("handleAction", &WebTetris::handleAction)
         .function("isGameOver", &WebTetris::isGameOver)
-        .function("getGrid", &WebTetris::getGrid);
+        .function("getGrid", &WebTetris::getGrid)
+        .function("getHold", &WebTetris::getHold)
+        .function("getNext", &WebTetris::getNext);
 }
