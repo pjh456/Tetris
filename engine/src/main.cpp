@@ -10,6 +10,7 @@
 
 #include "core/session.hpp"
 #include "core/snapshot.hpp"
+#include "core/input_mapper.hpp"
 #include "network/network_manager.hpp"
 #include "network/protocol.hpp"
 
@@ -56,6 +57,22 @@ int _getch()
 
 using namespace tetris;
 using namespace tetris::net;
+
+#ifdef _WIN32
+static constexpr int KEY_ARROW_PREFIX_1 = 0;
+static constexpr int KEY_ARROW_PREFIX_2 = 224;
+static constexpr int KEY_ARROW_UP = 72;
+static constexpr int KEY_ARROW_DOWN = 80;
+static constexpr int KEY_ARROW_LEFT = 75;
+static constexpr int KEY_ARROW_RIGHT = 77;
+#else
+static constexpr int KEY_ESC = 27;
+static constexpr int KEY_ANSI_PREFIX = '[';
+static constexpr int KEY_ARROW_UP = 'A';
+static constexpr int KEY_ARROW_DOWN = 'B';
+static constexpr int KEY_ARROW_LEFT = 'D';
+static constexpr int KEY_ARROW_RIGHT = 'C';
+#endif
 
 class LANDraw
 {
@@ -256,7 +273,26 @@ int main()
 
     GameSession<10, 20> local_session;
     GameSession<10, 20> remote_session;
+    InputMapper input_mapper;
     bool game_started = false;
+
+    input_mapper.bind('a', Action::MoveLeft);
+    input_mapper.bind('A', Action::MoveLeft);
+    input_mapper.bind('d', Action::MoveRight);
+    input_mapper.bind('D', Action::MoveRight);
+    input_mapper.bind('s', Action::SoftDrop);
+    input_mapper.bind('S', Action::SoftDrop);
+    input_mapper.bind(' ', Action::HardDrop);
+    input_mapper.bind('j', Action::RotateCCW);
+    input_mapper.bind('J', Action::RotateCCW);
+    input_mapper.bind('w', Action::RotateCW);
+    input_mapper.bind('W', Action::RotateCW);
+    input_mapper.bind('k', Action::RotateCW);
+    input_mapper.bind('K', Action::RotateCW);
+    input_mapper.bind('l', Action::Hold);
+    input_mapper.bind('L', Action::Hold);
+    input_mapper.bind('c', Action::Hold);
+    input_mapper.bind('C', Action::Hold);
 
     net.on_game_start = [&](uint32_t seed)
     {
@@ -337,109 +373,70 @@ int main()
 
 #ifdef _WIN32
             // 拦截 Windows 方向键前缀 0 / 224
-            if (c == 0 || c == 224)
+            if (c == KEY_ARROW_PREFIX_1 || c == KEY_ARROW_PREFIX_2)
             {
                 int arrow = _getch();
-                if (arrow == 72)
+                if (arrow == KEY_ARROW_UP)
                 {
                     act = Action::RotateCW;
                     valid_action = true;
-                } // Up
-                else if (arrow == 80)
+                }
+                else if (arrow == KEY_ARROW_DOWN)
                 {
                     act = Action::SoftDrop;
                     valid_action = true;
-                } // Down
-                else if (arrow == 75)
+                }
+                else if (arrow == KEY_ARROW_LEFT)
                 {
                     act = Action::MoveLeft;
                     valid_action = true;
-                } // Left
-                else if (arrow == 77)
+                }
+                else if (arrow == KEY_ARROW_RIGHT)
                 {
                     act = Action::MoveRight;
                     valid_action = true;
-                } // Right
+                }
             }
 #else
             // 拦截 Linux / macOS ANSI 转义序列 (\033[A ...)
-            if (c == 27)
+            if (c == KEY_ESC)
             {
-                if (_kbhit() && _getch() == '[')
+                if (_kbhit() && _getch() == KEY_ANSI_PREFIX)
                 {
                     if (_kbhit())
                     {
                         int arrow = _getch();
-                        if (arrow == 'A')
+                        if (arrow == KEY_ARROW_UP)
                         {
                             act = Action::RotateCW;
                             valid_action = true;
-                        } // Up
-                        else if (arrow == 'B')
+                        }
+                        else if (arrow == KEY_ARROW_DOWN)
                         {
                             act = Action::SoftDrop;
                             valid_action = true;
-                        } // Down
-                        else if (arrow == 'D')
+                        }
+                        else if (arrow == KEY_ARROW_LEFT)
                         {
                             act = Action::MoveLeft;
                             valid_action = true;
-                        } // Left
-                        else if (arrow == 'C')
+                        }
+                        else if (arrow == KEY_ARROW_RIGHT)
                         {
                             act = Action::MoveRight;
                             valid_action = true;
-                        } // Right
+                        }
                     }
                 }
             }
 #endif
+            else if (c == 'q' || c == 'Q')
+            {
+                exit(0);
+            }
             else
             {
-                switch (c)
-                {
-                case 'a':
-                case 'A':
-                    act = Action::MoveLeft;
-                    valid_action = true;
-                    break;
-                case 'd':
-                case 'D':
-                    act = Action::MoveRight;
-                    valid_action = true;
-                    break;
-                case 's':
-                case 'S':
-                    act = Action::SoftDrop;
-                    valid_action = true;
-                    break;
-                case ' ':
-                    act = Action::HardDrop;
-                    valid_action = true;
-                    break;
-                case 'j':
-                case 'J':
-                    act = Action::RotateCCW;
-                    valid_action = true;
-                    break;
-                case 'w':
-                case 'W':
-                case 'k':
-                case 'K':
-                    act = Action::RotateCW;
-                    valid_action = true;
-                    break;
-                case 'l':
-                case 'L':
-                case 'c':
-                case 'C':
-                    act = Action::Hold;
-                    valid_action = true;
-                    break;
-                case 'q':
-                case 'Q':
-                    exit(0);
-                }
+                valid_action = input_mapper.resolve(c, act);
             }
 
             if (valid_action && !local_session.is_game_over())
