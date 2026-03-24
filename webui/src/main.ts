@@ -196,11 +196,11 @@ async function startSingleGame(root: HTMLElement) {
     const hardDropInfo = game.getLastHardDropInfo?.();
     if (hardDropInfo) {
       const mask = hardDropInfo[0] as number;
-      const yMin = hardDropInfo[1] as number;
-      const yMax = hardDropInfo[2] as number;
+      const yStart = hardDropInfo[1] as number;
+      const yEnd = hardDropInfo[2] as number;
       const piece = hardDropInfo[3] as number;
       const color = GRID_COLORS[piece + 3] ?? '#c8f0ff';
-      fx.triggerColumnBurst(mask, yMin * cell, (yMax + 1) * cell, color);
+      fx.triggerColumnBurst(mask, yStart * cell, yEnd * cell, color);
     }
   };
 

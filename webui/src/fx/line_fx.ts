@@ -85,22 +85,24 @@ export class LineFx {
     }
   }
 
-  triggerColumnBurst(mask: number, yMin: number, yMax: number, color: string) {
+  triggerColumnBurst(mask: number, yStart: number, yEnd: number, color: string) {
     const cols = 10;
     const cell = this.canvas.width / cols;
-    const midY = (yMin + yMax) * 0.5;
+    const minY = Math.min(yStart, yEnd);
+    const maxY = Math.max(yStart, yEnd);
     for (let col = 0; col < cols; col++) {
       if (!(mask & (1 << col))) continue;
       const xBase = col * cell + cell * 0.5;
-      const count = 10;
+      const count = 14;
       for (let i = 0; i < count; i++) {
         const p = this.pool.pop() ?? makeParticle();
-        p.x = xBase + (Math.random() - 0.5) * cell * 0.6;
-        p.y = midY + (Math.random() - 0.5) * cell;
-        p.vx = (Math.random() - 0.5) * 0.45;
-        p.vy = -0.45 - Math.random() * 0.35;
-        p.size = 3 + Math.random() * 3;
-        p.maxLife = 520 + Math.random() * 180;
+        const side = Math.random() < 0.5 ? -1 : 1;
+        p.x = xBase + side * (cell * 0.1 + Math.random() * cell * 0.2);
+        p.y = minY + Math.random() * (maxY - minY + cell);
+        p.vx = side * (0.1 + Math.random() * 0.12);
+        p.vy = (Math.random() - 0.5) * 0.06;
+        p.size = 2 + Math.random() * 1.5;
+        p.maxLife = 480 + Math.random() * 180;
         p.life = p.maxLife;
         p.color = color;
         this.particles.push(p);

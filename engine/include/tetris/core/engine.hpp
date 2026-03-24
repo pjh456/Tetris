@@ -92,12 +92,10 @@ namespace tetris::core
             return attack_res;
         }
 
-        void record_harddrop()
+        void record_harddrop(int start_y, int end_y)
         {
             const auto &shape = PIECES[(int)state.piece].rot[(int)state.rot];
             u16 mask = 0;
-            int y_min = 127;
-            int y_max = -128;
             for (int i = 0; i < 4; i++)
             {
                 for (int j = 0; j < 4; j++)
@@ -105,21 +103,14 @@ namespace tetris::core
                     if (!(shape.row[i] & (1 << j)))
                         continue;
                     int xx = state.x + j;
-                    int yy = state.y + i;
                     if (xx < 0 || xx >= W)
                         continue;
-                    if (yy < 0 || yy >= H)
-                        continue;
                     mask |= (1u << xx);
-                    if (yy < y_min)
-                        y_min = yy;
-                    if (yy > y_max)
-                        y_max = yy;
                 }
             }
             state.last_harddrop_cols = mask;
-            state.last_harddrop_y_min = (y_min == 127) ? 0 : (i8)y_min;
-            state.last_harddrop_y_max = (y_max == -128) ? 0 : (i8)y_max;
+            state.last_harddrop_start_y = (i8)start_y;
+            state.last_harddrop_end_y = (i8)end_y;
             state.last_harddrop_piece = state.piece;
             state.last_harddrop_valid = (mask != 0);
         }
@@ -175,8 +166,10 @@ namespace tetris::core
                 break;
             case Action::HardDrop:
             {
+                int start_y = state.y;
                 hard_drop(state);
-                record_harddrop();
+                int end_y = state.y;
+                record_harddrop(start_y, end_y);
                 res = lock_and_spawn();
                 break;
             }

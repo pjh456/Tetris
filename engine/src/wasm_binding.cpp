@@ -147,8 +147,8 @@ public:
             return val::null();
         val arr = val::array();
         arr.set(0, (int)s.last_harddrop_cols);
-        arr.set(1, (int)s.last_harddrop_y_min);
-        arr.set(2, (int)s.last_harddrop_y_max);
+        arr.set(1, (int)s.last_harddrop_start_y);
+        arr.set(2, (int)s.last_harddrop_end_y);
         arr.set(3, (int)s.last_harddrop_piece);
         s.last_harddrop_valid = false;
         return arr;
