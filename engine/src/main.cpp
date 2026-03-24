@@ -9,6 +9,7 @@
 #include <enet/enet.h>
 
 #include "core/engine.hpp"
+#include "core/snapshot.hpp"
 #include "network/network_manager.hpp"
 #include "network/protocol.hpp"
 
@@ -486,17 +487,18 @@ int main()
         {
             PktStateSync<10, 20> sync_pkt;
             sync_pkt.header = {PacketType::StateSync, (u8)net.get_role()};
-            std::memcpy(sync_pkt.board_rows, local_engine.state.board.rows, sizeof(sync_pkt.board_rows));
-            sync_pkt.piece = local_engine.state.piece;
-            sync_pkt.rot = local_engine.state.rot;
-            sync_pkt.x = local_engine.state.x;
-            sync_pkt.y = local_engine.state.y;
+            auto snap = make_snapshot(local_engine.state);
+            std::memcpy(sync_pkt.board_rows, snap.board_rows, sizeof(sync_pkt.board_rows));
+            sync_pkt.piece = snap.piece;
+            sync_pkt.rot = snap.rot;
+            sync_pkt.x = snap.x;
+            sync_pkt.y = snap.y;
 
             // 加上核心字段
-            sync_pkt.hold = local_engine.state.hold;
-            sync_pkt.hold_used = local_engine.state.hold_used;
-            sync_pkt.pending_garbage = local_engine.state.pending_garbage;
-            sync_pkt.rng_state = local_engine.state.rng;
+            sync_pkt.hold = snap.hold;
+            sync_pkt.hold_used = snap.hold_used;
+            sync_pkt.pending_garbage = snap.pending_garbage;
+            sync_pkt.rng_state = snap.rng;
 
             net.send_packet(sync_pkt, 2, false);
             last_sync = now;
