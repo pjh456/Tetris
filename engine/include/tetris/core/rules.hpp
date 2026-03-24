@@ -1,11 +1,11 @@
 #ifndef INCLUDE_TETRIS_RULES_HPP
 #define INCLUDE_TETRIS_RULES_HPP
 
-#include "core/piece.hpp"
-#include "core/srs.hpp"
-#include "core/state.hpp"
+#include "tetris/core/piece.hpp"
+#include "tetris/core/srs.hpp"
+#include "tetris/core/state.hpp"
 
-namespace tetris
+namespace tetris::core
 {
     template <u8 W, u8 H>
     bool can_place(const State<W, H> &st, int x, int y, Rot rot)

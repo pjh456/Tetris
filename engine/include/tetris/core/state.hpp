@@ -1,11 +1,11 @@
 #ifndef INCLUDE_TETRIS_STATE_HPP
 #define INCLUDE_TETRIS_STATE_HPP
 
-#include "core/types.hpp"
-#include "core/piece.hpp"
-#include "core/board.hpp"
+#include "tetris/core/types.hpp"
+#include "tetris/core/piece.hpp"
+#include "tetris/core/board.hpp"
 
-namespace tetris
+namespace tetris::core
 {
     template <u8 W, u8 H>
     struct State

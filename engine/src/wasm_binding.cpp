@@ -1,10 +1,10 @@
 #include <emscripten/bind.h>
 #include <vector>
-#include "core/types.hpp"
-#include "core/session.hpp"
+#include "tetris/core/types.hpp"
+#include "tetris/core/session.hpp"
 
 using namespace emscripten;
-using namespace tetris;
+using namespace tetris::core;
 
 class WebTetris
 {

@@ -1,9 +1,9 @@
 #ifndef INCLUDE_TETRIS_CONFIG_HPP
 #define INCLUDE_TETRIS_CONFIG_HPP
 
-#include "core/types.hpp"
+#include "tetris/core/types.hpp"
 
-namespace tetris
+namespace tetris::core
 {
     template <u16 W, u16 H>
     struct Config

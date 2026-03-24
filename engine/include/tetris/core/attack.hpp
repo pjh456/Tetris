@@ -2,10 +2,10 @@
 #ifndef INCLUDE_TETRIS_ATTACK_HPP
 #define INCLUDE_TETRIS_ATTACK_HPP
 
-#include "core/types.hpp"
-#include "core/state.hpp"
+#include "tetris/core/types.hpp"
+#include "tetris/core/state.hpp"
 
-namespace tetris
+namespace tetris::core
 {
     // 用于通知 UI 播放特效和网络发送的结算结果
     struct AttackResult

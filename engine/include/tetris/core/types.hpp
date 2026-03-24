@@ -3,7 +3,7 @@
 
 #include <cstdint>
 
-namespace tetris
+namespace tetris::core
 {
     using i8 = int8_t;
     using u8 = uint8_t;

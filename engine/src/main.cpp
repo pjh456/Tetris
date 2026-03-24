@@ -8,11 +8,11 @@
 
 #include <enet/enet.h>
 
-#include "core/session.hpp"
-#include "core/input_mapper.hpp"
-#include "network/network_manager.hpp"
-#include "network/net_game_driver.hpp"
-#include "ui/terminal_renderer.hpp"
+#include "tetris/core/session.hpp"
+#include "tetris/input/input_mapper.hpp"
+#include "tetris/net/network_manager.hpp"
+#include "tetris/net/net_game_driver.hpp"
+#include "tetris/ui/terminal_renderer.hpp"
 
 // --- 跨平台非阻塞键盘输入 (kbhit / getch) ---
 #ifdef _WIN32
@@ -55,8 +55,9 @@ int _getch()
 }
 #endif
 
-using namespace tetris;
+using namespace tetris::core;
 using namespace tetris::net;
+using namespace tetris::input;
 
 #ifdef _WIN32
 static constexpr int KEY_ARROW_PREFIX_1 = 0;

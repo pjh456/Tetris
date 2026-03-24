@@ -3,10 +3,12 @@
 
 #include <unordered_map>
 
-#include "core/engine.hpp"
+#include "tetris/core/engine.hpp"
 
-namespace tetris
+namespace tetris::input
 {
+    using core::Action;
+
     class InputMapper
     {
     private:

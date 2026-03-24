@@ -1,9 +1,9 @@
 #ifndef INCLUDE_TETRIS_SRS_HPP
 #define INCLUDE_TETRIS_SRS_HPP
 
-#include "core/types.hpp"
+#include "tetris/core/types.hpp"
 
-namespace tetris
+namespace tetris::core
 {
     struct Kick
     {

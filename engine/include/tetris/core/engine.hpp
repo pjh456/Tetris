@@ -3,11 +3,11 @@
 
 #include <utility>
 
-#include "core/state.hpp"
-#include "core/rules.hpp"
-#include "core/attack.hpp"
+#include "tetris/core/state.hpp"
+#include "tetris/core/rules.hpp"
+#include "tetris/core/attack.hpp"
 
-namespace tetris
+namespace tetris::core
 {
     // 强制占 1 字节，完美契合网络发包 (3 字节大小)
     enum class Action : u8

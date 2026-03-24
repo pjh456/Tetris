@@ -1,9 +1,9 @@
 #ifndef INCLUDE_TETRIS_SESSION_HPP
 #define INCLUDE_TETRIS_SESSION_HPP
 
-#include "core/engine.hpp"
+#include "tetris/core/engine.hpp"
 
-namespace tetris
+namespace tetris::core
 {
     template <u8 W, u8 H>
     class GameSession

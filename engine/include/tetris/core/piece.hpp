@@ -3,9 +3,9 @@
 
 #include <array>
 
-#include "core/types.hpp"
+#include "tetris/core/types.hpp"
 
-namespace tetris
+namespace tetris::core
 {
     struct Shape
     {

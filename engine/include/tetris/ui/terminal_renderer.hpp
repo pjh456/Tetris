@@ -4,12 +4,17 @@
 #include <iostream>
 #include <string>
 
-#include "core/state.hpp"
-#include "core/rules.hpp"
-#include "core/piece.hpp"
+#include "tetris/core/state.hpp"
+#include "tetris/core/rules.hpp"
+#include "tetris/core/piece.hpp"
 
 namespace tetris::ui
 {
+    using core::State;
+    using core::u8;
+    using core::PIECES;
+    using core::get_ghost_y;
+
     class TerminalRenderer
     {
     public:

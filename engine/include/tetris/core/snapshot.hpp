@@ -3,9 +3,9 @@
 
 #include <cstring>
 
-#include "core/state.hpp"
+#include "tetris/core/state.hpp"
 
-namespace tetris
+namespace tetris::core
 {
     template <u8 W, u8 H>
     struct StateSnapshot

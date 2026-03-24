@@ -5,13 +5,17 @@
 #include <functional>
 #include <cstring>
 
-#include "core/session.hpp"
-#include "core/snapshot.hpp"
-#include "network/network_manager.hpp"
-#include "network/protocol.hpp"
+#include "tetris/core/session.hpp"
+#include "tetris/core/snapshot.hpp"
+#include "tetris/net/network_manager.hpp"
+#include "tetris/net/protocol.hpp"
 
 namespace tetris::net
 {
+    using core::Action;
+    using core::GameSession;
+    using core::u8;
+
     template <u8 W, u8 H>
     class NetGameDriver
     {

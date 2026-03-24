@@ -1,11 +1,19 @@
 #ifndef INCLUDE_TETRIS_PROTOCOL_HPP
 #define INCLUDE_TETRIS_PROTOCOL_HPP
 
-#include "core/types.hpp"
-#include "core/engine.hpp"
+#include "tetris/core/types.hpp"
+#include "tetris/core/engine.hpp"
 
 namespace tetris::net
 {
+    using core::u8;
+    using core::u32;
+    using core::u64;
+    using core::i8;
+    using core::Piece;
+    using core::Rot;
+    using core::Action;
+
     // 网络包类型枚举
     enum class PacketType : u8
     {

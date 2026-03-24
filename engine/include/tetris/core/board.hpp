@@ -1,9 +1,9 @@
 #ifndef INCLUDE_TETRIS_BOARD_HPP
 #define INCLUDE_TETRIS_BOARD_HPP
 
-#include "core/types.hpp"
+#include "tetris/core/types.hpp"
 
-namespace tetris
+namespace tetris::core
 {
     template <u8 W, u8 H>
     struct Board
