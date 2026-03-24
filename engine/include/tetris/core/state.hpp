@@ -29,6 +29,11 @@ namespace tetris::core
         bool last_move_was_rotation = false; // 判定 T-Spin 核心标记
         u32 last_clear_mask = 0;
         u8 last_clear_count = 0;
+        u16 last_harddrop_cols = 0;
+        i8 last_harddrop_y_min = 0;
+        i8 last_harddrop_y_max = 0;
+        Piece last_harddrop_piece = Piece::I;
+        bool last_harddrop_valid = false;
     };
 }
 

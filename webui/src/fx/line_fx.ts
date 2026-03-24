@@ -62,7 +62,9 @@ export class LineFx {
     for (const p of this.particles) {
       const t = p.life / p.maxLife;
       const alpha = Math.max(0, t);
-      ctx.fillStyle = `rgba(200, 240, 255, ${0.9 * alpha})`;
+      ctx.fillStyle = p.color
+        ? withAlpha(p.color, 0.9 * alpha)
+        : `rgba(200, 240, 255, ${0.9 * alpha})`;
       ctx.fillRect(p.x, p.y, p.size, p.size * 0.6);
     }
   }
@@ -78,7 +80,31 @@ export class LineFx {
       p.size = 3 + Math.random() * 3;
       p.maxLife = 650 + Math.random() * 150;
       p.life = p.maxLife;
+      p.color = '';
       this.particles.push(p);
+    }
+  }
+
+  triggerColumnBurst(mask: number, yMin: number, yMax: number, color: string) {
+    const cols = 10;
+    const cell = this.canvas.width / cols;
+    const midY = (yMin + yMax) * 0.5;
+    for (let col = 0; col < cols; col++) {
+      if (!(mask & (1 << col))) continue;
+      const xBase = col * cell + cell * 0.5;
+      const count = 10;
+      for (let i = 0; i < count; i++) {
+        const p = this.pool.pop() ?? makeParticle();
+        p.x = xBase + (Math.random() - 0.5) * cell * 0.6;
+        p.y = midY + (Math.random() - 0.5) * cell;
+        p.vx = (Math.random() - 0.5) * 0.45;
+        p.vy = -0.45 - Math.random() * 0.35;
+        p.size = 3 + Math.random() * 3;
+        p.maxLife = 520 + Math.random() * 180;
+        p.life = p.maxLife;
+        p.color = color;
+        this.particles.push(p);
+      }
     }
   }
 }
@@ -91,6 +117,7 @@ type Particle = {
   size: number;
   life: number;
   maxLife: number;
+  color: string;
 };
 
 function makeParticle(): Particle {
@@ -101,6 +128,17 @@ function makeParticle(): Particle {
     vy: 0,
     size: 2,
     life: 0,
-    maxLife: 0
+    maxLife: 0,
+    color: ''
   };
+}
+
+function withAlpha(color: string, alpha: number) {
+  if (color.startsWith('rgba(')) {
+    return color.replace(/rgba\(([^)]+),\s*[\d.]+\)/, `rgba($1, ${alpha})`);
+  }
+  if (color.startsWith('rgb(')) {
+    return color.replace(/rgb\(([^)]+)\)/, `rgba($1, ${alpha})`);
+  }
+  return color;
 }

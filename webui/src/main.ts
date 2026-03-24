@@ -6,6 +6,7 @@ import { Actions } from './game/actions';
 import { bindKeyboard } from './input/keyboard';
 import { createBoardRenderer } from './render/board';
 import { createNextStackRenderer, createPreviewRenderer } from './render/preview';
+import { GRID_COLORS } from './render/colors';
 import { LineFx } from './fx/line_fx';
 
 function createButton(label: string) {
@@ -190,6 +191,16 @@ async function startSingleGame(root: HTMLElement) {
           fx.triggerFlash(row * cell, cell);
         }
       }
+    }
+
+    const hardDropInfo = game.getLastHardDropInfo?.();
+    if (hardDropInfo) {
+      const mask = hardDropInfo[0] as number;
+      const yMin = hardDropInfo[1] as number;
+      const yMax = hardDropInfo[2] as number;
+      const piece = hardDropInfo[3] as number;
+      const color = GRID_COLORS[piece + 3] ?? '#c8f0ff';
+      fx.triggerColumnBurst(mask, yMin * cell, (yMax + 1) * cell, color);
     }
   };
 

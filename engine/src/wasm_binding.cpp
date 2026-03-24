@@ -139,6 +139,20 @@ public:
         s.last_clear_count = 0;
         return count;
     }
+
+    val getLastHardDropInfo()
+    {
+        auto &s = session.state();
+        if (!s.last_harddrop_valid)
+            return val::null();
+        val arr = val::array();
+        arr.set(0, (int)s.last_harddrop_cols);
+        arr.set(1, (int)s.last_harddrop_y_min);
+        arr.set(2, (int)s.last_harddrop_y_max);
+        arr.set(3, (int)s.last_harddrop_piece);
+        s.last_harddrop_valid = false;
+        return arr;
+    }
 };
 
 // 导出模块
@@ -155,5 +169,6 @@ EMSCRIPTEN_BINDINGS(tetris_module)
         .function("getNext", &WebTetris::getNext)
         .function("wouldHitWall", &WebTetris::wouldHitWall)
         .function("getLastClearMask", &WebTetris::getLastClearMask)
-        .function("getLastClearCount", &WebTetris::getLastClearCount);
+        .function("getLastClearCount", &WebTetris::getLastClearCount)
+        .function("getLastHardDropInfo", &WebTetris::getLastHardDropInfo);
 }
