@@ -8,7 +8,7 @@
 
 #include <enet/enet.h>
 
-#include "core/engine.hpp"
+#include "core/session.hpp"
 #include "core/snapshot.hpp"
 #include "network/network_manager.hpp"
 #include "network/protocol.hpp"
@@ -254,14 +254,14 @@ int main()
         }
     }
 
-    Engine<10, 20> local_engine;
-    Engine<10, 20> remote_engine;
+    GameSession<10, 20> local_session;
+    GameSession<10, 20> remote_session;
     bool game_started = false;
 
     net.on_game_start = [&](uint32_t seed)
     {
-        local_engine.reset(seed);
-        remote_engine.reset(seed);
+        local_session.reset(seed);
+        remote_session.reset(seed);
         game_started = true;
         clear_screen();
     };
@@ -278,29 +278,30 @@ int main()
         else if (header->type == PacketType::PlayerAction)
         {
             auto *pkt = reinterpret_cast<const PktPlayerAction *>(data);
-            // 这里我们不需要处理 remote_engine 打出的垃圾行，避免双倍计算
-            remote_engine.handle_action(pkt->action);
+            // 这里我们不需要处理 remote_session 打出的垃圾行，避免双倍计算
+            remote_session.handle_action(pkt->action);
         }
         else if (header->type == PacketType::PlayerAttack)
         {
             // --- 联机对战核心逻辑：收到对手攻击包，挂载到垃圾行等待列 ---
             auto *pkt = reinterpret_cast<const PktPlayerAttack *>(data);
-            local_engine.state.pending_garbage += pkt->lines;
+            local_session.state().pending_garbage += pkt->lines;
         }
         else if (header->type == PacketType::StateSync)
         {
             auto *pkt = reinterpret_cast<const PktStateSync<10, 20> *>(data);
-            std::memcpy(remote_engine.state.board.rows, pkt->board_rows, sizeof(pkt->board_rows));
-            remote_engine.state.piece = pkt->piece;
-            remote_engine.state.rot = pkt->rot;
-            remote_engine.state.x = pkt->x;
-            remote_engine.state.y = pkt->y;
+            auto &rst = remote_session.state();
+            std::memcpy(rst.board.rows, pkt->board_rows, sizeof(pkt->board_rows));
+            rst.piece = pkt->piece;
+            rst.rot = pkt->rot;
+            rst.x = pkt->x;
+            rst.y = pkt->y;
 
             // 补充漏掉的对齐和状态字段
-            remote_engine.state.hold = pkt->hold;
-            remote_engine.state.hold_used = pkt->hold_used;
-            remote_engine.state.pending_garbage = pkt->pending_garbage;
-            remote_engine.state.rng = pkt->rng_state;
+            rst.hold = pkt->hold;
+            rst.hold_used = pkt->hold_used;
+            rst.pending_garbage = pkt->pending_garbage;
+            rst.rng = pkt->rng_state;
         }
     };
 
@@ -441,9 +442,9 @@ int main()
                 }
             }
 
-            if (valid_action && !local_engine.game_over)
+            if (valid_action && !local_session.is_game_over())
             {
-                auto res = local_engine.handle_action(act);
+                auto res = local_session.handle_action(act);
 
                 // 发送操作包同步姿态
                 PktPlayerAction action_pkt;
@@ -457,7 +458,7 @@ int main()
                     PktPlayerAttack atk_pkt;
                     atk_pkt.header = {PacketType::PlayerAttack, (u8)net.get_role()};
                     atk_pkt.lines = res.damage;
-                    atk_pkt.hole_x = local_engine.state.rng % 10;
+                    atk_pkt.hole_x = local_session.state().rng % 10;
                     net.send_packet(atk_pkt, 1, true);
                 }
             }
@@ -466,8 +467,8 @@ int main()
         // 2. 游戏自然下落 (重力 Tick)
         if (now - last_tick > std::chrono::milliseconds(500))
         {
-            auto res = local_engine.tick();
-            remote_engine.tick();
+            auto res = local_session.tick();
+            remote_session.tick();
 
             // 自然下落也可能锁定方块并造成伤害，同理发送
             if (res.damage > 0)
@@ -475,7 +476,7 @@ int main()
                 PktPlayerAttack atk_pkt;
                 atk_pkt.header = {PacketType::PlayerAttack, (u8)net.get_role()};
                 atk_pkt.lines = res.damage;
-                atk_pkt.hole_x = local_engine.state.rng % 10;
+                atk_pkt.hole_x = local_session.state().rng % 10;
                 net.send_packet(atk_pkt, 1, true);
             }
 
@@ -487,7 +488,7 @@ int main()
         {
             PktStateSync<10, 20> sync_pkt;
             sync_pkt.header = {PacketType::StateSync, (u8)net.get_role()};
-            auto snap = make_snapshot(local_engine.state);
+            auto snap = make_snapshot(local_session.state());
             std::memcpy(sync_pkt.board_rows, snap.board_rows, sizeof(sync_pkt.board_rows));
             sync_pkt.piece = snap.piece;
             sync_pkt.rot = snap.rot;
@@ -505,8 +506,8 @@ int main()
         }
 
         // 4. 渲染画面
-        render_board(local_engine.state, 5, 2, "YOU (Local)");
-        render_board(remote_engine.state, 40, 2, "OPPONENT (Remote)");
+        render_board(local_session.state(), 5, 2, "YOU (Local)");
+        render_board(remote_session.state(), 40, 2, "OPPONENT (Remote)");
 
         move_cursor(5, 25);
         std::cout << "Controls: \033[36mArrow Keys / WASD\033[0m(Move&Drop) "

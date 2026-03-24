@@ -1,7 +1,7 @@
 #include <emscripten/bind.h>
 #include <vector>
 #include "core/types.hpp"
-#include "core/engine.hpp"
+#include "core/session.hpp"
 
 using namespace emscripten;
 using namespace tetris;
@@ -9,26 +9,26 @@ using namespace tetris;
 class WebTetris
 {
 private:
-    Engine<10, 20> engine;
+    GameSession<10, 20> session;
     std::vector<int> grid_buffer; // 用于传递给前端的 10x20 数组
 
 public:
     WebTetris(uint32_t seed)
     {
-        engine.reset(seed);
+        session.reset(seed);
         grid_buffer.resize(10 * 20);
     }
 
-    void reset(uint32_t seed) { engine.reset(seed); }
-    void tick() { engine.tick(); }
-    void handleAction(int action_val) { engine.handle_action(static_cast<Action>(action_val)); }
-    bool isGameOver() const { return engine.game_over; }
+    void reset(uint32_t seed) { session.reset(seed); }
+    void tick() { session.tick(); }
+    void handleAction(int action_val) { session.handle_action(static_cast<Action>(action_val)); }
+    bool isGameOver() const { return session.is_game_over(); }
 
-    // 将你原本在 main.cpp 里的 render 逻辑简化，生成一个数字网格交由 JS 渲染
+    // render 逻辑简化，生成一个数字网格交由 JS 渲染
     val getGrid()
     {
         std::fill(grid_buffer.begin(), grid_buffer.end(), 0);
-        const auto &s = engine.state;
+        const auto &s = session.state();
 
         // 1. 填入已锁定方块 (值为 1)
         for (int y = 0; y < 20; y++)
@@ -40,7 +40,7 @@ public:
             }
         }
 
-        if (!engine.game_over)
+        if (!session.is_game_over())
         {
             int ghost_y = get_ghost_y(s);
             const auto &shape = PIECES[(int)s.piece].rot[(int)s.rot];
