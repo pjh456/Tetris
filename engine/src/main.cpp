@@ -9,10 +9,9 @@
 #include <enet/enet.h>
 
 #include "core/session.hpp"
-#include "core/snapshot.hpp"
 #include "core/input_mapper.hpp"
 #include "network/network_manager.hpp"
-#include "network/protocol.hpp"
+#include "network/net_game_driver.hpp"
 
 // --- 跨平台非阻塞键盘输入 (kbhit / getch) ---
 #ifdef _WIN32
@@ -275,6 +274,7 @@ int main()
     GameSession<10, 20> remote_session;
     InputMapper input_mapper;
     bool game_started = false;
+    NetGameDriver<10, 20> net_driver(net, local_session, remote_session);
 
     input_mapper.bind('a', Action::MoveLeft);
     input_mapper.bind('A', Action::MoveLeft);
@@ -294,51 +294,19 @@ int main()
     input_mapper.bind('c', Action::Hold);
     input_mapper.bind('C', Action::Hold);
 
-    net.on_game_start = [&](uint32_t seed)
+    auto on_game_start = [&](uint32_t seed)
     {
         local_session.reset(seed);
         remote_session.reset(seed);
         game_started = true;
         clear_screen();
     };
+    net.on_game_start = on_game_start;
+    net_driver.set_on_game_start(on_game_start);
 
     net.on_packet_received = [&](const uint8_t *data, size_t size)
     {
-        auto *header = reinterpret_cast<const PacketHeader *>(data);
-        if (header->type == PacketType::GameStart)
-        {
-            auto *pkt = reinterpret_cast<const PktGameStart *>(data);
-            if (net.on_game_start)
-                net.on_game_start(pkt->random_seed);
-        }
-        else if (header->type == PacketType::PlayerAction)
-        {
-            auto *pkt = reinterpret_cast<const PktPlayerAction *>(data);
-            // 这里我们不需要处理 remote_session 打出的垃圾行，避免双倍计算
-            remote_session.handle_action(pkt->action);
-        }
-        else if (header->type == PacketType::PlayerAttack)
-        {
-            // --- 联机对战核心逻辑：收到对手攻击包，挂载到垃圾行等待列 ---
-            auto *pkt = reinterpret_cast<const PktPlayerAttack *>(data);
-            local_session.state().pending_garbage += pkt->lines;
-        }
-        else if (header->type == PacketType::StateSync)
-        {
-            auto *pkt = reinterpret_cast<const PktStateSync<10, 20> *>(data);
-            auto &rst = remote_session.state();
-            std::memcpy(rst.board.rows, pkt->board_rows, sizeof(pkt->board_rows));
-            rst.piece = pkt->piece;
-            rst.rot = pkt->rot;
-            rst.x = pkt->x;
-            rst.y = pkt->y;
-
-            // 补充漏掉的对齐和状态字段
-            rst.hold = pkt->hold;
-            rst.hold_used = pkt->hold_used;
-            rst.pending_garbage = pkt->pending_garbage;
-            rst.rng = pkt->rng_state;
-        }
+        net_driver.handle_packet(data, size);
     };
 
     net.on_disconnected = [&]()
@@ -444,19 +412,12 @@ int main()
                 auto res = local_session.handle_action(act);
 
                 // 发送操作包同步姿态
-                PktPlayerAction action_pkt;
-                action_pkt.header = {PacketType::PlayerAction, (u8)net.get_role()};
-                action_pkt.action = act;
-                net.send_packet(action_pkt, 1, true);
+                net_driver.send_action(act);
 
                 // ！！关键修复：如果有伤害，发送给对手 ！！
                 if (res.damage > 0)
                 {
-                    PktPlayerAttack atk_pkt;
-                    atk_pkt.header = {PacketType::PlayerAttack, (u8)net.get_role()};
-                    atk_pkt.lines = res.damage;
-                    atk_pkt.hole_x = local_session.state().rng % 10;
-                    net.send_packet(atk_pkt, 1, true);
+                    net_driver.send_attack(res.damage, local_session.state().rng % 10);
                 }
             }
         }
@@ -470,11 +431,7 @@ int main()
             // 自然下落也可能锁定方块并造成伤害，同理发送
             if (res.damage > 0)
             {
-                PktPlayerAttack atk_pkt;
-                atk_pkt.header = {PacketType::PlayerAttack, (u8)net.get_role()};
-                atk_pkt.lines = res.damage;
-                atk_pkt.hole_x = local_session.state().rng % 10;
-                net.send_packet(atk_pkt, 1, true);
+                net_driver.send_attack(res.damage, local_session.state().rng % 10);
             }
 
             last_tick = now;
@@ -483,22 +440,7 @@ int main()
         // 3. 状态快照兜底同步 (完善了遗漏的数据结构传输)
         if (now - last_sync > std::chrono::milliseconds(200))
         {
-            PktStateSync<10, 20> sync_pkt;
-            sync_pkt.header = {PacketType::StateSync, (u8)net.get_role()};
-            auto snap = make_snapshot(local_session.state());
-            std::memcpy(sync_pkt.board_rows, snap.board_rows, sizeof(sync_pkt.board_rows));
-            sync_pkt.piece = snap.piece;
-            sync_pkt.rot = snap.rot;
-            sync_pkt.x = snap.x;
-            sync_pkt.y = snap.y;
-
-            // 加上核心字段
-            sync_pkt.hold = snap.hold;
-            sync_pkt.hold_used = snap.hold_used;
-            sync_pkt.pending_garbage = snap.pending_garbage;
-            sync_pkt.rng_state = snap.rng;
-
-            net.send_packet(sync_pkt, 2, false);
+            net_driver.send_state_sync();
             last_sync = now;
         }
 
