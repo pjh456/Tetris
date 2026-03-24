@@ -2,6 +2,7 @@
 #include <vector>
 #include "tetris/core/types.hpp"
 #include "tetris/core/session.hpp"
+#include "tetris/core/rules.hpp"
 
 using namespace emscripten;
 using namespace tetris::core;
@@ -124,6 +125,12 @@ public:
         return false;
     }
 
+    bool canMove(int dx)
+    {
+        const auto &s = session.state();
+        return can_place(s, s.x + dx, s.y, s.rot);
+    }
+
     u32 getLastClearMask()
     {
         auto &s = session.state();
@@ -168,6 +175,7 @@ EMSCRIPTEN_BINDINGS(tetris_module)
         .function("getHold", &WebTetris::getHold)
         .function("getNext", &WebTetris::getNext)
         .function("wouldHitWall", &WebTetris::wouldHitWall)
+        .function("canMove", &WebTetris::canMove)
         .function("getLastClearMask", &WebTetris::getLastClearMask)
         .function("getLastClearCount", &WebTetris::getLastClearCount)
         .function("getLastHardDropInfo", &WebTetris::getLastHardDropInfo);

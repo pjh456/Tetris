@@ -235,12 +235,31 @@ async function startSingleGame(root: HTMLElement) {
     appRoot.style.transform = 'translateX(0px)';
   };
 
+  const canMove = (dx: number) => {
+    if (typeof game.canMove === 'function') {
+      return game.canMove(dx) as boolean;
+    }
+    return !game.wouldHitWall?.(dx);
+  };
+
   bindKeyboard({
     handleAction: (action) => {
-      if (action === Actions.MoveLeft && game.wouldHitWall(-1)) {
-        edgeBump(-1);
-      } else if (action === Actions.MoveRight && game.wouldHitWall(1)) {
-        edgeBump(1);
+      if (action === Actions.MoveLeft) {
+        if (!canMove(-1)) {
+          edgeBump(-1);
+          return;
+        }
+        if (edgeHeld === -1) {
+          edgeRelease(-1);
+        }
+      } else if (action === Actions.MoveRight) {
+        if (!canMove(1)) {
+          edgeBump(1);
+          return;
+        }
+        if (edgeHeld === 1) {
+          edgeRelease(1);
+        }
       } else if (action === Actions.HardDrop) {
         if (appRoot) {
           appRoot.style.transition = 'transform 60ms ease-out';
