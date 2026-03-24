@@ -2,7 +2,7 @@ import createTetrisModule from '@engine/tetris_wasm.js';
 import wasmUrl from '@engine/tetris_wasm.wasm?url';
 import { bindKeyboard } from './input/keyboard';
 import { createBoardRenderer } from './render/board';
-import { createPreviewRenderer } from './render/preview';
+import { createNextStackRenderer, createPreviewRenderer } from './render/preview';
 
 async function initGame() {
   const wrapper = document.createElement('div');
@@ -10,7 +10,15 @@ async function initGame() {
   wrapper.style.gap = '16px';
   wrapper.style.alignItems = 'flex-start';
   wrapper.style.justifyContent = 'center';
-  wrapper.style.margin = '20px';
+  wrapper.style.margin = '0 auto';
+  wrapper.style.height = 'auto';
+
+  document.body.style.margin = '0';
+  document.body.style.display = 'flex';
+  document.body.style.alignItems = 'center';
+  document.body.style.justifyContent = 'center';
+  document.body.style.minHeight = '100vh';
+  document.body.style.background = '#0b0f1a';
 
   const holdColumn = document.createElement('div');
   holdColumn.style.display = 'flex';
@@ -20,21 +28,26 @@ async function initGame() {
   const holdLabel = document.createElement('div');
   holdLabel.textContent = 'HOLD';
   holdLabel.style.fontFamily = 'sans-serif';
-  holdLabel.style.color = '#333';
+  holdLabel.style.color = '#e7f6ff';
   holdLabel.style.fontSize = '14px';
+  holdLabel.style.letterSpacing = '2px';
 
   const holdCanvas = document.createElement('canvas');
-  holdCanvas.width = 120;
-  holdCanvas.height = 120;
-  holdCanvas.style.border = '1px solid #ddd';
+  holdCanvas.width = 140;
+  holdCanvas.height = 140;
+  holdCanvas.style.border = '2px solid rgba(140, 200, 255, 0.9)';
+  holdCanvas.style.background = 'rgba(7, 10, 18, 0.9)';
+  holdCanvas.style.boxShadow = '0 0 12px rgba(80, 160, 255, 0.35)';
 
   holdColumn.appendChild(holdLabel);
   holdColumn.appendChild(holdCanvas);
 
   const boardCanvas = document.createElement('canvas');
-  boardCanvas.width = 300; // 10列 * 30px
-  boardCanvas.height = 600; // 20行 * 30px
-  boardCanvas.style.border = '1px solid #ddd';
+  boardCanvas.width = 360; // 10列 * 36px
+  boardCanvas.height = 720; // 20行 * 36px
+  boardCanvas.style.border = '3px solid rgba(140, 200, 255, 0.95)';
+  boardCanvas.style.background = 'rgba(5, 8, 15, 0.95)';
+  boardCanvas.style.boxShadow = '0 0 20px rgba(80, 160, 255, 0.45)';
 
   const nextColumn = document.createElement('div');
   nextColumn.style.display = 'flex';
@@ -44,19 +57,23 @@ async function initGame() {
   const nextLabel = document.createElement('div');
   nextLabel.textContent = 'NEXT';
   nextLabel.style.fontFamily = 'sans-serif';
-  nextLabel.style.color = '#333';
+  nextLabel.style.background = '#ffffff';
+  nextLabel.style.color = '#0b0f1a';
   nextLabel.style.fontSize = '14px';
+  nextLabel.style.letterSpacing = '2px';
+  nextLabel.style.fontWeight = '600';
+  nextLabel.style.textAlign = 'center';
+  nextLabel.style.border = '3px solid #ffffff';
+  nextLabel.style.padding = '6px 0';
   nextColumn.appendChild(nextLabel);
 
-  const nextCanvases: HTMLCanvasElement[] = [];
-  for (let i = 0; i < 5; i++) {
-    const c = document.createElement('canvas');
-    c.width = 120;
-    c.height = 120;
-    c.style.border = '1px solid #ddd';
-    nextColumn.appendChild(c);
-    nextCanvases.push(c);
-  }
+  const nextCanvas = document.createElement('canvas');
+  nextCanvas.width = 180;
+  nextCanvas.height = 480; // 约 2/3 棋盘高度
+  nextCanvas.style.border = '3px solid rgba(140, 200, 255, 0.95)';
+  nextCanvas.style.background = 'rgba(7, 10, 18, 0.9)';
+  nextCanvas.style.boxShadow = '0 0 12px rgba(80, 160, 255, 0.35)';
+  nextColumn.appendChild(nextCanvas);
 
   wrapper.appendChild(holdColumn);
   wrapper.appendChild(boardCanvas);
@@ -64,8 +81,8 @@ async function initGame() {
   document.body.appendChild(wrapper);
 
   const renderer = createBoardRenderer(boardCanvas);
-  const holdRenderer = createPreviewRenderer(holdCanvas);
-  const nextRenderers = nextCanvases.map((c) => createPreviewRenderer(c));
+  const holdRenderer = createPreviewRenderer(holdCanvas, { showGrid: true });
+  const nextRenderer = createNextStackRenderer(nextCanvas);
 
   const Module = await createTetrisModule({
     locateFile: (path: string) => {
@@ -85,7 +102,7 @@ async function initGame() {
     const hold = game.getHold() as number;
     holdRenderer.render(hold);
     const next = game.getNext() as number[];
-    nextRenderers.forEach((r, idx) => r.render(next[idx] ?? -1));
+    nextRenderer.render(next);
   };
 
   bindKeyboard({
