@@ -1,12 +1,4 @@
-const PREVIEW_COLORS = [
-  '#00ffff',
-  '#ffff00',
-  '#ff00ff',
-  '#00ff00',
-  '#ff0000',
-  '#0000ff',
-  '#ff8800'
-];
+import { GRID_COLORS } from './colors';
 
 const SHAPES: number[][][] = [
   [
@@ -68,7 +60,7 @@ export function createPreviewRenderer(canvas: HTMLCanvasElement): PreviewRendere
       const shape = SHAPES[pieceId];
       const cell = canvas.width / 4;
 
-      ctx.fillStyle = PREVIEW_COLORS[pieceId];
+      ctx.fillStyle = GRID_COLORS[pieceId + 3] ?? GRID_COLORS[3];
       for (let y = 0; y < 4; y++) {
         for (let x = 0; x < 4; x++) {
           if (!shape[y][x]) continue;
