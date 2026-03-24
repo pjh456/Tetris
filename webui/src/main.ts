@@ -1,10 +1,78 @@
+import './style.css';
+
 import createTetrisModule from '@engine/tetris_wasm.js';
 import wasmUrl from '@engine/tetris_wasm.wasm?url';
 import { bindKeyboard } from './input/keyboard';
 import { createBoardRenderer } from './render/board';
 import { createNextStackRenderer, createPreviewRenderer } from './render/preview';
 
-async function initGame() {
+function createButton(label: string) {
+  const btn = document.createElement('button');
+  btn.textContent = label;
+  btn.className = 'btn';
+  return btn;
+}
+
+function createHomeScreen(onSingle: () => void, onMulti: () => void) {
+  const container = document.createElement('div');
+  container.className = 'home';
+
+  const multiCard = document.createElement('div');
+  multiCard.className = 'menu-card menu-multi';
+  multiCard.onclick = onMulti;
+  multiCard.innerHTML = `
+    <div class="menu-left">MP</div>
+    <div class="menu-body">
+      <div class="menu-title">MULTIPLAYER</div>
+      <div class="menu-sub">PLAY ONLINE WITH FRIENDS AND FOES</div>
+    </div>
+  `;
+
+  const soloCard = document.createElement('div');
+  soloCard.className = 'menu-card menu-solo';
+  soloCard.onclick = onSingle;
+  soloCard.innerHTML = `
+    <div class="menu-left">SP</div>
+    <div class="menu-body">
+      <div class="menu-title">SOLO</div>
+      <div class="menu-sub">CHALLENGE YOURSELF AND TOP THE LEADERBOARDS</div>
+    </div>
+  `;
+
+  container.appendChild(multiCard);
+  container.appendChild(soloCard);
+  return container;
+}
+
+function createModal(onClose: () => void, onCreate: () => void, onJoin: () => void) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+
+  const panel = document.createElement('div');
+  panel.className = 'modal';
+
+  const title = document.createElement('div');
+  title.textContent = '联机模式';
+  title.style.textAlign = 'center';
+
+  const createBtn = createButton('创建房间');
+  createBtn.onclick = onCreate;
+  const joinBtn = createButton('加入房间');
+  joinBtn.onclick = onJoin;
+  const closeBtn = createButton('关闭');
+  closeBtn.onclick = onClose;
+
+  panel.appendChild(title);
+  panel.appendChild(createBtn);
+  panel.appendChild(joinBtn);
+  panel.appendChild(closeBtn);
+  overlay.appendChild(panel);
+
+  return overlay;
+}
+
+async function startSingleGame(root: HTMLElement) {
+  root.className = 'game-root';
   const wrapper = document.createElement('div');
   wrapper.style.display = 'flex';
   wrapper.style.gap = '16px';
@@ -13,13 +81,6 @@ async function initGame() {
   wrapper.style.margin = '0 auto';
   wrapper.style.height = 'auto';
 
-  document.body.style.margin = '0';
-  document.body.style.display = 'flex';
-  document.body.style.alignItems = 'center';
-  document.body.style.justifyContent = 'center';
-  document.body.style.minHeight = '100vh';
-  document.body.style.background = '#0b0f1a';
-
   const holdColumn = document.createElement('div');
   holdColumn.style.display = 'flex';
   holdColumn.style.flexDirection = 'column';
@@ -27,7 +88,6 @@ async function initGame() {
 
   const holdLabel = document.createElement('div');
   holdLabel.textContent = 'HOLD';
-  holdLabel.style.fontFamily = 'sans-serif';
   holdLabel.style.color = '#e7f6ff';
   holdLabel.style.fontSize = '14px';
   holdLabel.style.letterSpacing = '2px';
@@ -56,7 +116,6 @@ async function initGame() {
 
   const nextLabel = document.createElement('div');
   nextLabel.textContent = 'NEXT';
-  nextLabel.style.fontFamily = 'sans-serif';
   nextLabel.style.background = '#ffffff';
   nextLabel.style.color = '#0b0f1a';
   nextLabel.style.fontSize = '14px';
@@ -78,7 +137,7 @@ async function initGame() {
   wrapper.appendChild(holdColumn);
   wrapper.appendChild(boardCanvas);
   wrapper.appendChild(nextColumn);
-  document.body.appendChild(wrapper);
+  root.appendChild(wrapper);
 
   const renderer = createBoardRenderer(boardCanvas);
   const holdRenderer = createPreviewRenderer(holdCanvas, { showGrid: true });
@@ -93,7 +152,7 @@ async function initGame() {
     }
   });
 
-  const seed = Date.now() >>> 0; // 强制截断为合法的 32 位无符号整数
+  const seed = Date.now() >>> 0;
   const game = new Module.WebTetris(seed);
 
   const render = () => {
@@ -127,4 +186,44 @@ async function initGame() {
   requestAnimationFrame(gameLoop);
 }
 
-initGame();
+function initHome() {
+  const app = document.getElementById('app');
+  if (!app) return;
+  app.innerHTML = '';
+
+  const topbar = document.createElement('div');
+  topbar.className = 'topbar';
+  topbar.innerHTML = `
+    <div class="logo">TETRIS</div>
+    <div class="user-info">
+      <div>GUEST-6_0160A4</div>
+      <div class="status">ANONYMOUS</div>
+      <div class="avatar"></div>
+    </div>
+  `;
+  app.appendChild(topbar);
+
+  const root = document.createElement('div');
+  root.className = 'content';
+  app.appendChild(root);
+
+  const home = createHomeScreen(
+    () => {
+      root.innerHTML = '';
+      root.className = 'content';
+      startSingleGame(root);
+    },
+    () => {
+      const modal = createModal(
+        () => modal.remove(),
+        () => alert('创建房间功能待接入'),
+        () => alert('加入房间功能待接入')
+      );
+      document.body.appendChild(modal);
+    }
+  );
+
+  root.appendChild(home);
+}
+
+initHome();
