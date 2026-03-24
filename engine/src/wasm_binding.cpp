@@ -123,6 +123,22 @@ public:
         }
         return false;
     }
+
+    u32 getLastClearMask()
+    {
+        auto &s = session.state();
+        u32 mask = s.last_clear_mask;
+        s.last_clear_mask = 0;
+        return mask;
+    }
+
+    u8 getLastClearCount()
+    {
+        auto &s = session.state();
+        u8 count = s.last_clear_count;
+        s.last_clear_count = 0;
+        return count;
+    }
 };
 
 // 导出模块
@@ -137,5 +153,7 @@ EMSCRIPTEN_BINDINGS(tetris_module)
         .function("getGrid", &WebTetris::getGrid)
         .function("getHold", &WebTetris::getHold)
         .function("getNext", &WebTetris::getNext)
-        .function("wouldHitWall", &WebTetris::wouldHitWall);
+        .function("wouldHitWall", &WebTetris::wouldHitWall)
+        .function("getLastClearMask", &WebTetris::getLastClearMask)
+        .function("getLastClearCount", &WebTetris::getLastClearCount);
 }

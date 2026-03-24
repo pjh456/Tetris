@@ -27,6 +27,8 @@ namespace tetris::core
 
         u8 pending_garbage = 0;              // 正在排队等待进入场地的垃圾行数
         bool last_move_was_rotation = false; // 判定 T-Spin 核心标记
+        u32 last_clear_mask = 0;
+        u8 last_clear_count = 0;
     };
 }
 

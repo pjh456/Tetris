@@ -41,23 +41,33 @@ namespace tetris::core
         }
 
     public:
-        u8 clear_lines() noexcept
+        struct ClearResult
+        {
+            u32 mask;
+            u8 count;
+        };
+
+        ClearResult clear_lines() noexcept
         {
             int write = H - 1;
             u8 cleared = 0;
+            u32 mask = 0;
 
             for (int read = H - 1; read >= 0; --read)
             {
                 if (rows[read] != FULL)
                     rows[write--] = rows[read];
                 else
+                {
                     ++cleared;
+                    mask |= (1u << read);
+                }
             }
 
             while (write >= 0)
                 rows[write--] = 0;
 
-            return cleared;
+            return {mask, cleared};
         }
 
         // 从底部插入垃圾行

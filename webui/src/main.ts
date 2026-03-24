@@ -6,6 +6,7 @@ import { Actions } from './game/actions';
 import { bindKeyboard } from './input/keyboard';
 import { createBoardRenderer } from './render/board';
 import { createNextStackRenderer, createPreviewRenderer } from './render/preview';
+import { LineFx } from './fx/line_fx';
 
 function createButton(label: string) {
   const btn = document.createElement('button');
@@ -103,12 +104,26 @@ async function startSingleGame(root: HTMLElement) {
   holdColumn.appendChild(holdLabel);
   holdColumn.appendChild(holdCanvas);
 
+  const boardFrame = document.createElement('div');
+  boardFrame.style.position = 'relative';
+  boardFrame.style.display = 'inline-block';
+  boardFrame.style.border = '3px solid rgba(140, 200, 255, 0.95)';
+  boardFrame.style.background = 'rgba(5, 8, 15, 0.95)';
+  boardFrame.style.boxShadow = '0 0 20px rgba(80, 160, 255, 0.45)';
+
   const boardCanvas = document.createElement('canvas');
   boardCanvas.width = 360; // 10列 * 36px
   boardCanvas.height = 720; // 20行 * 36px
-  boardCanvas.style.border = '3px solid rgba(140, 200, 255, 0.95)';
-  boardCanvas.style.background = 'rgba(5, 8, 15, 0.95)';
-  boardCanvas.style.boxShadow = '0 0 20px rgba(80, 160, 255, 0.45)';
+
+  const fxCanvas = document.createElement('canvas');
+  fxCanvas.width = boardCanvas.width;
+  fxCanvas.height = boardCanvas.height;
+  fxCanvas.style.position = 'absolute';
+  fxCanvas.style.inset = '0';
+  fxCanvas.style.pointerEvents = 'none';
+
+  boardFrame.appendChild(boardCanvas);
+  boardFrame.appendChild(fxCanvas);
   boardCanvas.style.transition = 'transform 80ms ease';
 
   const nextColumn = document.createElement('div');
@@ -137,11 +152,12 @@ async function startSingleGame(root: HTMLElement) {
   nextColumn.appendChild(nextCanvas);
 
   wrapper.appendChild(holdColumn);
-  wrapper.appendChild(boardCanvas);
+  wrapper.appendChild(boardFrame);
   wrapper.appendChild(nextColumn);
   root.appendChild(wrapper);
 
   const renderer = createBoardRenderer(boardCanvas);
+  const fx = new LineFx(fxCanvas);
   const holdRenderer = createPreviewRenderer(holdCanvas, { showGrid: true });
   const nextRenderer = createNextStackRenderer(nextCanvas);
 
@@ -157,6 +173,8 @@ async function startSingleGame(root: HTMLElement) {
   const seed = Date.now() >>> 0;
   const game = new Module.WebTetris(seed);
 
+  const cell = boardCanvas.height / 20;
+
   const render = () => {
     const grid = game.getGrid();
     renderer.render(grid);
@@ -164,6 +182,15 @@ async function startSingleGame(root: HTMLElement) {
     holdRenderer.render(hold);
     const next = game.getNext() as number[];
     nextRenderer.render(next);
+
+    const clearMask = game.getLastClearMask() as number;
+    if (clearMask) {
+      for (let row = 0; row < 20; row++) {
+        if (clearMask & (1 << row)) {
+          fx.triggerFlash(row * cell, cell);
+        }
+      }
+    }
   };
 
   const appRoot = document.getElementById('app');
@@ -228,6 +255,7 @@ async function startSingleGame(root: HTMLElement) {
   });
 
   let lastTick = performance.now();
+  let lastFx = performance.now();
   function gameLoop(time: number) {
     if (!game.isGameOver()) {
       if (time - lastTick > 500) {
@@ -236,6 +264,10 @@ async function startSingleGame(root: HTMLElement) {
         render();
       }
     }
+    const dt = time - lastFx;
+    lastFx = time;
+    fx.update(dt);
+    fx.render();
     requestAnimationFrame(gameLoop);
   }
 

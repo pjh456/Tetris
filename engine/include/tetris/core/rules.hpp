@@ -116,7 +116,10 @@ namespace tetris::core
                     ((u64)row >> -st.x) & Board<W, H>::FULL;
         }
 
-        return st.board.clear_lines();
+        auto res = st.board.clear_lines();
+        st.last_clear_mask = res.mask;
+        st.last_clear_count = res.count;
+        return res.count;
     }
 
     template <u8 W, u8 H>
