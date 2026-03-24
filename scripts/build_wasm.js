@@ -11,8 +11,12 @@ function resolveRoot() {
 }
 
 function check(cmd) {
-    const res = spawnSync(cmd, ["--version"], { stdio: "ignore" });
-    if (res.error) {
+    const isWin = process.platform === "win32";
+    const checker = isWin ? "where" : "which";
+
+    const res = spawnSync(checker, [cmd], { stdio: "ignore" });
+
+    if (res.status !== 0) {
         console.error(`❌ Missing command in PATH: ${cmd}`);
         process.exit(1);
     }
@@ -23,6 +27,7 @@ function run(cmd, args, cwd) {
     const res = spawnSync(cmd, args, {
         stdio: "inherit",
         cwd,
+        shell: true,
     });
 
     if (res.status !== 0) {
