@@ -12,6 +12,7 @@
 #include "core/input_mapper.hpp"
 #include "network/network_manager.hpp"
 #include "network/net_game_driver.hpp"
+#include "ui/terminal_renderer.hpp"
 
 // --- 跨平台非阻塞键盘输入 (kbhit / getch) ---
 #ifdef _WIN32
@@ -156,59 +157,7 @@ public:
     }
 };
 
-void move_cursor(int x, int y) { std::cout << "\033[" << y << ";" << x << "H"; }
-void clear_screen() { std::cout << "\033[2J\033[H"; }
-
-void render_board(const State<10, 20> &st, int offset_x, int offset_y, const std::string &title)
-{
-    move_cursor(offset_x, offset_y);
-    std::cout << "=== " << title << " ===";
-
-    int ghost_y = get_ghost_y(st);
-    const auto &shape = PIECES[(int)st.piece].rot[(int)st.rot];
-
-    const char *colors[] = {
-        "\033[0m", "\033[46m", "\033[43m", "\033[45m",
-        "\033[42m", "\033[41m", "\033[44m", "\033[47m"};
-
-    for (int y = 0; y < 20; ++y)
-    {
-        move_cursor(offset_x, offset_y + 1 + y);
-        std::cout << "<!";
-
-        for (int x = 0; x < 10; ++x)
-        {
-            bool is_active = false;
-            bool is_ghost = false;
-
-            if (y >= st.y && y < st.y + 4 && x >= st.x && x < st.x + 4)
-                if (shape.row[y - st.y] & (1 << (x - st.x)))
-                    is_active = true;
-
-            if (!is_active && y >= ghost_y && y < ghost_y + 4 && x >= st.x && x < st.x + 4)
-                if (shape.row[y - ghost_y] & (1 << (x - st.x)))
-                    is_ghost = true;
-
-            if (is_active)
-                std::cout << colors[(int)st.piece + 1] << "  " << "\033[0m";
-            else if (is_ghost)
-                std::cout << "\033[90m[]\033[0m";
-            else if (st.board.rows[y] & (1ULL << x))
-                std::cout << "\033[47m  \033[0m";
-            else
-                std::cout << " .";
-        }
-        std::cout << "!>";
-
-        // 在右侧显示垃圾行警告槽
-        if (y >= 20 - st.pending_garbage)
-            std::cout << "\033[31m*\033[0m";
-        else
-            std::cout << " ";
-    }
-    move_cursor(offset_x, offset_y + 21);
-    std::cout << "==========================";
-}
+static tetris::ui::TerminalRenderer renderer;
 
 int main()
 {
@@ -226,7 +175,7 @@ int main()
     static char stdout_buffer[65536];
     setvbuf(stdout, stdout_buffer, _IOFBF, sizeof(stdout_buffer));
 
-    clear_screen();
+    renderer.clear_screen();
     std::cout << "=== TETRIS LAN MULTIPLAYER ===\n";
     std::cout << "[0] Host Game (Create Room)\n";
     std::cout << "[1] Join Game (Search LAN)\n";
@@ -299,7 +248,7 @@ int main()
         local_session.reset(seed);
         remote_session.reset(seed);
         game_started = true;
-        clear_screen();
+        renderer.clear_screen();
     };
     net.on_game_start = on_game_start;
     net_driver.set_on_game_start(on_game_start);
@@ -312,7 +261,7 @@ int main()
     net.on_disconnected = [&]()
     {
         game_started = false;
-        clear_screen();
+        renderer.clear_screen();
         std::cout << "\nPlayer disconnected. Game Over.\n";
         exit(0);
     };
@@ -445,10 +394,10 @@ int main()
         }
 
         // 4. 渲染画面
-        render_board(local_session.state(), 5, 2, "YOU (Local)");
-        render_board(remote_session.state(), 40, 2, "OPPONENT (Remote)");
+        renderer.render_board(local_session.state(), 5, 2, "YOU (Local)");
+        renderer.render_board(remote_session.state(), 40, 2, "OPPONENT (Remote)");
 
-        move_cursor(5, 25);
+        renderer.move_cursor(5, 25);
         std::cout << "Controls: \033[36mArrow Keys / WASD\033[0m(Move&Drop) "
                      "\033[36mJ/K/W\033[0m(Rotate) "
                      "\033[36mL/C\033[0m(Hold) "
