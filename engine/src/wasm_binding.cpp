@@ -139,14 +139,6 @@ public:
         return mask;
     }
 
-    u8 getLastClearCount()
-    {
-        auto &s = session.state();
-        u8 count = s.last_clear_count;
-        s.last_clear_count = 0;
-        return count;
-    }
-
     val getLastHardDropInfo()
     {
         auto &s = session.state();
@@ -177,6 +169,5 @@ EMSCRIPTEN_BINDINGS(tetris_module)
         .function("wouldHitWall", &WebTetris::wouldHitWall)
         .function("canMove", &WebTetris::canMove)
         .function("getLastClearMask", &WebTetris::getLastClearMask)
-        .function("getLastClearCount", &WebTetris::getLastClearCount)
         .function("getLastHardDropInfo", &WebTetris::getLastHardDropInfo);
 }
