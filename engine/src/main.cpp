@@ -221,12 +221,14 @@ int main()
     }
 
     GameSession<10, 20> local_session;
-    GameSession<10, 20> remote_session;
+    std::vector<GameSession<10, 20>> remote_sessions;
+    std::vector<bool> remote_player_seen;
     InputMapper input_mapper;
     bool game_started = false;
-    NetGameDriver<10, 20> net_driver(net, local_session, remote_session);
+    NetGameDriver<10, 20> net_driver(net, local_session, local_session);
     std::vector<GameSession<10, 20>> host_sessions;
     std::vector<bool> host_player_seen;
+    u8 observed_player_id = 1;
 
     if (net.get_role() == NetworkManager::Role::Host)
     {
@@ -234,6 +236,11 @@ int main()
         host_player_seen.assign(net.max_players(), false);
         if (!host_player_seen.empty())
             host_player_seen[0] = true;
+    }
+    else
+    {
+        remote_sessions.resize(net.max_players());
+        remote_player_seen.assign(net.max_players(), false);
     }
 
     input_mapper.bind('a', Action::MoveLeft);
@@ -264,7 +271,10 @@ int main()
         else
         {
             local_session.reset(seed);
-            remote_session.reset(seed);
+            for (auto &s : remote_sessions)
+                s.reset(seed);
+            for (size_t i = 0; i < remote_player_seen.size(); ++i)
+                remote_player_seen[i] = false;
         }
         game_started = true;
         renderer.clear_screen();
@@ -304,7 +314,32 @@ int main()
     {
         net.on_packet_received = [&](const uint8_t *data, size_t size)
         {
-            net_driver.handle_packet(data, size);
+            if (size < sizeof(PacketHeader))
+                return;
+            auto *header = reinterpret_cast<const PacketHeader *>(data);
+            if (header->type == PacketType::StateSync)
+            {
+                auto *pkt = reinterpret_cast<const PktStateSync<10, 20> *>(data);
+                u8 pid = header->player_id;
+                if (pid < remote_sessions.size())
+                {
+                    remote_player_seen[pid] = true;
+                    auto &rst = remote_sessions[pid].state();
+                    std::memcpy(rst.board.rows, pkt->board_rows, sizeof(pkt->board_rows));
+                    rst.piece = pkt->piece;
+                    rst.rot = pkt->rot;
+                    rst.x = pkt->x;
+                    rst.y = pkt->y;
+                    rst.hold = pkt->hold;
+                    rst.hold_used = pkt->hold_used;
+                    rst.pending_garbage = pkt->pending_garbage;
+                    rst.rng = pkt->rng_state;
+                }
+            }
+            else
+            {
+                net_driver.handle_packet(data, size);
+            }
         };
     }
 
@@ -401,6 +436,28 @@ int main()
             {
                 exit(0);
             }
+            else if (c == '\t' || c == 'f' || c == 'F')
+            {
+                if (net.get_role() == NetworkManager::Role::Host)
+                {
+                    if (host_sessions.size() > 1)
+                    {
+                        observed_player_id = (u8)((observed_player_id + 1) % host_sessions.size());
+                        if (observed_player_id == 0 && host_sessions.size() > 1)
+                            observed_player_id = 1;
+                    }
+                }
+                else
+                {
+                    if (remote_sessions.size() > 1)
+                    {
+                        observed_player_id = (u8)((observed_player_id + 1) % remote_sessions.size());
+                        if (observed_player_id == 0 && remote_sessions.size() > 1)
+                            observed_player_id = 1;
+                    }
+                }
+                valid_action = false;
+            }
             else
             {
                 valid_action = input_mapper.resolve(c, act);
@@ -455,7 +512,6 @@ int main()
             else
             {
                 local_session.tick();
-                remote_session.tick();
             }
 
             last_tick = now;
@@ -497,12 +553,13 @@ int main()
         {
             renderer.render_board(host_sessions[0].state(), 5, 2, "YOU (Host)");
             if (host_sessions.size() > 1)
-                renderer.render_board(host_sessions[1].state(), 40, 2, "OPPONENT (Remote)");
+                renderer.render_board(host_sessions[observed_player_id].state(), 40, 2, "OPPONENT (Remote)");
         }
         else
         {
             renderer.render_board(local_session.state(), 5, 2, "YOU (Local)");
-            renderer.render_board(remote_session.state(), 40, 2, "OPPONENT (Remote)");
+            if (remote_sessions.size() > 1)
+                renderer.render_board(remote_sessions[observed_player_id].state(), 40, 2, "OPPONENT (Remote)");
         }
 
         renderer.move_cursor(5, 25);
