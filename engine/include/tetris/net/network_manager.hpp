@@ -140,6 +140,16 @@ namespace tetris::net
             enet_peer_send(to_peer, channel, packet);
         }
 
+        template <typename T>
+        void broadcast_packet(const T &packet_data, uint8_t channel = 0, bool reliable = true)
+        {
+            if (role != Role::Host)
+                return;
+
+            for (auto *p : m_peers)
+                send_packet_to(p, packet_data, channel, reliable);
+        }
+
         // --- 核心网络循环 (每帧调用) ---
         void tick()
         {
