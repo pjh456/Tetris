@@ -245,6 +245,16 @@ namespace tetris::net
         bool is_connected() const { return peer != nullptr; }
         u8 local_player_id() const { return local_player_id_; }
         u8 max_players() const { return max_players_; }
+        const std::vector<ENetPeer *> &peers() const { return peers_; }
+
+        bool try_get_peer_id(ENetPeer *p, u8 &out_id) const
+        {
+            auto it = peer_ids_.find(p);
+            if (it == peer_ids_.end())
+                return false;
+            out_id = it->second;
+            return true;
+        }
     };
 }
 
