@@ -83,7 +83,10 @@ namespace tetris::net
             PktPlayerAction action_pkt;
             action_pkt.header = {PacketType::PlayerAction, m_net.local_player_id()};
             action_pkt.action = act;
-            m_net.send_packet(action_pkt, 1, true);
+            if (m_net.get_role() == NetworkManager::Role::Host)
+                m_net.broadcast_packet(action_pkt, 1, true);
+            else
+                m_net.send_packet(action_pkt, 1, true);
         }
 
         void send_attack(u8 lines, u8 hole_x)
@@ -92,7 +95,10 @@ namespace tetris::net
             atk_pkt.header = {PacketType::PlayerAttack, m_net.local_player_id()};
             atk_pkt.lines = lines;
             atk_pkt.hole_x = hole_x;
-            m_net.send_packet(atk_pkt, 1, true);
+            if (m_net.get_role() == NetworkManager::Role::Host)
+                m_net.broadcast_packet(atk_pkt, 1, true);
+            else
+                m_net.send_packet(atk_pkt, 1, true);
         }
 
         void send_state_sync()
@@ -109,7 +115,10 @@ namespace tetris::net
             sync_pkt.hold_used = snap.hold_used;
             sync_pkt.pending_garbage = snap.pending_garbage;
             sync_pkt.rng_state = snap.rng;
-            m_net.send_packet(sync_pkt, 2, false);
+            if (m_net.get_role() == NetworkManager::Role::Host)
+                m_net.broadcast_packet(sync_pkt, 2, false);
+            else
+                m_net.send_packet(sync_pkt, 2, false);
         }
     };
 }
