@@ -34,12 +34,12 @@ namespace tetris::net
     private:
         ENetHost *host = nullptr;
         ENetPeer *peer = nullptr; // 客机只需要记录服务器 peer
-        std::vector<ENetPeer *> peers_; // 服务器端保存所有客户端 peer
-        std::unordered_map<ENetPeer *, u8> peer_ids_;
+        std::vector<ENetPeer *> m_peers; // 服务器端保存所有客户端 peer
+        std::unordered_map<ENetPeer *, u8> m_peer_ids;
         Role role = Role::None;
-        u8 local_player_id_ = 0;
-        u8 max_players_ = 8;
-        u8 next_player_id_ = 1;
+        u8 m_local_player_id = 0;
+        u8 m_max_players = 8;
+        u8 m_next_player_id = 1;
 
     public:
         NetworkManager()
@@ -71,9 +71,9 @@ namespace tetris::net
                 return false;
 
             role = Role::Host;
-            local_player_id_ = 0;
-            max_players_ = max_players;
-            next_player_id_ = 1;
+            m_local_player_id = 0;
+            m_max_players = max_players;
+            m_next_player_id = 1;
             std::cout << "Server started on port " << port << std::endl;
             return true;
         }
@@ -96,7 +96,7 @@ namespace tetris::net
                 return false;
 
             role = Role::Client;
-            local_player_id_ = 0;
+            m_local_player_id = 0;
             std::cout << "Connecting to " << ip << ":" << port << "..." << std::endl;
             return true;
         }
@@ -110,8 +110,8 @@ namespace tetris::net
                 enet_host_flush(host);
                 peer = nullptr;
             }
-            peers_.clear();
-            peer_ids_.clear();
+            m_peers.clear();
+            m_peer_ids.clear();
             role = Role::None;
         }
 
@@ -159,12 +159,12 @@ namespace tetris::net
                     // 【极简对战逻辑】：如果是 Server，有人连进来就直接发 GameStart 并下发随机数种子！
                     if (role == Role::Host)
                     {
-                        if (peers_.size() >= max_players_)
+                        if (m_peers.size() >= m_max_players)
                         {
                             enet_peer_disconnect(event.peer, 0);
                             break;
                         }
-                        peers_.push_back(event.peer);
+                        m_peers.push_back(event.peer);
 
                         PktGameStart start_pkt;
                         start_pkt.header = {PacketType::GameStart, 0};
@@ -191,15 +191,15 @@ namespace tetris::net
                         auto *header = reinterpret_cast<const PacketHeader *>(event.packet->data);
                         if (header->type == PacketType::ClientJoin && role == Role::Host)
                         {
-                            if (peer_ids_.count(event.peer) == 0 && next_player_id_ < max_players_)
+                            if (m_peer_ids.count(event.peer) == 0 && m_next_player_id < m_max_players)
                             {
-                                u8 assigned = next_player_id_++;
-                                peer_ids_[event.peer] = assigned;
+                                u8 assigned = m_next_player_id++;
+                                m_peer_ids[event.peer] = assigned;
 
                                 PktServerAccept accept_pkt;
                                 accept_pkt.header = {PacketType::ServerAccept, 0};
                                 accept_pkt.assigned_player_id = assigned;
-                                accept_pkt.max_players = max_players_;
+                                accept_pkt.max_players = m_max_players;
                                 send_packet_to(event.peer, accept_pkt, 0, true);
                             }
                         }
@@ -208,8 +208,8 @@ namespace tetris::net
                             if (event.packet->dataLength >= sizeof(PktServerAccept))
                             {
                                 auto *pkt = reinterpret_cast<const PktServerAccept *>(event.packet->data);
-                                local_player_id_ = pkt->assigned_player_id;
-                                max_players_ = pkt->max_players;
+                                m_local_player_id = pkt->assigned_player_id;
+                                m_max_players = pkt->max_players;
                             }
                         }
                         else if (on_packet_received)
@@ -226,10 +226,10 @@ namespace tetris::net
                     peer = nullptr;
                     if (role == Role::Host)
                     {
-                        peer_ids_.erase(event.peer);
-                        peers_.erase(
-                            std::remove(peers_.begin(), peers_.end(), event.peer),
-                            peers_.end());
+                        m_peer_ids.erase(event.peer);
+                        m_peers.erase(
+                            std::remove(m_peers.begin(), m_peers.end(), event.peer),
+                            m_peers.end());
                     }
                     if (on_disconnected)
                         on_disconnected();
@@ -243,14 +243,14 @@ namespace tetris::net
 
         Role get_role() const { return role; }
         bool is_connected() const { return peer != nullptr; }
-        u8 local_player_id() const { return local_player_id_; }
-        u8 max_players() const { return max_players_; }
-        const std::vector<ENetPeer *> &peers() const { return peers_; }
+        u8 local_player_id() const { return m_local_player_id; }
+        u8 max_players() const { return m_max_players; }
+        const std::vector<ENetPeer *> &peers() const { return m_peers; }
 
         bool try_get_peer_id(ENetPeer *p, u8 &out_id) const
         {
-            auto it = peer_ids_.find(p);
-            if (it == peer_ids_.end())
+            auto it = m_peer_ids.find(p);
+            if (it == m_peer_ids.end())
                 return false;
             out_id = it->second;
             return true;

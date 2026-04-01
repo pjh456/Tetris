@@ -12,16 +12,16 @@ namespace tetris::input
     class InputMapper
     {
     private:
-        std::unordered_map<int, Action> bindings_;
+        std::unordered_map<int, Action> m_bindings;
 
     public:
-        void clear() { bindings_.clear(); }
-        void bind(int key, Action action) { bindings_[key] = action; }
+        void clear() { m_bindings.clear(); }
+        void bind(int key, Action action) { m_bindings[key] = action; }
 
         bool resolve(int key, Action &out_action) const
         {
-            auto it = bindings_.find(key);
-            if (it == bindings_.end())
+            auto it = m_bindings.find(key);
+            if (it == m_bindings.end())
                 return false;
             out_action = it->second;
             return true;

@@ -20,23 +20,23 @@ namespace tetris::net
     class NetGameDriver
     {
     private:
-        NetworkManager &net_;
-        GameSession<W, H> &local_;
-        GameSession<W, H> &remote_;
-        std::function<void(uint32_t seed)> on_game_start_;
+        NetworkManager &m_net;
+        GameSession<W, H> &m_local;
+        GameSession<W, H> &m_remote;
+        std::function<void(uint32_t seed)> m_on_game_start;
 
     public:
         NetGameDriver(
             NetworkManager &net,
             GameSession<W, H> &local,
             GameSession<W, H> &remote)
-            : net_(net), local_(local), remote_(remote)
+            : m_net(net), m_local(local), m_remote(remote)
         {
         }
 
         void set_on_game_start(std::function<void(uint32_t seed)> cb)
         {
-            on_game_start_ = std::move(cb);
+            m_on_game_start = std::move(cb);
         }
 
         void handle_packet(const uint8_t *data, size_t size)
@@ -46,25 +46,25 @@ namespace tetris::net
             if (header->type == PacketType::GameStart)
             {
                 auto *pkt = reinterpret_cast<const PktGameStart *>(data);
-                if (on_game_start_)
-                    on_game_start_(pkt->random_seed);
+                if (m_on_game_start)
+                    m_on_game_start(pkt->random_seed);
             }
             else if (header->type == PacketType::PlayerAction)
             {
                 auto *pkt = reinterpret_cast<const PktPlayerAction *>(data);
                 // 这里不需要处理 remote_session 打出的垃圾行，避免双倍计算
-                remote_.handle_action(pkt->action);
+                m_remote.handle_action(pkt->action);
             }
             else if (header->type == PacketType::PlayerAttack)
             {
                 // 收到对手攻击包，挂载到垃圾行等待列
                 auto *pkt = reinterpret_cast<const PktPlayerAttack *>(data);
-                local_.state().pending_garbage += pkt->lines;
+                m_local.state().pending_garbage += pkt->lines;
             }
             else if (header->type == PacketType::StateSync)
             {
                 auto *pkt = reinterpret_cast<const PktStateSync<W, H> *>(data);
-                auto &rst = remote_.state();
+                auto &rst = m_remote.state();
                 std::memcpy(rst.board.rows, pkt->board_rows, sizeof(pkt->board_rows));
                 rst.piece = pkt->piece;
                 rst.rot = pkt->rot;
@@ -81,25 +81,25 @@ namespace tetris::net
         void send_action(Action act)
         {
             PktPlayerAction action_pkt;
-            action_pkt.header = {PacketType::PlayerAction, (u8)net_.get_role()};
+            action_pkt.header = {PacketType::PlayerAction, (u8)m_net.get_role()};
             action_pkt.action = act;
-            net_.send_packet(action_pkt, 1, true);
+            m_net.send_packet(action_pkt, 1, true);
         }
 
         void send_attack(u8 lines, u8 hole_x)
         {
             PktPlayerAttack atk_pkt;
-            atk_pkt.header = {PacketType::PlayerAttack, (u8)net_.get_role()};
+            atk_pkt.header = {PacketType::PlayerAttack, (u8)m_net.get_role()};
             atk_pkt.lines = lines;
             atk_pkt.hole_x = hole_x;
-            net_.send_packet(atk_pkt, 1, true);
+            m_net.send_packet(atk_pkt, 1, true);
         }
 
         void send_state_sync()
         {
             PktStateSync<W, H> sync_pkt;
-            sync_pkt.header = {PacketType::StateSync, (u8)net_.get_role()};
-            auto snap = make_snapshot(local_.state());
+            sync_pkt.header = {PacketType::StateSync, (u8)m_net.get_role()};
+            auto snap = make_snapshot(m_local.state());
             std::memcpy(sync_pkt.board_rows, snap.board_rows, sizeof(sync_pkt.board_rows));
             sync_pkt.piece = snap.piece;
             sync_pkt.rot = snap.rot;
@@ -109,7 +109,7 @@ namespace tetris::net
             sync_pkt.hold_used = snap.hold_used;
             sync_pkt.pending_garbage = snap.pending_garbage;
             sync_pkt.rng_state = snap.rng;
-            net_.send_packet(sync_pkt, 2, false);
+            m_net.send_packet(sync_pkt, 2, false);
         }
     };
 }

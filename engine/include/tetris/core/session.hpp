@@ -9,17 +9,17 @@ namespace tetris::core
     class GameSession
     {
     private:
-        Engine<W, H> engine_;
+        Engine<W, H> m_engine;
 
     public:
-        void reset(u32 seed = 12345) { engine_.reset(seed); }
-        AttackResult handle_action(Action act) { return engine_.handle_action(act); }
-        AttackResult tick() { return engine_.tick(); }
+        void reset(u32 seed = 12345) { m_engine.reset(seed); }
+        AttackResult handle_action(Action act) { return m_engine.handle_action(act); }
+        AttackResult tick() { return m_engine.tick(); }
 
-        bool is_game_over() const { return engine_.game_over; }
+        bool is_game_over() const { return m_engine.game_over; }
 
-        State<W, H> &state() { return engine_.state; }
-        const State<W, H> &state() const { return engine_.state; }
+        State<W, H> &state() { return m_engine.state; }
+        const State<W, H> &state() const { return m_engine.state; }
     };
 }
 
