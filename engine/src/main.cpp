@@ -225,6 +225,16 @@ int main()
     InputMapper input_mapper;
     bool game_started = false;
     NetGameDriver<10, 20> net_driver(net, local_session, remote_session);
+    std::vector<GameSession<10, 20>> host_sessions;
+    std::vector<bool> host_player_seen;
+
+    if (net.get_role() == NetworkManager::Role::Host)
+    {
+        host_sessions.resize(net.max_players());
+        host_player_seen.assign(net.max_players(), false);
+        if (!host_player_seen.empty())
+            host_player_seen[0] = true;
+    }
 
     input_mapper.bind('a', Action::MoveLeft);
     input_mapper.bind('A', Action::MoveLeft);
@@ -246,18 +256,57 @@ int main()
 
     auto on_game_start = [&](uint32_t seed)
     {
-        local_session.reset(seed);
-        remote_session.reset(seed);
+        if (net.get_role() == NetworkManager::Role::Host)
+        {
+            for (auto &s : host_sessions)
+                s.reset(seed);
+        }
+        else
+        {
+            local_session.reset(seed);
+            remote_session.reset(seed);
+        }
         game_started = true;
         renderer.clear_screen();
     };
     net.on_game_start = on_game_start;
     net_driver.set_on_game_start(on_game_start);
 
-    net.on_packet_received = [&](const uint8_t *data, size_t size)
+    if (net.get_role() == NetworkManager::Role::Host)
     {
-        net_driver.handle_packet(data, size);
-    };
+        net.on_packet_received = [&](const uint8_t *data, size_t size)
+        {
+            if (size < sizeof(PacketHeader))
+                return;
+            auto *header = reinterpret_cast<const PacketHeader *>(data);
+            if (header->type == PacketType::PlayerAction)
+            {
+                auto *pkt = reinterpret_cast<const PktPlayerAction *>(data);
+                u8 pid = header->player_id;
+                if (pid < host_sessions.size())
+                {
+                    host_player_seen[pid] = true;
+                    auto res = host_sessions[pid].handle_action(pkt->action);
+                    if (res.damage > 0)
+                    {
+                        for (u8 i = 0; i < host_sessions.size(); ++i)
+                        {
+                            if (i == pid)
+                                continue;
+                            host_sessions[i].state().pending_garbage += (u8)res.damage;
+                        }
+                    }
+                }
+            }
+        };
+    }
+    else
+    {
+        net.on_packet_received = [&](const uint8_t *data, size_t size)
+        {
+            net_driver.handle_packet(data, size);
+        };
+    }
 
     net.on_disconnected = [&]()
     {
@@ -357,17 +406,29 @@ int main()
                 valid_action = input_mapper.resolve(c, act);
             }
 
-            if (valid_action && !local_session.is_game_over())
+            if (valid_action)
             {
-                auto res = local_session.handle_action(act);
-
-                // 发送操作包同步姿态
-                net_driver.send_action(act);
-
-                // ！！关键修复：如果有伤害，发送给对手 ！！
-                if (res.damage > 0)
+                if (net.get_role() == NetworkManager::Role::Host)
                 {
-                    net_driver.send_attack(res.damage, local_session.state().rng % 10);
+                    if (!host_sessions[0].is_game_over())
+                    {
+                        auto res = host_sessions[0].handle_action(act);
+                        if (res.damage > 0)
+                        {
+                            for (u8 i = 1; i < host_sessions.size(); ++i)
+                                host_sessions[i].state().pending_garbage += (u8)res.damage;
+                        }
+                    }
+                }
+                else
+                {
+                    if (!local_session.is_game_over())
+                    {
+                        auto res = local_session.handle_action(act);
+                        (void)res;
+                        // 只发送操作，由服务器权威计算伤害
+                        net_driver.send_action(act);
+                    }
                 }
             }
         }
@@ -375,13 +436,26 @@ int main()
         // 2. 游戏自然下落 (重力 Tick)
         if (now - last_tick > std::chrono::milliseconds(500))
         {
-            auto res = local_session.tick();
-            remote_session.tick();
-
-            // 自然下落也可能锁定方块并造成伤害，同理发送
-            if (res.damage > 0)
+            if (net.get_role() == NetworkManager::Role::Host)
             {
-                net_driver.send_attack(res.damage, local_session.state().rng % 10);
+                for (u8 i = 0; i < host_sessions.size(); ++i)
+                {
+                    auto res = host_sessions[i].tick();
+                    if (res.damage > 0)
+                    {
+                        for (u8 j = 0; j < host_sessions.size(); ++j)
+                        {
+                            if (j == i)
+                                continue;
+                            host_sessions[j].state().pending_garbage += (u8)res.damage;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                local_session.tick();
+                remote_session.tick();
             }
 
             last_tick = now;
@@ -390,13 +464,46 @@ int main()
         // 3. 状态快照兜底同步 (完善了遗漏的数据结构传输)
         if (now - last_sync > std::chrono::milliseconds(200))
         {
-            net_driver.send_state_sync();
+            if (net.get_role() == NetworkManager::Role::Host)
+            {
+                for (u8 i = 0; i < host_sessions.size(); ++i)
+                {
+                    if (!host_player_seen[i])
+                        continue;
+                    PktStateSync<10, 20> sync_pkt;
+                    sync_pkt.header = {PacketType::StateSync, i};
+                    auto snap = make_snapshot(host_sessions[i].state());
+                    std::memcpy(sync_pkt.board_rows, snap.board_rows, sizeof(sync_pkt.board_rows));
+                    sync_pkt.piece = snap.piece;
+                    sync_pkt.rot = snap.rot;
+                    sync_pkt.x = snap.x;
+                    sync_pkt.y = snap.y;
+                    sync_pkt.hold = snap.hold;
+                    sync_pkt.hold_used = snap.hold_used;
+                    sync_pkt.pending_garbage = snap.pending_garbage;
+                    sync_pkt.rng_state = snap.rng;
+                    net.broadcast_packet(sync_pkt, 2, false);
+                }
+            }
+            else
+            {
+                // 客户端不再发送状态同步，由服务器权威广播
+            }
             last_sync = now;
         }
 
         // 4. 渲染画面
-        renderer.render_board(local_session.state(), 5, 2, "YOU (Local)");
-        renderer.render_board(remote_session.state(), 40, 2, "OPPONENT (Remote)");
+        if (net.get_role() == NetworkManager::Role::Host)
+        {
+            renderer.render_board(host_sessions[0].state(), 5, 2, "YOU (Host)");
+            if (host_sessions.size() > 1)
+                renderer.render_board(host_sessions[1].state(), 40, 2, "OPPONENT (Remote)");
+        }
+        else
+        {
+            renderer.render_board(local_session.state(), 5, 2, "YOU (Local)");
+            renderer.render_board(remote_session.state(), 40, 2, "OPPONENT (Remote)");
+        }
 
         renderer.move_cursor(5, 25);
         std::cout << "Controls: \033[36mArrow Keys / WASD\033[0m(Move&Drop) "
