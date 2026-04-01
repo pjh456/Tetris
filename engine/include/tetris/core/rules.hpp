@@ -17,7 +17,7 @@ namespace tetris::core
         if (x < 0)
             wall_mask |= (1 << -x) - 1; // 左墙遮挡位
         if (x + 4 > W)
-            wall_mask |= (0xFFFF << std::max(0, W - x)); // 右墙遮挡位
+            wall_mask |= (0xFFFF << ((W - x) > 0 ? (W - x) : 0)); // 右墙遮挡位
 
         for (int i = 0; i < 4; i++)
         {

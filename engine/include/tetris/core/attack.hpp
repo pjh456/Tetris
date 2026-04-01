@@ -102,7 +102,8 @@ namespace tetris::core
         // 3. Combo 加成计算
         // 现代 Combo 伤害递增表 (0次无加成，第1/2次+1，第3/4次+2...)
         const int combo_dmg[] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 4, 5};
-        int combo_idx = std::min(st.combo, (int)(sizeof(combo_dmg) / sizeof(combo_dmg[0]) - 1));
+        int max_combo_idx = (int)(sizeof(combo_dmg) / sizeof(combo_dmg[0]) - 1);
+        int combo_idx = (st.combo < max_combo_idx) ? st.combo : max_combo_idx;
         res.damage += combo_dmg[combo_idx];
         st.combo++; // 更新 Combo 计数器
 
