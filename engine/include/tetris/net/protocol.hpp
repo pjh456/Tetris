@@ -43,6 +43,20 @@ namespace tetris::net
         u32 random_seed; // 保证双方发牌序列完全一致的核心
     };
 
+    // 0. 客机加入请求 (共 2 字节) - 可靠通道
+    struct PktClientJoin
+    {
+        PacketHeader header;
+    };
+
+    // 0.1 服务器接纳并分配 ID (共 4 字节) - 可靠通道
+    struct PktServerAccept
+    {
+        PacketHeader header;
+        u8 assigned_player_id;
+        u8 max_players;
+    };
+
     // 2. 玩家操作包 (共 3 字节) - 走可靠或有序不可靠通道
     struct PktPlayerAction
     {
