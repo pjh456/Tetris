@@ -353,6 +353,7 @@ int main()
 
     auto last_tick = std::chrono::steady_clock::now();
     auto last_sync = std::chrono::steady_clock::now();
+    auto last_wait_render = std::chrono::steady_clock::now();
 
     while (true)
     {
@@ -360,6 +361,43 @@ int main()
 
         if (!game_started)
         {
+            if (net.get_role() == NetworkManager::Role::Host)
+            {
+                if (_kbhit())
+                {
+                    int c = _getch();
+                    if (c == 'g' || c == 'G')
+                    {
+                        PktGameStart start_pkt;
+                        start_pkt.header = {PacketType::GameStart, 0};
+                        start_pkt.random_seed = (u32)std::chrono::steady_clock::now().time_since_epoch().count();
+                        net.broadcast_packet(start_pkt, 0, true);
+                        on_game_start(start_pkt.random_seed);
+                    }
+                }
+
+                auto now = std::chrono::steady_clock::now();
+                if (now - last_wait_render > std::chrono::milliseconds(300))
+                {
+                    renderer.clear_screen();
+                    size_t connected = net.peers().size() + 1;
+                    std::cout << "=== TETRIS LAN MULTIPLAYER (HOST) ===\n";
+                    std::cout << "Players: " << connected << " / " << (int)net.max_players() << "\n";
+                    std::cout << "Press G to start game...\n";
+                    last_wait_render = now;
+                }
+            }
+            else
+            {
+                auto now = std::chrono::steady_clock::now();
+                if (now - last_wait_render > std::chrono::milliseconds(300))
+                {
+                    renderer.clear_screen();
+                    std::cout << "=== TETRIS LAN MULTIPLAYER (CLIENT) ===\n";
+                    std::cout << "Waiting for host to start...\n";
+                    last_wait_render = now;
+                }
+            }
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             continue;
         }

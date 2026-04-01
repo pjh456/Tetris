@@ -166,7 +166,6 @@ namespace tetris::net
                     peer = event.peer;
                     std::cout << "Connected to a peer!" << std::endl;
 
-                    // 【极简对战逻辑】：如果是 Server，有人连进来就直接发 GameStart 并下发随机数种子！
                     if (role == Role::Host)
                     {
                         if (m_peers.size() >= m_max_players)
@@ -176,15 +175,6 @@ namespace tetris::net
                         }
                         m_peers.push_back(event.peer);
 
-                        PktGameStart start_pkt;
-                        start_pkt.header = {PacketType::GameStart, 0};
-                        start_pkt.random_seed = 202405; // MVP 先写死或者用 time()
-
-                        send_packet(start_pkt, 0, true);
-
-                        // Server 本地也触发 GameStart
-                        if (on_game_start)
-                            on_game_start(start_pkt.random_seed);
                     }
                     else if (role == Role::Client)
                     {

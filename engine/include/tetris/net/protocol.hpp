@@ -19,6 +19,7 @@ namespace tetris::net
     {
         ClientJoin = 1, // 客机请求加入
         ServerAccept,   // 主机同意加入，分配玩家ID
+        HostStart,      // 主机开始游戏 (广播)
         GameStart,      // 游戏开始 (下发随机数种子)
         PlayerAction,   // 玩家输入操作 (极低开销)
         PlayerAttack,   // 玩家发送垃圾行 (可靠到达)
@@ -55,6 +56,12 @@ namespace tetris::net
         PacketHeader header;
         u8 assigned_player_id;
         u8 max_players;
+    };
+
+    // 0.2 主机开始游戏广播 (共 2 字节)
+    struct PktHostStart
+    {
+        PacketHeader header;
     };
 
     // 2. 玩家操作包 (共 3 字节) - 走可靠或有序不可靠通道
