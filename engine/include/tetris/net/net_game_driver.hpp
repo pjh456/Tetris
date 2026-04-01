@@ -81,7 +81,7 @@ namespace tetris::net
         void send_action(Action act)
         {
             PktPlayerAction action_pkt;
-            action_pkt.header = {PacketType::PlayerAction, (u8)m_net.get_role()};
+            action_pkt.header = {PacketType::PlayerAction, m_net.local_player_id()};
             action_pkt.action = act;
             m_net.send_packet(action_pkt, 1, true);
         }
@@ -89,7 +89,7 @@ namespace tetris::net
         void send_attack(u8 lines, u8 hole_x)
         {
             PktPlayerAttack atk_pkt;
-            atk_pkt.header = {PacketType::PlayerAttack, (u8)m_net.get_role()};
+            atk_pkt.header = {PacketType::PlayerAttack, m_net.local_player_id()};
             atk_pkt.lines = lines;
             atk_pkt.hole_x = hole_x;
             m_net.send_packet(atk_pkt, 1, true);
@@ -98,7 +98,7 @@ namespace tetris::net
         void send_state_sync()
         {
             PktStateSync<W, H> sync_pkt;
-            sync_pkt.header = {PacketType::StateSync, (u8)m_net.get_role()};
+            sync_pkt.header = {PacketType::StateSync, m_net.local_player_id()};
             auto snap = make_snapshot(m_local.state());
             std::memcpy(sync_pkt.board_rows, snap.board_rows, sizeof(sync_pkt.board_rows));
             sync_pkt.piece = snap.piece;
