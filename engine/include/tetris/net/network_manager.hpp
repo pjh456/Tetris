@@ -36,10 +36,31 @@ namespace tetris::net
         ENetPeer *peer = nullptr; // 客机只需要记录服务器 peer
         std::vector<ENetPeer *> m_peers; // 服务器端保存所有客户端 peer
         std::unordered_map<ENetPeer *, u8> m_peer_ids;
+        std::vector<bool> m_id_in_use;
         Role role = Role::None;
         u8 m_local_player_id = 0;
         u8 m_max_players = 8;
-        u8 m_next_player_id = 1;
+
+        u8 allocate_player_id()
+        {
+            if (m_id_in_use.empty())
+                return 0xFF;
+            for (u8 i = 1; i < m_max_players; ++i)
+            {
+                if (!m_id_in_use[i])
+                {
+                    m_id_in_use[i] = true;
+                    return i;
+                }
+            }
+            return 0xFF;
+        }
+
+        void release_player_id(u8 id)
+        {
+            if (id < m_id_in_use.size())
+                m_id_in_use[id] = false;
+        }
 
     public:
         NetworkManager()
@@ -73,7 +94,9 @@ namespace tetris::net
             role = Role::Host;
             m_local_player_id = 0;
             m_max_players = max_players;
-            m_next_player_id = 1;
+            m_id_in_use.assign(max_players, false);
+            if (!m_id_in_use.empty())
+                m_id_in_use[0] = true;
             std::cout << "Server started on port " << port << std::endl;
             return true;
         }
@@ -91,12 +114,13 @@ namespace tetris::net
             address.port = port;
 
             // 发起连接，通道数设为 2
-            peer = enet_host_connect(host, &address, 2, 0);
+            peer = enet_host_connect(host, &address, 3, 0);
             if (!peer)
                 return false;
 
             role = Role::Client;
             m_local_player_id = 0;
+            m_id_in_use.clear();
             std::cout << "Connecting to " << ip << ":" << port << "..." << std::endl;
             return true;
         }
@@ -112,6 +136,7 @@ namespace tetris::net
             }
             m_peers.clear();
             m_peer_ids.clear();
+            m_id_in_use.clear();
             role = Role::None;
         }
 
@@ -191,9 +216,17 @@ namespace tetris::net
                         auto *header = reinterpret_cast<const PacketHeader *>(event.packet->data);
                         if (header->type == PacketType::ClientJoin && role == Role::Host)
                         {
-                            if (m_peer_ids.count(event.peer) == 0 && m_next_player_id < m_max_players)
+                            if (m_peer_ids.count(event.peer) == 0)
                             {
-                                u8 assigned = m_next_player_id++;
+                                u8 assigned = allocate_player_id();
+                                if (assigned == 0xFF)
+                                {
+                                    enet_peer_disconnect(event.peer, 0);
+                                    m_peers.erase(
+                                        std::remove(m_peers.begin(), m_peers.end(), event.peer),
+                                        m_peers.end());
+                                    break;
+                                }
                                 m_peer_ids[event.peer] = assigned;
 
                                 PktServerAccept accept_pkt;
@@ -226,7 +259,12 @@ namespace tetris::net
                     peer = nullptr;
                     if (role == Role::Host)
                     {
-                        m_peer_ids.erase(event.peer);
+                        auto it = m_peer_ids.find(event.peer);
+                        if (it != m_peer_ids.end())
+                        {
+                            release_player_id(it->second);
+                            m_peer_ids.erase(it);
+                        }
                         m_peers.erase(
                             std::remove(m_peers.begin(), m_peers.end(), event.peer),
                             m_peers.end());
@@ -246,6 +284,25 @@ namespace tetris::net
         u8 local_player_id() const { return m_local_player_id; }
         u8 max_players() const { return m_max_players; }
         const std::vector<ENetPeer *> &peers() const { return m_peers; }
+        size_t connected_count() const
+        {
+            if (role != Role::Host)
+                return is_connected() ? 1 : 0;
+            size_t count = 0;
+            for (bool used : m_id_in_use)
+            {
+                if (used)
+                    ++count;
+            }
+            return count;
+        }
+
+        bool is_player_connected(u8 id) const
+        {
+            if (role != Role::Host)
+                return id == m_local_player_id;
+            return id < m_id_in_use.size() && m_id_in_use[id];
+        }
 
         bool try_get_peer_id(ENetPeer *p, u8 &out_id) const
         {

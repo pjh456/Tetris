@@ -228,7 +228,8 @@ int main()
     NetGameDriver<10, 20> net_driver(net, local_session, local_session);
     std::vector<GameSession<10, 20>> host_sessions;
     std::vector<bool> host_player_seen;
-    u8 observed_player_id = 1;
+    u8 observed_player_id = 0xFF;
+    bool observed_initialized = false;
 
     if (net.get_role() == NetworkManager::Role::Host)
     {
@@ -275,6 +276,8 @@ int main()
                 s.reset(seed);
             for (size_t i = 0; i < remote_player_seen.size(); ++i)
                 remote_player_seen[i] = false;
+            observed_player_id = 0xFF;
+            observed_initialized = false;
         }
         game_started = true;
         renderer.clear_screen();
@@ -293,7 +296,7 @@ int main()
             {
                 auto *pkt = reinterpret_cast<const PktPlayerAction *>(data);
                 u8 pid = header->player_id;
-                if (pid < host_sessions.size())
+                if (pid < host_sessions.size() && net.is_player_connected(pid))
                 {
                     host_player_seen[pid] = true;
                     auto res = host_sessions[pid].handle_action(pkt->action);
@@ -303,7 +306,8 @@ int main()
                         {
                             if (i == pid)
                                 continue;
-                            host_sessions[i].state().pending_garbage += (u8)res.damage;
+                            if (net.is_player_connected(i))
+                                host_sessions[i].state().pending_garbage += (u8)res.damage;
                         }
                     }
                 }
@@ -334,6 +338,19 @@ int main()
                     rst.hold_used = pkt->hold_used;
                     rst.pending_garbage = pkt->pending_garbage;
                     rst.rng = pkt->rng_state;
+                }
+                u8 local_id = net.local_player_id();
+                bool local_valid = (local_id != 0);
+                bool observed_invalid = (observed_player_id >= remote_sessions.size()) ||
+                                        !remote_player_seen[observed_player_id] ||
+                                        (local_valid && observed_player_id == local_id);
+                if (!observed_initialized || observed_invalid)
+                {
+                    if (!local_valid || pid != local_id)
+                    {
+                        observed_player_id = pid;
+                        observed_initialized = true;
+                    }
                 }
             }
             else
@@ -380,10 +397,11 @@ int main()
                 if (now - last_wait_render > std::chrono::milliseconds(300))
                 {
                     renderer.clear_screen();
-                    size_t connected = net.peers().size() + 1;
+                    size_t connected = net.connected_count();
                     std::cout << "=== TETRIS LAN MULTIPLAYER (HOST) ===\n";
                     std::cout << "Players: " << connected << " / " << (int)net.max_players() << "\n";
                     std::cout << "Press G to start game...\n";
+                    std::cout << std::flush;
                     last_wait_render = now;
                 }
             }
@@ -395,6 +413,7 @@ int main()
                     renderer.clear_screen();
                     std::cout << "=== TETRIS LAN MULTIPLAYER (CLIENT) ===\n";
                     std::cout << "Waiting for host to start...\n";
+                    std::cout << std::flush;
                     last_wait_render = now;
                 }
             }
@@ -489,9 +508,21 @@ int main()
                 {
                     if (remote_sessions.size() > 1)
                     {
-                        observed_player_id = (u8)((observed_player_id + 1) % remote_sessions.size());
-                        if (observed_player_id == 0 && remote_sessions.size() > 1)
-                            observed_player_id = 1;
+                        u8 local_id = net.local_player_id();
+                        bool local_valid = (local_id != 0);
+                        u8 next_id = observed_player_id;
+                        for (size_t step = 0; step < remote_sessions.size(); ++step)
+                        {
+                            next_id = (u8)((next_id + 1) % remote_sessions.size());
+                            if (local_valid && next_id == local_id)
+                                continue;
+                            if (remote_player_seen[next_id])
+                            {
+                                observed_player_id = next_id;
+                                break;
+                            }
+                        }
+                        observed_initialized = true;
                     }
                 }
                 valid_action = false;
@@ -511,7 +542,10 @@ int main()
                         if (res.damage > 0)
                         {
                             for (u8 i = 1; i < host_sessions.size(); ++i)
-                                host_sessions[i].state().pending_garbage += (u8)res.damage;
+                            {
+                                if (net.is_player_connected(i))
+                                    host_sessions[i].state().pending_garbage += (u8)res.damage;
+                            }
                         }
                     }
                 }
@@ -522,7 +556,8 @@ int main()
                         auto res = local_session.handle_action(act);
                         (void)res;
                         // 只发送操作，由服务器权威计算伤害
-                        net_driver.send_action(act);
+                        if (net.local_player_id() != 0)
+                            net_driver.send_action(act);
                     }
                 }
             }
@@ -535,6 +570,8 @@ int main()
             {
                 for (u8 i = 0; i < host_sessions.size(); ++i)
                 {
+                    if (!net.is_player_connected(i))
+                        continue;
                     auto res = host_sessions[i].tick();
                     if (res.damage > 0)
                     {
@@ -542,7 +579,8 @@ int main()
                         {
                             if (j == i)
                                 continue;
-                            host_sessions[j].state().pending_garbage += (u8)res.damage;
+                            if (net.is_player_connected(j))
+                                host_sessions[j].state().pending_garbage += (u8)res.damage;
                         }
                     }
                 }
@@ -562,7 +600,7 @@ int main()
             {
                 for (u8 i = 0; i < host_sessions.size(); ++i)
                 {
-                    if (!host_player_seen[i])
+                    if (!net.is_player_connected(i))
                         continue;
                     PktStateSync<10, 20> sync_pkt;
                     sync_pkt.header = {PacketType::StateSync, i};
@@ -591,13 +629,47 @@ int main()
         {
             renderer.render_board(host_sessions[0].state(), 5, 2, "YOU (Host)");
             if (host_sessions.size() > 1)
-                renderer.render_board(host_sessions[observed_player_id].state(), 40, 2, "OPPONENT (Remote)");
+            {
+                if (!net.is_player_connected(observed_player_id) || observed_player_id == 0)
+                {
+                    for (u8 i = 1; i < host_sessions.size(); ++i)
+                    {
+                        if (net.is_player_connected(i))
+                        {
+                            observed_player_id = i;
+                            break;
+                        }
+                    }
+                }
+                if (net.is_player_connected(observed_player_id) && observed_player_id < host_sessions.size())
+                    renderer.render_board(host_sessions[observed_player_id].state(), 40, 2, "OPPONENT (Remote)");
+            }
         }
         else
         {
             renderer.render_board(local_session.state(), 5, 2, "YOU (Local)");
             if (remote_sessions.size() > 1)
-                renderer.render_board(remote_sessions[observed_player_id].state(), 40, 2, "OPPONENT (Remote)");
+            {
+                u8 local_id = net.local_player_id();
+                bool local_valid = (local_id != 0);
+                if (observed_player_id >= remote_sessions.size() ||
+                    !remote_player_seen[observed_player_id] ||
+                    (local_valid && observed_player_id == local_id))
+                {
+                    for (u8 i = 0; i < remote_sessions.size(); ++i)
+                    {
+                        if (local_valid && i == local_id)
+                            continue;
+                        if (remote_player_seen[i])
+                        {
+                            observed_player_id = i;
+                            break;
+                        }
+                    }
+                }
+                if (observed_player_id < remote_sessions.size() && remote_player_seen[observed_player_id])
+                    renderer.render_board(remote_sessions[observed_player_id].state(), 40, 2, "OPPONENT (Remote)");
+            }
         }
 
         renderer.move_cursor(5, 25);
