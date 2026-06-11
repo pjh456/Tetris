@@ -1,4 +1,6 @@
-use tetris_core::engine::{Action, Engine};
+#[cfg(target_arch = "wasm32")]
+use tetris_core::engine::Action;
+use tetris_core::engine::Engine;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
