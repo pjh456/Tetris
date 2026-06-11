@@ -173,17 +173,46 @@ async function startSingleGame(root: HTMLElement) {
   const holdRenderer = createPreviewRenderer(holdCanvas, { showGrid: true });
   const nextRenderer = createNextStackRenderer(nextCanvas);
 
-  const Module = await createTetrisModule({
-    locateFile: (path: string) => {
-      if (path.endsWith('.wasm')) {
-        return wasmUrl;
+  let Module: any;
+  try {
+    Module = await createTetrisModule({
+      locateFile: (path: string) => {
+        if (path.endsWith('.wasm')) {
+          return wasmUrl;
+        }
+        return path;
       }
-      return path;
+    });
+  } catch (err) {
+    console.error('Failed to load WASM module:', err);
+    const appRoot = document.getElementById('app');
+    if (appRoot) {
+      appRoot.innerHTML = '<div style="color:red;padding:20px;">Failed to load game engine. Please refresh or try a different browser.</div>';
     }
-  });
+    return;
+  }
+
+  if (!Module || !Module.WebTetris) {
+    console.error('WASM module loaded but WebTetris class is missing');
+    const appRoot = document.getElementById('app');
+    if (appRoot) {
+      appRoot.innerHTML = '<div style="color:red;padding:20px;">Game engine initialized incorrectly. Please refresh.</div>';
+    }
+    return;
+  }
 
   const seed = Date.now() >>> 0;
-  const game = new Module.WebTetris(seed);
+  let game: any;
+  try {
+    game = new Module.WebTetris(seed);
+  } catch (err) {
+    console.error('Failed to create WebTetris instance:', err);
+    const appRoot = document.getElementById('app');
+    if (appRoot) {
+      appRoot.innerHTML = '<div style="color:red;padding:20px;">Failed to start game. Please refresh.</div>';
+    }
+    return;
+  }
 
   const cell = boardCanvas.height / 20;
 
