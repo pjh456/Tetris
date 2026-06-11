@@ -1,0 +1,6 @@
+[package]
+name = "tetris-ai"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]

@@ -1,8 +1,10 @@
 # IDE
 .vscode/
 
-# Build Artifact
-build/
+# Rust Build
+target/
+crates/tetris-wasm/pkg/
+webui/wasm/
 
 # Agent
 AGENTS.md

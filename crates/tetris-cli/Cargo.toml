@@ -1,0 +1,12 @@
+[package]
+name = "tetris-cli"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tetris-core = { path = "../tetris-core" }
+tetris-net = { path = "../tetris-net" }
+ratatui = "0.30"
+crossterm = "0.29"
+tokio = { version = "1.52", features = ["full"] }
+anyhow.workspace = true

@@ -1,0 +1,138 @@
+use tetris_core::engine::{Action, Engine};
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+
+mod utils;
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+#[allow(dead_code)]
+pub struct WebTetris {
+    engine: Engine<10, 20>,
+    has_hold: bool,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+impl WebTetris {
+    #[wasm_bindgen(constructor)]
+    pub fn new(seed: u32) -> Self {
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset(seed);
+        WebTetris {
+            engine,
+            has_hold: false,
+        }
+    }
+
+    pub fn reset(&mut self, seed: u32) {
+        self.has_hold = false;
+        self.engine.reset(seed);
+    }
+
+    pub fn tick(&mut self) -> JsValue {
+        let result = self.engine.tick();
+        serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL)
+    }
+
+    pub fn handle_action(&mut self, action_val: u8) -> JsValue {
+        let action = Action::from_u8(action_val);
+        let result = self.engine.handle_action(action);
+        if action == Action::Hold {
+            self.has_hold = true;
+        }
+        serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL)
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn is_game_over(&self) -> bool {
+        self.engine.game_over
+    }
+
+    pub fn get_grid(&self) -> js_sys::Uint8Array {
+        let ghost_y = tetris_core::rules::get_ghost_y(&self.engine.state);
+        let grid = utils::build_grid(&self.engine.state, ghost_y, self.engine.game_over);
+        let arr = js_sys::Uint8Array::new_with_length(200);
+        for (i, &v) in grid.iter().enumerate() {
+            arr.set_index(i as u32, v);
+        }
+        arr
+    }
+
+    pub fn get_hold(&self) -> i32 {
+        if !self.has_hold {
+            -1
+        } else {
+            self.engine.state.hold as i32
+        }
+    }
+
+    pub fn get_next(&self) -> js_sys::Uint8Array {
+        let next = utils::build_next(&self.engine.state);
+        let arr = js_sys::Uint8Array::new_with_length(5);
+        for (i, &v) in next.iter().enumerate() {
+            arr.set_index(i as u32, v);
+        }
+        arr
+    }
+
+    pub fn would_hit_wall(&self, dx: i8) -> bool {
+        let test_x = self.engine.state.x + dx;
+        !tetris_core::rules::can_place(
+            &self.engine.state,
+            test_x,
+            self.engine.state.y,
+            self.engine.state.rot,
+        )
+    }
+
+    pub fn can_move(&self, dx: i8) -> bool {
+        let test_x = self.engine.state.x + dx;
+        tetris_core::rules::can_place(
+            &self.engine.state,
+            test_x,
+            self.engine.state.y,
+            self.engine.state.rot,
+        )
+    }
+
+    pub fn get_last_clear_mask(&mut self) -> u32 {
+        let mask = self.engine.state.last_clear_mask;
+        self.engine.state.last_clear_mask = 0;
+        mask
+    }
+
+    pub fn get_last_hard_drop_info(&self) -> JsValue {
+        let info = serde_wasm_bindgen::to_value(&utils::HardDropInfo {
+            cols: self.engine.state.last_harddrop_cols,
+            start_y: self.engine.state.last_harddrop_start_y,
+            end_y: self.engine.state.last_harddrop_end_y,
+            piece: self.engine.state.last_harddrop_piece as u8,
+        });
+        info.unwrap_or(JsValue::NULL)
+    }
+
+    pub fn get_lock_timer(&self) -> u16 {
+        self.engine.get_lock_timer().max(0) as u16
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[allow(dead_code)]
+pub struct WebTetris {
+    #[allow(dead_code)]
+    pub engine: Engine<10, 20>,
+    has_hold: bool,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl WebTetris {
+    pub fn new(seed: u32) -> Self {
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset(seed);
+        WebTetris {
+            engine,
+            has_hold: false,
+        }
+    }
+}

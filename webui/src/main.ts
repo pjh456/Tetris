@@ -1,7 +1,6 @@
 import './style.css';
 
-import createTetrisModule from '@engine/tetris_wasm.js';
-import wasmUrl from '@engine/tetris_wasm.wasm?url';
+import init, { WebTetris } from '../wasm/tetris_wasm.js';
 import { Actions } from './game/actions';
 import { bindKeyboard } from './input/keyboard';
 import { createBoardRenderer } from './render/board';
@@ -124,8 +123,8 @@ async function startSingleGame(root: HTMLElement) {
   boardFrame.style.boxShadow = '0 0 20px rgba(80, 160, 255, 0.45)';
 
   const boardCanvas = document.createElement('canvas');
-  boardCanvas.width = 360; // 10列 * 36px
-  boardCanvas.height = 720; // 20行 * 36px
+  boardCanvas.width = 360;
+  boardCanvas.height = 720;
 
   const fxCanvas = document.createElement('canvas');
   fxCanvas.width = boardCanvas.width;
@@ -157,7 +156,7 @@ async function startSingleGame(root: HTMLElement) {
 
   const nextCanvas = document.createElement('canvas');
   nextCanvas.width = 180;
-  nextCanvas.height = 480; // 约 2/3 棋盘高度
+  nextCanvas.height = 480;
   nextCanvas.style.border = '3px solid rgba(140, 200, 255, 0.95)';
   nextCanvas.style.background = 'rgba(7, 10, 18, 0.9)';
   nextCanvas.style.boxShadow = '0 0 12px rgba(80, 160, 255, 0.35)';
@@ -173,16 +172,11 @@ async function startSingleGame(root: HTMLElement) {
   const holdRenderer = createPreviewRenderer(holdCanvas, { showGrid: true });
   const nextRenderer = createNextStackRenderer(nextCanvas);
 
-  let Module: any;
+  let game: WebTetris;
   try {
-    Module = await createTetrisModule({
-      locateFile: (path: string) => {
-        if (path.endsWith('.wasm')) {
-          return wasmUrl;
-        }
-        return path;
-      }
-    });
+    await init();
+    const seed = Date.now() >>> 0;
+    game = new WebTetris(seed);
   } catch (err) {
     console.error('Failed to load WASM module:', err);
     const appRoot = document.getElementById('app');
@@ -192,39 +186,17 @@ async function startSingleGame(root: HTMLElement) {
     return;
   }
 
-  if (!Module || !Module.WebTetris) {
-    console.error('WASM module loaded but WebTetris class is missing');
-    const appRoot = document.getElementById('app');
-    if (appRoot) {
-      appRoot.innerHTML = '<div style="color:red;padding:20px;">Game engine initialized incorrectly. Please refresh.</div>';
-    }
-    return;
-  }
-
-  const seed = Date.now() >>> 0;
-  let game: any;
-  try {
-    game = new Module.WebTetris(seed);
-  } catch (err) {
-    console.error('Failed to create WebTetris instance:', err);
-    const appRoot = document.getElementById('app');
-    if (appRoot) {
-      appRoot.innerHTML = '<div style="color:red;padding:20px;">Failed to start game. Please refresh.</div>';
-    }
-    return;
-  }
-
   const cell = boardCanvas.height / 20;
 
   const render = () => {
-    const grid = game.getGrid();
+    const grid = game.get_grid();
     renderer.render(grid);
-    const hold = game.getHold() as number;
+    const hold = game.get_hold() as number;
     holdRenderer.render(hold);
-    const next = game.getNext() as number[];
+    const next = game.get_next() as Uint8Array;
     nextRenderer.render(next);
 
-    const clearMask = game.getLastClearMask() as number;
+    const clearMask = game.get_last_clear_mask() as number;
     if (clearMask) {
       for (let row = 0; row < 20; row++) {
         if (clearMask & (1 << row)) {
@@ -233,12 +205,12 @@ async function startSingleGame(root: HTMLElement) {
       }
     }
 
-    const hardDropInfo = game.getLastHardDropInfo?.();
+    const hardDropInfo = game.get_last_hard_drop_info();
     if (hardDropInfo) {
-      const mask = hardDropInfo[0] as number;
-      const yStart = hardDropInfo[1] as number;
-      const yEnd = hardDropInfo[2] as number;
-      const piece = hardDropInfo[3] as number;
+      const mask = hardDropInfo.cols as number;
+      const yStart = hardDropInfo.start_y as number;
+      const yEnd = hardDropInfo.end_y as number;
+      const piece = hardDropInfo.piece as number;
       const color = GRID_COLORS[piece + 3] ?? '#c8f0ff';
       fx.triggerColumnBurst(mask, yStart * cell, yEnd * cell, color);
     }
@@ -276,10 +248,7 @@ async function startSingleGame(root: HTMLElement) {
   };
 
   const canMove = (dx: number) => {
-    if (typeof game.canMove === 'function') {
-      return game.canMove(dx) as boolean;
-    }
-    return !game.wouldHitWall?.(dx);
+    return game.can_move(dx) as boolean;
   };
 
   bindKeyboard({
@@ -311,9 +280,9 @@ async function startSingleGame(root: HTMLElement) {
           }, 70);
         }
       }
-      game.handleAction(action);
+      game.handle_action(action);
     },
-    isGameOver: () => game.isGameOver(),
+    isGameOver: () => game.is_game_over,
     render,
     onRelease: (action) => {
       if (action === Actions.MoveLeft) {
@@ -327,7 +296,7 @@ async function startSingleGame(root: HTMLElement) {
   let lastTick = performance.now();
   let lastFx = performance.now();
   function gameLoop(time: number) {
-    if (!game.isGameOver()) {
+    if (!game.is_game_over) {
       if (time - lastTick > 500) {
         game.tick();
         lastTick = time;

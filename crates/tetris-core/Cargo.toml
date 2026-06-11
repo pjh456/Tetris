@@ -1,0 +1,13 @@
+[package]
+name = "tetris-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+instant = "0.1"
+
+[dev-dependencies]
+rstest.workspace = true
+proptest.workspace = true
