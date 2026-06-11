@@ -17,6 +17,7 @@ namespace tetris::core
         AttackResult tick() { return m_engine.tick(); }
 
         bool is_game_over() const { return m_engine.game_over; }
+        int get_lock_timer() const { return m_engine.get_lock_timer(); }
 
         State<W, H> &state() { return m_engine.state; }
         const State<W, H> &state() const { return m_engine.state; }

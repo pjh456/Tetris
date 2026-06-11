@@ -152,6 +152,8 @@ public:
         s.last_harddrop_valid = false;
         return arr;
     }
+
+    int get_lock_timer() { return session.get_lock_timer(); }
 };
 
 // 导出模块
@@ -169,5 +171,6 @@ EMSCRIPTEN_BINDINGS(tetris_module)
         .function("wouldHitWall", &WebTetris::wouldHitWall)
         .function("canMove", &WebTetris::canMove)
         .function("getLastClearMask", &WebTetris::getLastClearMask)
-        .function("getLastHardDropInfo", &WebTetris::getLastHardDropInfo);
+        .function("getLastHardDropInfo", &WebTetris::getLastHardDropInfo)
+        .function("getLockTimer", &WebTetris::get_lock_timer);
 }

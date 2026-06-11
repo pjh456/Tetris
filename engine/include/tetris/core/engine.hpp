@@ -6,6 +6,7 @@
 #include "tetris/core/state.hpp"
 #include "tetris/core/rules.hpp"
 #include "tetris/core/attack.hpp"
+#include "tetris/core/lockdelay.hpp"
 
 namespace tetris::core
 {
@@ -30,6 +31,7 @@ namespace tetris::core
         bool has_hold = false;
 
     private:
+        LockDelay m_lock_delay;
         Piece bag[7];
         int bag_idx = 7;
 
@@ -123,6 +125,7 @@ namespace tetris::core
             game_over = false;
             has_hold = false;
             bag_idx = 7;
+            m_lock_delay.cancel();
 
             for (int i = 0; i < 5; i++)
                 state.next[i] = pop_next_piece();
@@ -141,6 +144,7 @@ namespace tetris::core
             state.x = W / 2 - 2;
             state.y = 0;
             state.hold_used = false;
+            m_lock_delay.cancel();
 
             if (!can_place(state, state.x, state.y, state.rot))
                 game_over = true;
@@ -170,6 +174,7 @@ namespace tetris::core
                 hard_drop(state);
                 int end_y = state.y;
                 record_harddrop(start_y, end_y);
+                m_lock_delay.cancel();
                 res = lock_and_spawn();
                 break;
             }
@@ -184,6 +189,7 @@ namespace tetris::core
             case Action::Hold:
                 if (!state.hold_used)
                 {
+                    m_lock_delay.cancel();
                     if (has_hold)
                     {
                         Piece temp = state.hold;
@@ -215,11 +221,20 @@ namespace tetris::core
             if (game_over)
                 return res;
 
-            if (!try_move(state, 0, 1))
+            if (try_move(state, 0, 1))
+            {
+                m_lock_delay.cancel();
+                return res;
+            }
+
+            m_lock_delay.start();
+            if (m_lock_delay.update())
                 res = lock_and_spawn();
 
             return res;
         }
+
+        int get_lock_timer() const { return m_lock_delay.remaining_ms(); }
 
     private:
         bool _try_move_wrapped(int dx, int dy)
@@ -227,6 +242,8 @@ namespace tetris::core
             if (try_move(state, dx, dy))
             {
                 state.last_move_was_rotation = false; // 平移打破旋转标记
+                if (m_lock_delay.move_reset_count < LockDelay::MAX_MOVE_RESETS)
+                    m_lock_delay.reset();
                 return true;
             }
             return false;
@@ -237,6 +254,8 @@ namespace tetris::core
             if (try_rotate(state, to))
             {
                 state.last_move_was_rotation = true; // 记录最后一步是旋转
+                if (m_lock_delay.move_reset_count < LockDelay::MAX_MOVE_RESETS)
+                    m_lock_delay.reset();
                 return true;
             }
             return false;
