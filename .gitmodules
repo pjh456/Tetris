@@ -1,3 +1,6 @@
 [submodule "engine/thirdparty/enet"]
 	path = engine/thirdparty/enet
 	url = https://github.com/lsalzman/enet
+[submodule "engine/thirdparty/Catch2"]
+	path = engine/thirdparty/Catch2
+	url = https://github.com/catchorg/Catch2.git
