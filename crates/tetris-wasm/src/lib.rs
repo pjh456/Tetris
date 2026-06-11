@@ -117,6 +117,34 @@ impl WebTetris {
     pub fn get_lock_timer(&self) -> u16 {
         self.engine.get_lock_timer().max(0) as u16
     }
+
+    pub fn get_hud_data(&self) -> JsValue {
+        let s = &self.engine.scorer;
+        let data = utils::HudData {
+            score: s.score,
+            level: s.level,
+            lines: s.total_lines,
+            combo: s.combo,
+            b2b: s.b2b_count,
+            tspin: s.tspin_count,
+            all_clear: s.all_clear_count,
+        };
+        serde_wasm_bindgen::to_value(&data).unwrap_or(JsValue::NULL)
+    }
+
+    pub fn get_game_stats(&self) -> JsValue {
+        let s = &self.engine.scorer;
+        let data = utils::GameStats {
+            score: s.score,
+            lines: s.total_lines,
+            level: s.level,
+            game_time_ms: s.game_time_ms,
+            max_combo: s.max_combo,
+            tspin_count: s.tspin_count,
+            total_pieces: s.total_pieces,
+        };
+        serde_wasm_bindgen::to_value(&data).unwrap_or(JsValue::NULL)
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]

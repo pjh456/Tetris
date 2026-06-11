@@ -5,6 +5,7 @@ use crate::board::Board;
 use crate::lockdelay::LockDelay;
 use crate::piece::PIECES;
 use crate::rules::{can_place, hard_drop, lock_piece, try_move, try_rotate};
+use crate::scoring::ScoreTracker;
 use crate::state::State;
 use crate::types::{Piece, Rot};
 
@@ -54,6 +55,7 @@ pub struct Engine<const W: usize, const H: usize> {
     pub state: State<W, H>,
     pub game_over: bool,
     pub has_hold: bool,
+    pub scorer: ScoreTracker,
     lock_delay: LockDelay,
     bag: [Piece; 7],
     bag_idx: usize,
@@ -92,6 +94,7 @@ impl<const W: usize, const H: usize> Engine<W, H> {
             },
             game_over: true,
             has_hold: false,
+            scorer: ScoreTracker::default(),
             lock_delay: LockDelay::new(),
             bag: [Piece::I; 7],
             bag_idx: 7,
@@ -130,6 +133,7 @@ impl<const W: usize, const H: usize> Engine<W, H> {
     fn lock_and_spawn(&mut self) -> AttackResult {
         let lines_cleared = lock_piece(&mut self.state);
         let mut attack_res = calculate_attack(&mut self.state, lines_cleared);
+        self.scorer.update(&attack_res, lines_cleared as u8);
 
         if attack_res.damage > 0 && self.state.pending_garbage > 0 {
             if attack_res.damage >= self.state.pending_garbage as i32 {
@@ -220,6 +224,7 @@ impl<const W: usize, const H: usize> Engine<W, H> {
         };
         self.game_over = false;
         self.has_hold = false;
+        self.scorer = ScoreTracker::default();
         self.bag_idx = 7;
         self.lock_delay.cancel();
 

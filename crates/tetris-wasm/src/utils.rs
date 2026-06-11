@@ -10,6 +10,30 @@ pub struct HardDropInfo {
     pub piece: u8,
 }
 
+#[derive(Serialize)]
+#[allow(dead_code)]
+pub struct HudData {
+    pub score: u32,
+    pub level: u32,
+    pub lines: u32,
+    pub combo: u32,
+    pub b2b: u32,
+    pub tspin: u32,
+    pub all_clear: u32,
+}
+
+#[derive(Serialize)]
+#[allow(dead_code)]
+pub struct GameStats {
+    pub score: u32,
+    pub lines: u32,
+    pub level: u32,
+    pub game_time_ms: u64,
+    pub max_combo: u32,
+    pub tspin_count: u32,
+    pub total_pieces: u32,
+}
+
 #[allow(dead_code)]
 pub fn build_grid(state: &State<10, 20>, ghost_y: i32, game_over: bool) -> [u8; 200] {
     let mut grid = [0u8; 200];
