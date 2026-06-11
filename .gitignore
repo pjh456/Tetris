@@ -1,2 +1,12 @@
-.vscode
-build
+# IDE
+.vscode/
+
+# Build Artifact
+build/
+
+# Agent
+AGENTS.md
+.claude/
+
+# GSD
+.planning/
