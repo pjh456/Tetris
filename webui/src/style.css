@@ -332,3 +332,123 @@ body {
   flex: 1;
   min-height: 0;
 }
+
+.menu-card:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.menu-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: grayscale(0.6);
+}
+
+.menu-disabled:hover {
+  transform: none !important;
+  box-shadow: 0 8px 14px var(--color-panel-shadow) !important;
+}
+
+.coming-soon-badge {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  background: var(--color-accent);
+  color: var(--color-bg);
+  font-size: var(--text-label);
+  font-family: var(--font-body);
+  padding: 2px 8px;
+  letter-spacing: 1px;
+}
+
+.settings-page {
+  max-width: 600px;
+  margin: var(--space-lg) auto;
+  padding: var(--space-lg);
+  overflow-y: auto;
+  max-height: calc(100vh - 100px);
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
+}
+
+.settings-title {
+  font-family: var(--font-display);
+  font-size: var(--text-heading);
+  margin: 0;
+}
+
+.settings-section {
+  margin-bottom: var(--space-lg);
+}
+
+.settings-section h3 {
+  font-size: var(--text-body);
+  color: var(--color-accent);
+  margin: 0 0 var(--space-sm);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  margin-bottom: var(--space-sm);
+}
+
+.settings-row label {
+  min-width: 140px;
+  font-size: var(--text-body);
+}
+
+.settings-row input[type="range"] {
+  flex: 1;
+  accent-color: var(--color-accent);
+}
+
+.btn-reset {
+  border-color: var(--color-destructive);
+  color: var(--color-destructive);
+}
+
+.key-bind-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-xs) 0;
+  border-bottom: 1px solid var(--color-panel-border);
+}
+
+.key-bind-label {
+  cursor: pointer;
+  border: 1px dashed var(--color-muted);
+  padding: 2px 12px;
+  font-family: var(--font-display);
+  min-width: 60px;
+  text-align: center;
+}
+
+.key-bind-label:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.key-rebind-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.key-rebind-prompt {
+  padding: var(--space-xl);
+  text-align: center;
+}
