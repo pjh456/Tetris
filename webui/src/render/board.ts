@@ -1,4 +1,4 @@
-import { GRID_COLORS } from './colors';
+import { get_theme_colors } from './colors';
 
 type BoardRenderer = {
   render: (grid: number[]) => void;
@@ -6,7 +6,7 @@ type BoardRenderer = {
 
 export function createBoardRenderer(
   canvas: HTMLCanvasElement,
-  colors: string[] = GRID_COLORS
+  colors: string[] = get_theme_colors()
 ): BoardRenderer {
   const ctx = canvas.getContext('2d')!;
 

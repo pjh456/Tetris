@@ -1,4 +1,4 @@
-import { GRID_COLORS } from './colors';
+import { get_theme_colors } from './colors';
 
 const SHAPES: number[][][] = [
   [
@@ -85,7 +85,7 @@ export function createPreviewRenderer(
 
       const shape = SHAPES[pieceId];
 
-      ctx.fillStyle = GRID_COLORS[pieceId + 3] ?? GRID_COLORS[3];
+      ctx.fillStyle = get_theme_colors()[pieceId + 3] ?? get_theme_colors()[3];
       for (let y = 0; y < 4; y++) {
         for (let x = 0; x < 4; x++) {
           if (!shape[y][x]) continue;
@@ -116,7 +116,7 @@ export function createNextStackRenderer(canvas: HTMLCanvasElement): NextStackRen
       pieces.forEach((pieceId) => {
         if (pieceId >= 0 && pieceId < SHAPES.length) {
           const shape = SHAPES[pieceId];
-          ctx.fillStyle = GRID_COLORS[pieceId + 3] ?? GRID_COLORS[3];
+          ctx.fillStyle = get_theme_colors()[pieceId + 3] ?? get_theme_colors()[3];
           for (let y = 0; y < 4; y++) {
             for (let x = 0; x < 4; x++) {
               if (!shape[y][x]) continue;

@@ -1,12 +1,15 @@
-export const GRID_COLORS = [
-  '#000000', // 0: empty
-  '#aaaaaa', // 1: locked
-  '#444444', // 2: ghost
-  '#00ffff', // 3: I
-  '#ffff00', // 4: O
-  '#ff00ff', // 5: T
-  '#00ff00', // 6: S
-  '#ff0000', // 7: Z
-  '#0000ff', // 8: J
-  '#ff8800'  // 9: L
-];
+export function get_theme_colors(): string[] {
+  const style = getComputedStyle(document.body);
+  return [
+    '#000000',
+    style.getPropertyValue('--color-locked').trim() || '#aaaaaa',
+    style.getPropertyValue('--color-ghost-border').trim() || '#444444',
+    style.getPropertyValue('--color-piece-i').trim() || '#00ffff',
+    style.getPropertyValue('--color-piece-o').trim() || '#ffff00',
+    style.getPropertyValue('--color-piece-t').trim() || '#ff00ff',
+    style.getPropertyValue('--color-piece-s').trim() || '#00ff00',
+    style.getPropertyValue('--color-piece-z').trim() || '#ff0000',
+    style.getPropertyValue('--color-piece-j').trim() || '#0000ff',
+    style.getPropertyValue('--color-piece-l').trim() || '#ff8800',
+  ];
+}

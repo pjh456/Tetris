@@ -5,7 +5,7 @@ import { Actions } from './game/actions';
 import { bindKeyboard } from './input/keyboard';
 import { createBoardRenderer } from './render/board';
 import { createNextStackRenderer, createPreviewRenderer } from './render/preview';
-import { GRID_COLORS } from './render/colors';
+import { get_theme_colors } from './render/colors';
 import { LineFx } from './fx/line_fx';
 
 function createButton(label: string) {
@@ -211,7 +211,7 @@ async function startSingleGame(root: HTMLElement) {
       const yStart = hardDropInfo.start_y as number;
       const yEnd = hardDropInfo.end_y as number;
       const piece = hardDropInfo.piece as number;
-      const color = GRID_COLORS[piece + 3] ?? '#c8f0ff';
+      const color = get_theme_colors()[piece + 3] ?? '#c8f0ff';
       fx.triggerColumnBurst(mask, yStart * cell, yEnd * cell, color);
     }
   };

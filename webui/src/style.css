@@ -1,14 +1,130 @@
-@import url('https://fonts.googleapis.com/css2?family=Oxanium:wght@500;700&family=Rajdhani:wght@400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Oxanium:wght@400;700&family=Rajdhani:wght@400;700&family=Press+Start+2P&family=Inter:wght@400;700&display=swap');
 
-:root {
-  --bg-0: #0b0f1a;
-  --bg-1: #1a1f2b;
-  --panel: rgba(18, 22, 32, 0.95);
-  --panel-border: rgba(120, 140, 170, 0.5);
-  --panel-shadow: rgba(0, 0, 0, 0.45);
-  --text: #e6f0ff;
-  --muted: #8a96ad;
-  --accent: #5de2ff;
+:root,
+body[data-theme="cyberpunk"] {
+  --color-bg: #0b0f1a;
+  --color-bg-gradient: linear-gradient(180deg, #161b24, #0b0f1a);
+  --color-panel: rgba(18, 22, 32, 0.95);
+  --color-panel-border: rgba(120, 140, 170, 0.5);
+  --color-panel-shadow: rgba(0, 0, 0, 0.45);
+  --color-accent: #5de2ff;
+  --color-text: #e6f0ff;
+  --color-muted: #8a96ad;
+  --color-destructive: #ff4d4d;
+
+  --color-piece-i: #00ffff;
+  --color-piece-o: #ffff00;
+  --color-piece-t: #ff00ff;
+  --color-piece-s: #00ff00;
+  --color-piece-z: #ff0000;
+  --color-piece-j: #0000ff;
+  --color-piece-l: #ff8800;
+  --color-ghost: rgba(68, 68, 68, 0.5);
+  --color-ghost-border: rgba(68, 68, 68, 0.8);
+  --color-locked: #aaaaaa;
+
+  --font-display: 'Oxanium', sans-serif;
+  --font-body: 'Rajdhani', sans-serif;
+  --grid-lines: 1px solid rgba(120, 140, 170, 0.15);
+  --ghost-style: solid;
+
+  --color-card-multi-bg: linear-gradient(90deg, #5b2c3f, #3a2230);
+  --color-card-multi-title: #ff90d0;
+  --color-card-solo-bg: linear-gradient(90deg, #2b2f50, #1f223b);
+  --color-card-solo-title: #a8b2ff;
+  --color-card-settings-bg: linear-gradient(90deg, #1f3d3a, #1a2b2f);
+  --color-card-settings-title: #7fffe1;
+
+  --text-label: 12px;
+  --text-body: 14px;
+  --text-heading: 18px;
+  --text-display: 26px;
+
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+  --space-3xl: 64px;
+}
+
+body[data-theme="retro"] {
+  --color-bg: #1a1a2e;
+  --color-bg-gradient: linear-gradient(180deg, #16213e, #1a1a2e);
+  --color-panel: #16213e;
+  --color-panel-border: #533483;
+  --color-panel-shadow: rgba(0, 0, 0, 0.5);
+  --color-accent: #e94560;
+  --color-text: #eeeeee;
+  --color-muted: #999999;
+  --color-destructive: #ff6b6b;
+
+  --color-piece-i: #5dade2;
+  --color-piece-o: #f4d03f;
+  --color-piece-t: #af7ac5;
+  --color-piece-s: #58d68d;
+  --color-piece-z: #e74c3c;
+  --color-piece-j: #5d6d7e;
+  --color-piece-l: #f0b27a;
+  --color-ghost: rgba(136, 136, 136, 0.3);
+  --color-ghost-border: #888888;
+  --color-locked: #aaaaaa;
+
+  --font-display: 'Press Start 2P', monospace;
+  --font-body: 'Press Start 2P', monospace;
+  --grid-lines: 1px dashed rgba(200, 200, 200, 0.2);
+  --ghost-style: dashed;
+
+  --color-card-multi-bg: linear-gradient(90deg, #3a1a30, #2a1020);
+  --color-card-multi-title: #e94560;
+  --color-card-solo-bg: linear-gradient(90deg, #1a2040, #161830);
+  --color-card-solo-title: #5dade2;
+  --color-card-settings-bg: linear-gradient(90deg, #1a3030, #162020);
+  --color-card-settings-title: #58d68d;
+}
+
+body[data-theme="minimal"] {
+  --color-bg: #f5f5f5;
+  --color-bg-gradient: linear-gradient(180deg, #ffffff, #f5f5f5);
+  --color-panel: #ffffff;
+  --color-panel-border: #e0e0e0;
+  --color-panel-shadow: rgba(0, 0, 0, 0.08);
+  --color-accent: #333333;
+  --color-text: #1a1a1a;
+  --color-muted: #999999;
+  --color-destructive: #cc0000;
+
+  --color-piece-i: #74b9ff;
+  --color-piece-o: #ffeaa7;
+  --color-piece-t: #a29bfe;
+  --color-piece-s: #55efc4;
+  --color-piece-z: #fab1a0;
+  --color-piece-j: #81ecec;
+  --color-piece-l: #fdcb6e;
+  --color-ghost: rgba(200, 200, 200, 0.4);
+  --color-ghost-border: rgba(180, 180, 180, 0.6);
+  --color-locked: #cccccc;
+
+  --font-display: 'Inter', sans-serif;
+  --font-body: 'Inter', sans-serif;
+  --grid-lines: none;
+  --ghost-style: fill;
+
+  --color-card-multi-bg: linear-gradient(90deg, #f0e6ee, #ece0ea);
+  --color-card-multi-title: #666666;
+  --color-card-solo-bg: linear-gradient(90deg, #e6eaf0, #e0e4ec);
+  --color-card-solo-title: #333333;
+  --color-card-settings-bg: linear-gradient(90deg, #e6f0ee, #e0ece8);
+  --color-card-settings-title: #555555;
+}
+
+.glass {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background: var(--color-panel);
+  border: 1px solid var(--color-panel-border);
+  box-shadow: 0 8px 32px var(--color-panel-shadow);
 }
 
 * {
@@ -20,12 +136,9 @@ body {
   height: 100vh;
   overflow: hidden;
   display: block;
-  background:
-    radial-gradient(800px 600px at 20% 20%, rgba(255, 120, 70, 0.15), transparent 60%),
-    radial-gradient(900px 700px at 80% 10%, rgba(90, 160, 255, 0.12), transparent 60%),
-    linear-gradient(180deg, #161b24, #0b0f1a);
-  color: var(--text);
-  font-family: 'Rajdhani', sans-serif;
+  background: var(--color-bg-gradient);
+  color: var(--color-text);
+  font-family: var(--font-body);
 }
 
 html,
@@ -55,45 +168,45 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
-  background: linear-gradient(180deg, #2a2f3a, #1b2029);
-  border: 1px solid rgba(120, 140, 170, 0.5);
-  box-shadow: 0 8px 16px var(--panel-shadow);
+  padding: 0 var(--space-md);
+  background: var(--color-panel);
+  border: 1px solid var(--color-panel-border);
+  box-shadow: 0 8px 16px var(--color-panel-shadow);
 }
 
 .logo {
-  font-family: 'Oxanium', sans-serif;
+  font-family: var(--font-display);
   letter-spacing: 2px;
-  font-size: 18px;
-  color: #cfd9ea;
+  font-size: var(--text-heading);
+  color: var(--color-text);
 }
 
 .user-info {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: #0c0f16;
-  border: 1px solid rgba(120, 140, 170, 0.45);
-  padding: 4px 8px;
-  font-size: 12px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-panel-border);
+  padding: var(--space-xs) var(--space-sm);
+  font-size: var(--text-label);
   letter-spacing: 1px;
   text-transform: uppercase;
 }
 
 .user-info .status {
-  color: #ff6b6b;
+  color: var(--color-destructive);
   font-weight: 700;
 }
 
 .avatar {
   width: 28px;
   height: 28px;
-  border: 1px solid rgba(120, 140, 170, 0.6);
-  background: linear-gradient(135deg, #2a2f3a, #111);
+  border: 1px solid var(--color-panel-border);
+  background: var(--color-panel);
 }
 
 .home {
-  margin-top: 26px;
+  margin-top: var(--text-display);
   display: grid;
   gap: 28px;
   width: 60%;
@@ -101,7 +214,7 @@ body {
   margin-right: 0;
   flex: 1;
   overflow: hidden;
-  padding-left: 24px;
+  padding-left: var(--space-lg);
 }
 
 .menu-card {
@@ -110,24 +223,27 @@ body {
   height: 150px;
   width: calc(100% + 48px);
   margin-left: 0;
-  border: 1px solid rgba(120, 140, 170, 0.45);
-  box-shadow: 0 8px 14px rgba(0, 0, 0, 0.45);
   cursor: pointer;
   overflow: hidden;
   transform: translateX(0);
   transition: transform 120ms ease, box-shadow 120ms ease;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background: var(--color-panel);
+  border: 1px solid var(--color-panel-border);
+  box-shadow: 0 8px 14px var(--color-panel-shadow);
 }
 
 .menu-card:hover {
   transform: translateX(-18px);
-  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 14px 28px var(--color-panel-shadow);
 }
 
 .menu-left {
   display: grid;
   place-items: center;
-  font-family: 'Oxanium', sans-serif;
-  font-size: 26px;
+  font-family: var(--font-display);
+  font-size: var(--text-display);
   letter-spacing: 2px;
   color: rgba(255, 255, 255, 0.35);
   background: rgba(0, 0, 0, 0.25);
@@ -142,39 +258,39 @@ body {
 }
 
 .menu-title {
-  font-family: 'Oxanium', sans-serif;
+  font-family: var(--font-display);
   font-size: 16px;
   letter-spacing: 2px;
 }
 
 .menu-sub {
-  color: var(--muted);
+  color: var(--color-muted);
   font-size: 11px;
   letter-spacing: 1px;
 }
 
 .menu-multi {
-  background: linear-gradient(90deg, #5b2c3f, #3a2230);
+  background: var(--color-card-multi-bg);
 }
 
 .menu-solo {
-  background: linear-gradient(90deg, #2b2f50, #1f223b);
+  background: var(--color-card-solo-bg);
 }
 
 .menu-multi .menu-title {
-  color: #ff90d0;
+  color: var(--color-card-multi-title);
 }
 
 .menu-solo .menu-title {
-  color: #a8b2ff;
+  color: var(--color-card-solo-title);
 }
 
 .menu-settings {
-  background: linear-gradient(90deg, #1f3d3a, #1a2b2f);
+  background: var(--color-card-settings-bg);
 }
 
 .menu-settings .menu-title {
-  color: #7fffe1;
+  color: var(--color-card-settings-title);
 }
 
 .modal-overlay {
@@ -190,23 +306,23 @@ body {
 .modal {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-md);
   padding: 20px;
-  border: 2px solid rgba(140, 200, 255, 0.9);
-  background: rgba(7, 10, 18, 0.95);
-  box-shadow: 0 0 18px rgba(80, 160, 255, 0.35);
+  border: 2px solid var(--color-accent);
+  background: var(--color-panel);
+  box-shadow: 0 0 18px var(--color-panel-shadow);
   min-width: 240px;
 }
 
 .btn {
-  border: 2px solid rgba(140, 200, 255, 0.9);
-  background: rgba(7, 10, 18, 0.9);
-  color: #e7f6ff;
+  border: 2px solid var(--color-accent);
+  background: var(--color-panel);
+  color: var(--color-text);
   padding: 10px 14px;
-  font-size: 14px;
+  font-size: var(--text-body);
   letter-spacing: 1px;
   cursor: pointer;
-  font-family: 'Rajdhani', sans-serif;
+  font-family: var(--font-body);
 }
 
 .game-root {
