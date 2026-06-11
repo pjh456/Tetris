@@ -119,7 +119,7 @@ namespace tetris::net
                 return false;
 
             role = Role::Client;
-            m_local_player_id = 0;
+            m_local_player_id = 0xFF;
             m_id_in_use.clear();
             std::cout << "Connecting to " << ip << ":" << port << "..." << std::endl;
             return true;
@@ -204,7 +204,7 @@ namespace tetris::net
                     else if (role == Role::Client)
                     {
                         PktClientJoin join_pkt;
-                        join_pkt.header = {PacketType::ClientJoin, 0};
+                        join_pkt.header = {PROTOCOL_VERSION, PacketType::ClientJoin, 0};
                         send_packet(join_pkt, 0, true);
                     }
                     break;
@@ -214,6 +214,26 @@ namespace tetris::net
                     if (event.packet->dataLength >= sizeof(PacketHeader))
                     {
                         auto *header = reinterpret_cast<const PacketHeader *>(event.packet->data);
+
+                        // Protocol version check
+                        if ((header->version & 0xF0) != (PROTOCOL_VERSION & 0xF0))
+                        {
+                            PktVersionError err_pkt;
+                            err_pkt.header = {PROTOCOL_VERSION, PacketType::VersionError, 0};
+                            err_pkt.server_version = PROTOCOL_VERSION;
+                            send_packet_to(event.peer, err_pkt, 0, true);
+                            enet_peer_disconnect(event.peer, 0);
+                            enet_packet_destroy(event.packet);
+                            break;
+                        }
+                        if ((header->version & 0x0F) != (PROTOCOL_VERSION & 0x0F))
+                        {
+                            std::cout << "[Net] Minor version mismatch: peer="
+                                      << (int)(header->version & 0x0F)
+                                      << " host=" << (int)(PROTOCOL_VERSION & 0x0F)
+                                      << " — continuing" << std::endl;
+                        }
+
                         if (header->type == PacketType::ClientJoin && role == Role::Host)
                         {
                             if (m_peer_ids.count(event.peer) == 0)
@@ -230,7 +250,7 @@ namespace tetris::net
                                 m_peer_ids[event.peer] = assigned;
 
                                 PktServerAccept accept_pkt;
-                                accept_pkt.header = {PacketType::ServerAccept, 0};
+                                accept_pkt.header = {PROTOCOL_VERSION, PacketType::ServerAccept, 0};
                                 accept_pkt.assigned_player_id = assigned;
                                 accept_pkt.max_players = m_max_players;
                                 send_packet_to(event.peer, accept_pkt, 0, true);

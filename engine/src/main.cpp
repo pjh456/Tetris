@@ -386,7 +386,7 @@ int main()
                     if (c == 'g' || c == 'G')
                     {
                         PktGameStart start_pkt;
-                        start_pkt.header = {PacketType::GameStart, 0};
+                        start_pkt.header = {PROTOCOL_VERSION, PacketType::GameStart, 0};
                         start_pkt.random_seed = (u32)std::chrono::steady_clock::now().time_since_epoch().count();
                         net.broadcast_packet(start_pkt, 0, true);
                         on_game_start(start_pkt.random_seed);
@@ -603,7 +603,7 @@ int main()
                     if (!net.is_player_connected(i))
                         continue;
                     PktStateSync<10, 20> sync_pkt;
-                    sync_pkt.header = {PacketType::StateSync, i};
+                    sync_pkt.header = {PROTOCOL_VERSION, PacketType::StateSync, i};
                     auto snap = make_snapshot(host_sessions[i].state());
                     std::memcpy(sync_pkt.board_rows, snap.board_rows, sizeof(sync_pkt.board_rows));
                     sync_pkt.piece = snap.piece;

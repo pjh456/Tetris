@@ -24,15 +24,19 @@ namespace tetris::net
         PlayerAction,   // 玩家输入操作 (极低开销)
         PlayerAttack,   // 玩家发送垃圾行 (可靠到达)
         StateSync,      // 完整状态同步 (兜底防断线/错位)
-        GameOver        // 玩家死亡通知
+        GameOver,       // 玩家死亡通知
+        VersionError    // 协议版本不匹配
     };
+
+    inline constexpr u8 PROTOCOL_VERSION = 0x10; // major=1, minor=0
 
     // 强制 1 字节对齐，避免网络传输时产生内存空洞
 #pragma pack(push, 1)
 
-    // 所有数据包的通用头部 (共 2 字节)
+    // 所有数据包的通用头部 (共 3 字节)
     struct PacketHeader
     {
+        u8 version;   // 协议版本: major(高4bit) + minor(低4bit)
         PacketType type;
         u8 player_id; // 发送者的身份：0 为 Host，1 为 Client
     };
@@ -58,13 +62,14 @@ namespace tetris::net
         u8 max_players;
     };
 
-    // 0.2 主机开始游戏广播 (共 2 字节)
-    struct PktHostStart
+    // 9. 协议版本不匹配通知 (共 4 字节) - 可靠通道
+    struct PktVersionError
     {
         PacketHeader header;
+        u8 server_version; // 服务器的 PROTOCOL_VERSION
     };
 
-    // 2. 玩家操作包 (共 3 字节) - 走可靠或有序不可靠通道
+    // 2. 玩家操作包 (共 4 字节) - 走可靠或有序不可靠通道
     struct PktPlayerAction
     {
         PacketHeader header;
