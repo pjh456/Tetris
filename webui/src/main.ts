@@ -1,357 +1,68 @@
 import './style.css';
+import { effect } from '@preact/signals-core';
+import { page, settings } from './state';
+import { apply_theme, type ThemeName } from './core/theme';
+import { init_particles } from './core/particles';
+import { create_home_screen } from './screens/home';
+import { create_game_screen } from './screens/game';
+import { create_settings_screen } from './screens/settings';
+import { create_gameover_screen } from './screens/gameover';
 
-import init, { WebTetris } from '../wasm/tetris_wasm.js';
-import { Actions } from './game/actions';
-import { bindKeyboard } from './input/keyboard';
-import { createBoardRenderer } from './render/board';
-import { createNextStackRenderer, createPreviewRenderer } from './render/preview';
-import { get_theme_colors } from './render/colors';
-import { LineFx } from './fx/line_fx';
+apply_theme((settings.value.theme as ThemeName) || 'cyberpunk');
+init_particles();
 
-function createButton(label: string) {
-  const btn = document.createElement('button');
-  btn.textContent = label;
-  btn.className = 'btn';
-  return btn;
-}
+const app = document.getElementById('app')!;
 
-function createHomeScreen(onSingle: () => void, onMulti: () => void) {
-  const container = document.createElement('div');
-  container.className = 'home';
-
-  const settingsCard = document.createElement('div');
-  settingsCard.className = 'menu-card menu-settings';
-  settingsCard.innerHTML = `
-    <div class="menu-left">CFG</div>
-    <div class="menu-body">
-      <div class="menu-title">SETTINGS</div>
-      <div class="menu-sub">TWEAK YOUR EXPERIENCE</div>
-    </div>
-  `;
-
-  const multiCard = document.createElement('div');
-  multiCard.className = 'menu-card menu-multi';
-  multiCard.onclick = onMulti;
-  multiCard.innerHTML = `
-    <div class="menu-left">MP</div>
-    <div class="menu-body">
-      <div class="menu-title">MULTIPLAYER</div>
-      <div class="menu-sub">PLAY ONLINE WITH FRIENDS AND FOES</div>
-    </div>
-  `;
-
-  const soloCard = document.createElement('div');
-  soloCard.className = 'menu-card menu-solo';
-  soloCard.onclick = onSingle;
-  soloCard.innerHTML = `
-    <div class="menu-left">SP</div>
-    <div class="menu-body">
-      <div class="menu-title">SOLO</div>
-      <div class="menu-sub">CHALLENGE YOURSELF AND TOP THE LEADERBOARDS</div>
-    </div>
-  `;
-
-  container.appendChild(multiCard);
-  container.appendChild(soloCard);
-  container.appendChild(settingsCard);
-  return container;
-}
-
-function createModal(onClose: () => void, onCreate: () => void, onJoin: () => void) {
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-overlay';
-
-  const panel = document.createElement('div');
-  panel.className = 'modal';
-
-  const title = document.createElement('div');
-  title.textContent = '联机模式';
-  title.style.textAlign = 'center';
-
-  const createBtn = createButton('创建房间');
-  createBtn.onclick = onCreate;
-  const joinBtn = createButton('加入房间');
-  joinBtn.onclick = onJoin;
-  const closeBtn = createButton('关闭');
-  closeBtn.onclick = onClose;
-
-  panel.appendChild(title);
-  panel.appendChild(createBtn);
-  panel.appendChild(joinBtn);
-  panel.appendChild(closeBtn);
-  overlay.appendChild(panel);
-
-  return overlay;
-}
-
-async function startSingleGame(root: HTMLElement) {
-  root.className = 'game-root';
-  const wrapper = document.createElement('div');
-  wrapper.style.display = 'flex';
-  wrapper.style.gap = '16px';
-  wrapper.style.alignItems = 'flex-start';
-  wrapper.style.justifyContent = 'center';
-  wrapper.style.margin = '0 auto';
-  wrapper.style.height = 'auto';
-
-  const holdColumn = document.createElement('div');
-  holdColumn.style.display = 'flex';
-  holdColumn.style.flexDirection = 'column';
-  holdColumn.style.gap = '8px';
-
-  const holdLabel = document.createElement('div');
-  holdLabel.textContent = 'HOLD';
-  holdLabel.style.color = '#e7f6ff';
-  holdLabel.style.fontSize = '14px';
-  holdLabel.style.letterSpacing = '2px';
-
-  const holdCanvas = document.createElement('canvas');
-  holdCanvas.width = 140;
-  holdCanvas.height = 140;
-  holdCanvas.style.border = '2px solid rgba(140, 200, 255, 0.9)';
-  holdCanvas.style.background = 'rgba(7, 10, 18, 0.9)';
-  holdCanvas.style.boxShadow = '0 0 12px rgba(80, 160, 255, 0.35)';
-
-  holdColumn.appendChild(holdLabel);
-  holdColumn.appendChild(holdCanvas);
-
-  const boardFrame = document.createElement('div');
-  boardFrame.style.position = 'relative';
-  boardFrame.style.display = 'inline-block';
-  boardFrame.style.border = '3px solid rgba(140, 200, 255, 0.95)';
-  boardFrame.style.background = 'rgba(5, 8, 15, 0.95)';
-  boardFrame.style.boxShadow = '0 0 20px rgba(80, 160, 255, 0.45)';
-
-  const boardCanvas = document.createElement('canvas');
-  boardCanvas.width = 360;
-  boardCanvas.height = 720;
-
-  const fxCanvas = document.createElement('canvas');
-  fxCanvas.width = boardCanvas.width;
-  fxCanvas.height = boardCanvas.height;
-  fxCanvas.style.position = 'absolute';
-  fxCanvas.style.inset = '0';
-  fxCanvas.style.pointerEvents = 'none';
-
-  boardFrame.appendChild(boardCanvas);
-  boardFrame.appendChild(fxCanvas);
-  boardCanvas.style.transition = 'transform 80ms ease';
-
-  const nextColumn = document.createElement('div');
-  nextColumn.style.display = 'flex';
-  nextColumn.style.flexDirection = 'column';
-  nextColumn.style.gap = '8px';
-
-  const nextLabel = document.createElement('div');
-  nextLabel.textContent = 'NEXT';
-  nextLabel.style.background = '#ffffff';
-  nextLabel.style.color = '#0b0f1a';
-  nextLabel.style.fontSize = '14px';
-  nextLabel.style.letterSpacing = '2px';
-  nextLabel.style.fontWeight = '600';
-  nextLabel.style.textAlign = 'center';
-  nextLabel.style.border = '3px solid #ffffff';
-  nextLabel.style.padding = '6px 0';
-  nextColumn.appendChild(nextLabel);
-
-  const nextCanvas = document.createElement('canvas');
-  nextCanvas.width = 180;
-  nextCanvas.height = 480;
-  nextCanvas.style.border = '3px solid rgba(140, 200, 255, 0.95)';
-  nextCanvas.style.background = 'rgba(7, 10, 18, 0.9)';
-  nextCanvas.style.boxShadow = '0 0 12px rgba(80, 160, 255, 0.35)';
-  nextColumn.appendChild(nextCanvas);
-
-  wrapper.appendChild(holdColumn);
-  wrapper.appendChild(boardFrame);
-  wrapper.appendChild(nextColumn);
-  root.appendChild(wrapper);
-
-  const renderer = createBoardRenderer(boardCanvas);
-  const fx = new LineFx(fxCanvas);
-  const holdRenderer = createPreviewRenderer(holdCanvas, { showGrid: true });
-  const nextRenderer = createNextStackRenderer(nextCanvas);
-
-  let game: WebTetris;
-  try {
-    await init();
-    const seed = Date.now() >>> 0;
-    game = new WebTetris(seed);
-  } catch (err) {
-    console.error('Failed to load WASM module:', err);
-    const appRoot = document.getElementById('app');
-    if (appRoot) {
-      appRoot.innerHTML = '<div style="color:red;padding:20px;">Failed to load game engine. Please refresh or try a different browser.</div>';
-    }
-    return;
-  }
-
-  const cell = boardCanvas.height / 20;
-
-  const render = () => {
-    const grid = game.get_grid();
-    renderer.render(grid);
-    const hold = game.get_hold() as number;
-    holdRenderer.render(hold);
-    const next = game.get_next() as Uint8Array;
-    nextRenderer.render(next);
-
-    const clearMask = game.get_last_clear_mask() as number;
-    if (clearMask) {
-      for (let row = 0; row < 20; row++) {
-        if (clearMask & (1 << row)) {
-          fx.triggerFlash(row * cell, cell);
-        }
-      }
-    }
-
-    const hardDropInfo = game.get_last_hard_drop_info();
-    if (hardDropInfo) {
-      const mask = hardDropInfo.cols as number;
-      const yStart = hardDropInfo.start_y as number;
-      const yEnd = hardDropInfo.end_y as number;
-      const piece = hardDropInfo.piece as number;
-      const color = get_theme_colors()[piece + 3] ?? '#c8f0ff';
-      fx.triggerColumnBurst(mask, yStart * cell, yEnd * cell, color);
-    }
-  };
-
-  const appRoot = document.getElementById('app');
-  if (appRoot) {
-    appRoot.style.willChange = 'transform';
-  }
-
-  let edgeActive = false;
-  let edgeHeld = 0;
-  const edgeBump = (dir: number) => {
-    if (!appRoot || edgeActive) return;
-    edgeActive = true;
-    edgeHeld = dir;
-    appRoot.style.transition = 'transform 160ms ease-out';
-    appRoot.style.transform = `translateX(${dir * 14}px)`;
-    window.setTimeout(() => {
-      edgeActive = false;
-      if (!appRoot) return;
-      if (edgeHeld === dir) {
-        appRoot.style.transition = 'transform 40ms ease-out';
-        appRoot.style.transform = `translateX(${dir * 14}px)`;
-      }
-    }, 160);
-  };
-
-  const edgeRelease = (dir: number) => {
-    if (!appRoot) return;
-    if (edgeHeld !== dir) return;
-    edgeHeld = 0;
-    appRoot.style.transition = 'transform 70ms ease-in';
-    appRoot.style.transform = 'translateX(0px)';
-  };
-
-  const canMove = (dx: number) => {
-    return game.can_move(dx) as boolean;
-  };
-
-  bindKeyboard({
-    handleAction: (action) => {
-      if (action === Actions.MoveLeft) {
-        if (!canMove(-1)) {
-          edgeBump(-1);
-          return;
-        }
-        if (edgeHeld === -1) {
-          edgeRelease(-1);
-        }
-      } else if (action === Actions.MoveRight) {
-        if (!canMove(1)) {
-          edgeBump(1);
-          return;
-        }
-        if (edgeHeld === 1) {
-          edgeRelease(1);
-        }
-      } else if (action === Actions.HardDrop) {
-        if (appRoot) {
-          appRoot.style.transition = 'transform 60ms ease-out';
-          appRoot.style.transform = 'translateY(10px)';
-          window.setTimeout(() => {
-            if (!appRoot) return;
-            appRoot.style.transition = 'transform 80ms ease-in';
-            appRoot.style.transform = 'translateY(0px)';
-          }, 70);
-        }
-      }
-      game.handle_action(action);
-    },
-    isGameOver: () => game.is_game_over,
-    render,
-    onRelease: (action) => {
-      if (action === Actions.MoveLeft) {
-        edgeRelease(-1);
-      } else if (action === Actions.MoveRight) {
-        edgeRelease(1);
-      }
-    }
-  });
-
-  let lastTick = performance.now();
-  let lastFx = performance.now();
-  function gameLoop(time: number) {
-    if (!game.is_game_over) {
-      if (time - lastTick > 500) {
-        game.tick();
-        lastTick = time;
-        render();
-      }
-    }
-    const dt = time - lastFx;
-    lastFx = time;
-    fx.update(dt);
-    fx.render();
-    requestAnimationFrame(gameLoop);
-  }
-
-  render();
-  requestAnimationFrame(gameLoop);
-}
-
-function initHome() {
-  const app = document.getElementById('app');
-  if (!app) return;
-  app.innerHTML = '';
-
+function mount_topbar(container: HTMLElement) {
   const topbar = document.createElement('div');
   topbar.className = 'topbar';
   topbar.innerHTML = `
     <div class="logo">TETRIS</div>
     <div class="user-info">
-      <div>GUEST-6_0160A4</div>
-      <div class="status">ANONYMOUS</div>
-      <div class="avatar"></div>
+      <div>GUEST</div>
+      <div class="status">OFFLINE</div>
     </div>
   `;
-  app.appendChild(topbar);
-
-  const root = document.createElement('div');
-  root.className = 'content';
-  app.appendChild(root);
-
-  const home = createHomeScreen(
-    () => {
-      root.innerHTML = '';
-      root.className = 'content';
-      startSingleGame(root);
-    },
-    () => {
-      const modal = createModal(
-        () => modal.remove(),
-        () => alert('创建房间功能待接入'),
-        () => alert('加入房间功能待接入')
-      );
-      document.body.appendChild(modal);
-    }
-  );
-
-  root.appendChild(home);
+  container.prepend(topbar);
 }
 
-initHome();
+effect(() => {
+  const current = page.value;
+  app.innerHTML = '';
+
+  switch (current) {
+    case 'home': {
+      mount_topbar(app);
+      const content = document.createElement('div');
+      content.className = 'content';
+      content.appendChild(
+        create_home_screen(
+          () => { page.value = 'game'; },
+          () => {},
+          () => { page.value = 'settings'; },
+        ),
+      );
+      app.appendChild(content);
+      break;
+    }
+    case 'game': {
+      const content = document.createElement('div');
+      content.className = 'content';
+      app.appendChild(content);
+      create_game_screen(content);
+      break;
+    }
+    case 'settings': {
+      mount_topbar(app);
+      const content = document.createElement('div');
+      content.className = 'content';
+      content.appendChild(create_settings_screen());
+      app.appendChild(content);
+      break;
+    }
+    case 'gameover': {
+      app.appendChild(create_gameover_screen());
+      break;
+    }
+  }
+});
