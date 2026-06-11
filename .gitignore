@@ -6,6 +6,9 @@ target/
 crates/tetris-wasm/pkg/
 webui/wasm/
 
+# Production Build
+dist/
+
 # Agent
 AGENTS.md
 .claude/

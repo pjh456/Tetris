@@ -2,12 +2,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "wasm":  "node scripts/build-wasm.js",
-    "build": "node scripts/build-all.js",
-    "cli":   "node scripts/run-cli.js",
-    "web":   "node scripts/run-web.js",
-    "test":  "node scripts/test.js",
-    "check": "node scripts/check.js",
-    "clean": "node scripts/clean.js"
+    "wasm":    "node scripts/build-wasm.js",
+    "build":   "node scripts/build-all.js",
+    "dev:cli": "node scripts/run-cli.js",
+    "dev:web": "node scripts/run-web.js",
+    "preview": "node scripts/preview.js",
+    "test":    "node scripts/test.js",
+    "check":   "node scripts/check.js",
+    "clean":   "node scripts/clean.js"
   }
 }
