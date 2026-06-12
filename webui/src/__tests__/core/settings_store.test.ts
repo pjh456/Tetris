@@ -24,7 +24,10 @@ describe('load_settings', () => {
   });
 
   it('clamps numeric values to valid range', () => {
-    localStorage.setItem('tetris-settings', JSON.stringify({ das_ms: 9999, arr_ms: -10, sfx_volume: 5 }));
+    localStorage.setItem(
+      'tetris-settings',
+      JSON.stringify({ das_ms: 9999, arr_ms: -10, sfx_volume: 5 }),
+    );
     const s = load_settings();
     expect(s.das_ms).toBe(500);
     expect(s.arr_ms).toBe(0);

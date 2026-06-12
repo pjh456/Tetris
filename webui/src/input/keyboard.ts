@@ -41,7 +41,9 @@ const ACTION_NAME_MAP: Record<string, ActionValue> = {
   Hold: Actions.Hold,
 };
 
-function build_key_map(keymap?: Record<string, { key: string; code: string }>): Record<string, ActionValue> {
+function build_key_map(
+  keymap?: Record<string, { key: string; code: string }>,
+): Record<string, ActionValue> {
   if (!keymap) return DEFAULT_KEY_MAP;
   const result: Record<string, ActionValue> = {};
   for (const [action_name, bind] of Object.entries(keymap)) {
@@ -60,8 +62,16 @@ const REPEAT_ACTIONS = new Set<ActionValue>([
 ]);
 
 const BASE_PREVENT_KEYS = new Set([
-  'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
-  ' ', 'z', 'x', 'c', 'Tab', 'Escape',
+  'ArrowLeft',
+  'ArrowRight',
+  'ArrowUp',
+  'ArrowDown',
+  ' ',
+  'z',
+  'x',
+  'c',
+  'Tab',
+  'Escape',
 ]);
 
 export function bindKeyboard(

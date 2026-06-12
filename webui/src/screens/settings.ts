@@ -1,5 +1,10 @@
 import { page, settings } from '../state';
-import { load_settings, save_settings, reset_settings, type Settings } from '../core/settings_store';
+import {
+  load_settings,
+  save_settings,
+  reset_settings,
+  type Settings,
+} from '../core/settings_store';
 import { apply_theme, type ThemeName } from '../core/theme';
 
 const ACTION_LABELS: Record<string, string> = {
@@ -70,7 +75,9 @@ export function create_settings_screen(): HTMLElement {
   const back_btn = document.createElement('button');
   back_btn.className = 'btn';
   back_btn.textContent = '← Back';
-  back_btn.onclick = () => { page.value = 'home'; };
+  back_btn.onclick = () => {
+    page.value = 'home';
+  };
   const title = document.createElement('h2');
   title.className = 'settings-title';
   title.textContent = 'Settings';
@@ -85,12 +92,13 @@ export function create_settings_screen(): HTMLElement {
   const reset_btn = document.createElement('button');
   reset_btn.className = 'btn btn-reset';
   reset_btn.textContent = 'Reset to Defaults';
-  reset_btn.onclick = () => show_reset_modal(el, () => {
-    current = reset_settings();
-    settings.value = { ...current };
-    apply_theme(current.theme);
-    page.value = 'settings';
-  });
+  reset_btn.onclick = () =>
+    show_reset_modal(el, () => {
+      current = reset_settings();
+      settings.value = { ...current };
+      apply_theme(current.theme);
+      page.value = 'settings';
+    });
   el.appendChild(reset_btn);
 
   return el;
@@ -104,14 +112,21 @@ function create_controls_section(s: Settings, on_save: () => void): HTMLElement 
   section.appendChild(h3);
 
   section.appendChild(
-    create_slider('DAS', s.das_ms, 50, 500, 10, 'ms', (v) => { s.das_ms = v; on_save(); }),
+    create_slider('DAS', s.das_ms, 50, 500, 10, 'ms', (v) => {
+      s.das_ms = v;
+      on_save();
+    }),
   );
   section.appendChild(
-    create_slider('ARR', s.arr_ms, 0, 100, 1, 'ms', (v) => { s.arr_ms = v; on_save(); }),
+    create_slider('ARR', s.arr_ms, 0, 100, 1, 'ms', (v) => {
+      s.arr_ms = v;
+      on_save();
+    }),
   );
 
   const binds_title = document.createElement('div');
-  binds_title.style.cssText = 'font-size:var(--text-label);color:var(--color-muted);margin:var(--space-md) 0 var(--space-xs);';
+  binds_title.style.cssText =
+    'font-size:var(--text-label);color:var(--color-muted);margin:var(--space-md) 0 var(--space-xs);';
   binds_title.textContent = 'KEY BINDINGS';
   section.appendChild(binds_title);
 

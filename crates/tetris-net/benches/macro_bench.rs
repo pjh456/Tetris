@@ -23,7 +23,10 @@ fn main() {
 
     println!("8 players x {} ticks: {:?}", iterations, elapsed);
     println!("Average per tick: {:?}", elapsed / iterations);
-    println!("Average per player per tick: {:?}", elapsed / (iterations * 8));
+    println!(
+        "Average per player per tick: {:?}",
+        elapsed / (iterations * 8)
+    );
 
     if elapsed.as_millis() < 5000 {
         println!("PASS: under 5 seconds");

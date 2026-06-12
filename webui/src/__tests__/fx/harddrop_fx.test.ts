@@ -7,8 +7,12 @@ function create_mock_canvas() {
   canvas.height = 720;
   canvas.style.width = '360px';
   const ctx = {
-    fillRect: vi.fn(), clearRect: vi.fn(), fillStyle: '', globalAlpha: 1,
-    save: vi.fn(), restore: vi.fn(),
+    fillRect: vi.fn(),
+    clearRect: vi.fn(),
+    fillStyle: '',
+    globalAlpha: 1,
+    save: vi.fn(),
+    restore: vi.fn(),
   };
   vi.spyOn(canvas, 'getContext').mockReturnValue(ctx as unknown as CanvasRenderingContext2D);
   return { canvas, ctx };

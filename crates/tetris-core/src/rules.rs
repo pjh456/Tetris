@@ -53,7 +53,7 @@ pub fn can_place<const W: usize, const H: usize>(st: &State<W, H>, x: i8, y: i8,
 pub fn try_rotate<const W: usize, const H: usize>(st: &mut State<W, H>, to: Rot) -> bool {
     let kicks = &srs::srs_table()[st.piece as usize][st.rot as usize][to as usize];
 
-    for kick in kicks.iter() {
+    for kick in kicks {
         let nx = st.x + kick.dx;
         let ny = st.y - kick.dy;
 

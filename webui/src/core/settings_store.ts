@@ -74,7 +74,9 @@ export function load_settings(): Settings {
       bgm_volume: validate_number(parsed.bgm_volume, DEFAULTS.bgm_volume, 0, 1),
       theme: validate_theme(parsed.theme),
       show_countdown:
-        typeof parsed.show_countdown === 'boolean' ? parsed.show_countdown : DEFAULTS.show_countdown,
+        typeof parsed.show_countdown === 'boolean'
+          ? parsed.show_countdown
+          : DEFAULTS.show_countdown,
       keymap: validate_keymap(parsed.keymap),
     };
   } catch {

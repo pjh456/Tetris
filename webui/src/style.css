@@ -1,7 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Oxanium:wght@400;700&family=Rajdhani:wght@400;700&family=Press+Start+2P&family=Inter:wght@400;700&display=swap');
 
 :root,
-body[data-theme="cyberpunk"] {
+body[data-theme='cyberpunk'] {
   --color-bg: #0b0f1a;
   --color-bg-gradient: linear-gradient(180deg, #161b24, #0b0f1a);
   --color-panel: rgba(18, 22, 32, 0.95);
@@ -49,7 +49,7 @@ body[data-theme="cyberpunk"] {
   --space-3xl: 64px;
 }
 
-body[data-theme="retro"] {
+body[data-theme='retro'] {
   --color-bg: #1a1a2e;
   --color-bg-gradient: linear-gradient(180deg, #16213e, #1a1a2e);
   --color-panel: #16213e;
@@ -84,7 +84,7 @@ body[data-theme="retro"] {
   --color-card-settings-title: #58d68d;
 }
 
-body[data-theme="minimal"] {
+body[data-theme='minimal'] {
   --color-bg: #f5f5f5;
   --color-bg-gradient: linear-gradient(180deg, #ffffff, #f5f5f5);
   --color-panel: #ffffff;
@@ -226,7 +226,9 @@ body {
   cursor: pointer;
   overflow: hidden;
   transform: translateX(0);
-  transition: transform 120ms ease, box-shadow 120ms ease;
+  transition:
+    transform 120ms ease,
+    box-shadow 120ms ease;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   background: var(--color-panel);
@@ -406,7 +408,7 @@ body {
   font-size: var(--text-body);
 }
 
-.settings-row input[type="range"] {
+.settings-row input[type='range'] {
   flex: 1;
   accent-color: var(--color-accent);
 }
@@ -492,8 +494,12 @@ body {
 }
 
 @keyframes hud-flash {
-  0% { color: var(--color-accent); }
-  100% { color: var(--color-text); }
+  0% {
+    color: var(--color-accent);
+  }
+  100% {
+    color: var(--color-text);
+  }
 }
 
 .combo-popup {
@@ -511,8 +517,14 @@ body {
 }
 
 @keyframes popup-fade {
-  0% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
-  100% { opacity: 0; transform: translate(-50%, -60%) scale(1); }
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.2);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -60%) scale(1);
+  }
 }
 
 .countdown-overlay {
@@ -529,9 +541,18 @@ body {
 }
 
 @keyframes countdown-pop {
-  0% { transform: scale(2); opacity: 0; }
-  50% { transform: scale(1); opacity: 1; }
-  100% { transform: scale(0.8); opacity: 0.8; }
+  0% {
+    transform: scale(2);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.8);
+    opacity: 0.8;
+  }
 }
 
 .pause-overlay {
@@ -614,8 +635,12 @@ body {
 }
 
 @keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 html {

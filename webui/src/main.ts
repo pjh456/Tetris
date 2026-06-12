@@ -44,9 +44,13 @@ effect(() => {
       content.className = 'content';
       content.appendChild(
         create_home_screen(
-          () => { page.value = 'game'; },
+          () => {
+            page.value = 'game';
+          },
           () => {},
-          () => { page.value = 'settings'; },
+          () => {
+            page.value = 'settings';
+          },
         ),
       );
       app.appendChild(content);

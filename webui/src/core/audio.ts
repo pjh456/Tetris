@@ -1,39 +1,84 @@
 export type SfxEvent =
-  | 'line_clear' | 'rotate' | 'hard_drop' | 't_spin'
-  | 'game_over' | 'move' | 'soft_drop' | 'hold' | 'level_up';
+  | 'line_clear'
+  | 'rotate'
+  | 'hard_drop'
+  | 't_spin'
+  | 'game_over'
+  | 'move'
+  | 'soft_drop'
+  | 'hold'
+  | 'level_up';
 
 const PRIORITY: Record<SfxEvent, number> = {
-  t_spin: 3, game_over: 3,
+  t_spin: 3,
+  game_over: 3,
   line_clear: 2,
-  rotate: 1, hard_drop: 1, hold: 1, level_up: 1,
-  move: 0, soft_drop: 0,
+  rotate: 1,
+  hard_drop: 1,
+  hold: 1,
+  level_up: 1,
+  move: 0,
+  soft_drop: 0,
 };
 
 type SfxDef = { freq: number; freq_end: number; duration: number; type: OscillatorType };
 
 const SFX_DEFS: Record<SfxEvent, SfxDef> = {
-  move:       { freq: 200, freq_end: 200, duration: 0.03, type: 'square' },
-  soft_drop:  { freq: 300, freq_end: 300, duration: 0.02, type: 'square' },
-  rotate:     { freq: 400, freq_end: 600, duration: 0.05, type: 'triangle' },
-  hold:       { freq: 500, freq_end: 700, duration: 0.08, type: 'triangle' },
-  hard_drop:  { freq: 150, freq_end: 60,  duration: 0.1,  type: 'sine' },
+  move: { freq: 200, freq_end: 200, duration: 0.03, type: 'square' },
+  soft_drop: { freq: 300, freq_end: 300, duration: 0.02, type: 'square' },
+  rotate: { freq: 400, freq_end: 600, duration: 0.05, type: 'triangle' },
+  hold: { freq: 500, freq_end: 700, duration: 0.08, type: 'triangle' },
+  hard_drop: { freq: 150, freq_end: 60, duration: 0.1, type: 'sine' },
   line_clear: { freq: 500, freq_end: 1200, duration: 0.25, type: 'square' },
-  level_up:   { freq: 400, freq_end: 800, duration: 0.2,  type: 'square' },
-  t_spin:     { freq: 300, freq_end: 900, duration: 0.3,  type: 'sawtooth' },
-  game_over:  { freq: 600, freq_end: 100, duration: 0.5,  type: 'sawtooth' },
+  level_up: { freq: 400, freq_end: 800, duration: 0.2, type: 'square' },
+  t_spin: { freq: 300, freq_end: 900, duration: 0.3, type: 'sawtooth' },
+  game_over: { freq: 600, freq_end: 100, duration: 0.5, type: 'sawtooth' },
 };
 
 type NoteEntry = [number, number]; // [frequency_hz, duration_in_eighths]
 
 const KOROBEINIKI: NoteEntry[] = [
-  [329.63, 2], [246.94, 1], [261.63, 1], [293.66, 2], [261.63, 1], [246.94, 1],
-  [220.00, 2], [220.00, 1], [261.63, 1], [329.63, 2], [293.66, 1], [261.63, 1],
-  [246.94, 2], [246.94, 1], [261.63, 1], [293.66, 2], [329.63, 2],
-  [261.63, 2], [220.00, 2], [220.00, 2], [0, 2],
-  [293.66, 2], [349.23, 1], [440.00, 2], [392.00, 1], [349.23, 1],
-  [329.63, 2], [329.63, 1], [261.63, 1], [329.63, 2], [293.66, 1], [261.63, 1],
-  [246.94, 2], [246.94, 1], [261.63, 1], [293.66, 2], [329.63, 2],
-  [261.63, 2], [220.00, 2], [220.00, 2], [0, 2],
+  [329.63, 2],
+  [246.94, 1],
+  [261.63, 1],
+  [293.66, 2],
+  [261.63, 1],
+  [246.94, 1],
+  [220.0, 2],
+  [220.0, 1],
+  [261.63, 1],
+  [329.63, 2],
+  [293.66, 1],
+  [261.63, 1],
+  [246.94, 2],
+  [246.94, 1],
+  [261.63, 1],
+  [293.66, 2],
+  [329.63, 2],
+  [261.63, 2],
+  [220.0, 2],
+  [220.0, 2],
+  [0, 2],
+  [293.66, 2],
+  [349.23, 1],
+  [440.0, 2],
+  [392.0, 1],
+  [349.23, 1],
+  [329.63, 2],
+  [329.63, 1],
+  [261.63, 1],
+  [329.63, 2],
+  [293.66, 1],
+  [261.63, 1],
+  [246.94, 2],
+  [246.94, 1],
+  [261.63, 1],
+  [293.66, 2],
+  [329.63, 2],
+  [261.63, 2],
+  [220.0, 2],
+  [220.0, 2],
+  [0, 2],
 ];
 
 type ThemeAudio = 'cyberpunk' | 'retro' | 'minimal';
@@ -71,9 +116,12 @@ function render_melody(sample_rate: number, theme: ThemeAudio): AudioBuffer {
     }
     for (let i = 0; i < note_samples; i++) {
       const t = i / sample_rate;
-      const env = i < note_samples * 0.05 ? i / (note_samples * 0.05)
-        : i > note_samples * 0.8 ? (note_samples - i) / (note_samples * 0.2)
-        : 1.0;
+      const env =
+        i < note_samples * 0.05
+          ? i / (note_samples * 0.05)
+          : i > note_samples * 0.8
+            ? (note_samples - i) / (note_samples * 0.2)
+            : 1.0;
       const phase = t * freq;
       data[sample_offset + i] = wave_sample(phase, theme) * env;
     }
@@ -141,15 +189,18 @@ export class AudioManager {
       }
 
       if (this.current_timeout) clearTimeout(this.current_timeout);
-      this.current_timeout = setTimeout(() => {
-        this.current_priority = -1;
-        if (this.bgm_gain && this.bgm_source && this.ctx) {
-          this.bgm_gain.gain.linearRampToValueAtTime(
-            this._bgm_volume,
-            this.ctx.currentTime + 0.1,
-          );
-        }
-      }, def.duration * 1000 + 50);
+      this.current_timeout = setTimeout(
+        () => {
+          this.current_priority = -1;
+          if (this.bgm_gain && this.bgm_source && this.ctx) {
+            this.bgm_gain.gain.linearRampToValueAtTime(
+              this._bgm_volume,
+              this.ctx.currentTime + 0.1,
+            );
+          }
+        },
+        def.duration * 1000 + 50,
+      );
     } catch {
       // Fail silently
     }
@@ -159,8 +210,10 @@ export class AudioManager {
     if (!this.ctx || !this._initialized) return;
     try {
       this.stop_bgm();
-      const t = (theme === 'retro' || theme === 'minimal' || theme === 'cyberpunk')
-        ? theme as ThemeAudio : 'cyberpunk';
+      const t =
+        theme === 'retro' || theme === 'minimal' || theme === 'cyberpunk'
+          ? (theme as ThemeAudio)
+          : 'cyberpunk';
 
       const buffer = render_melody(this.ctx.sampleRate, t);
       this.bgm_source = this.ctx.createBufferSource();
@@ -205,9 +258,21 @@ export class AudioManager {
   }
 
   stop_bgm(): void {
-    try { this.bgm_source?.stop(); } catch { /* */ }
-    try { this.bgm_filter?.disconnect(); } catch { /* */ }
-    try { this.bgm_delay?.disconnect(); } catch { /* */ }
+    try {
+      this.bgm_source?.stop();
+    } catch {
+      /* */
+    }
+    try {
+      this.bgm_filter?.disconnect();
+    } catch {
+      /* */
+    }
+    try {
+      this.bgm_delay?.disconnect();
+    } catch {
+      /* */
+    }
     this.bgm_source = null;
     this.bgm_filter = null;
     this.bgm_delay = null;
@@ -224,7 +289,11 @@ export class AudioManager {
 
   dispose(): void {
     this.stop_bgm();
-    try { this.ctx?.close(); } catch { /* */ }
+    try {
+      this.ctx?.close();
+    } catch {
+      /* */
+    }
     this.ctx = null;
     this._initialized = false;
   }

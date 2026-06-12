@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use tetris_core::{Board, Engine};
 
 fn bench_engine_tick(c: &mut Criterion) {
@@ -92,5 +92,10 @@ fn bench_bincode_roundtrip(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_engine_tick, bench_board_clear, bench_bincode_roundtrip);
+criterion_group!(
+    benches,
+    bench_engine_tick,
+    bench_board_clear,
+    bench_bincode_roundtrip
+);
 criterion_main!(benches);

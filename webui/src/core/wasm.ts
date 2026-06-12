@@ -97,9 +97,7 @@ export async function init_wasm(container?: HTMLElement): Promise<WebTetris> {
   } catch (err) {
     cleanup_timer();
     target.innerHTML = '';
-    target.appendChild(
-      wasm_error_screen(err instanceof Error ? err.message : 'Unknown error'),
-    );
+    target.appendChild(wasm_error_screen(err instanceof Error ? err.message : 'Unknown error'));
     throw err;
   }
 }

@@ -32,10 +32,9 @@ pub fn load_config() -> CliConfig {
     }
 }
 
+#[allow(dead_code)]
 pub fn save_config(config: &CliConfig) -> Result<()> {
-    let config_dir = dirs::config_dir()
-        .context("No config dir")?
-        .join("tetris");
+    let config_dir = dirs::config_dir().context("No config dir")?.join("tetris");
     std::fs::create_dir_all(&config_dir)?;
     let content = toml::to_string_pretty(config)?;
     std::fs::write(config_dir.join("config.toml"), content)?;

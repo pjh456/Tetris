@@ -18,7 +18,11 @@ function gravity_interval_ms(lvl: number): number {
   return Math.max(1, Math.pow(0.8 - (l - 1) * 0.007, l - 1) * 1000);
 }
 
-function setup_hidpi(canvas: HTMLCanvasElement, css_w: number, css_h: number): CanvasRenderingContext2D {
+function setup_hidpi(
+  canvas: HTMLCanvasElement,
+  css_w: number,
+  css_h: number,
+): CanvasRenderingContext2D {
   const dpr = window.devicePixelRatio || 1;
   canvas.width = css_w * dpr;
   canvas.height = css_h * dpr;
@@ -68,7 +72,8 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
   hold_col.style.cssText = 'display:flex;flex-direction:column;gap:8px;';
   const hold_label = document.createElement('div');
   hold_label.textContent = 'HOLD';
-  hold_label.style.cssText = 'color:var(--color-text);font-size:var(--text-body);letter-spacing:2px;';
+  hold_label.style.cssText =
+    'color:var(--color-text);font-size:var(--text-body);letter-spacing:2px;';
   const hold_canvas = document.createElement('canvas');
   setup_hidpi(hold_canvas, 140, 140);
   hold_canvas.style.border = '2px solid var(--color-panel-border)';
@@ -77,7 +82,8 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
   hold_col.appendChild(hold_canvas);
 
   const board_frame = document.createElement('div');
-  board_frame.style.cssText = 'position:relative;display:inline-block;border:3px solid var(--color-panel-border);background:var(--color-bg);box-shadow:0 0 20px var(--color-panel-shadow);';
+  board_frame.style.cssText =
+    'position:relative;display:inline-block;border:3px solid var(--color-panel-border);background:var(--color-bg);box-shadow:0 0 20px var(--color-panel-shadow);';
   const board_canvas = document.createElement('canvas');
   setup_hidpi(board_canvas, board_css_w, board_css_h);
   const fx_canvas = document.createElement('canvas');
@@ -92,7 +98,8 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
   right_col.style.cssText = 'display:flex;flex-direction:column;gap:8px;';
   const next_label = document.createElement('div');
   next_label.textContent = 'NEXT';
-  next_label.style.cssText = 'color:var(--color-text);font-size:var(--text-body);letter-spacing:2px;text-align:center;background:var(--color-panel);border:1px solid var(--color-panel-border);padding:4px 0;';
+  next_label.style.cssText =
+    'color:var(--color-text);font-size:var(--text-body);letter-spacing:2px;text-align:center;background:var(--color-panel);border:1px solid var(--color-panel-border);padding:4px 0;';
   const next_canvas = document.createElement('canvas');
   setup_hidpi(next_canvas, 180, 480);
   next_canvas.style.border = '1px solid var(--color-panel-border)';
@@ -146,7 +153,10 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
     popup_el.className = 'combo-popup';
     popup_el.textContent = text;
     board_frame.appendChild(popup_el);
-    setTimeout(() => { popup_el?.remove(); popup_el = null; }, 1000);
+    setTimeout(() => {
+      popup_el?.remove();
+      popup_el = null;
+    }, 1000);
   }
 
   function render_all() {
@@ -342,10 +352,11 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
           } else {
             audio_manager.play_sfx('hard_drop');
           }
-        }
-        else if (action === Actions.MoveLeft || action === Actions.MoveRight) audio_manager.play_sfx('move');
+        } else if (action === Actions.MoveLeft || action === Actions.MoveRight)
+          audio_manager.play_sfx('move');
         else if (action === Actions.SoftDrop) audio_manager.play_sfx('soft_drop');
-        else if (action === Actions.RotateCW || action === Actions.RotateCCW) audio_manager.play_sfx('rotate');
+        else if (action === Actions.RotateCW || action === Actions.RotateCCW)
+          audio_manager.play_sfx('rotate');
         else if (action === Actions.Hold) audio_manager.play_sfx('hold');
       },
       isGameOver: () => wasm.is_game_over,

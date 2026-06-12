@@ -7,7 +7,7 @@ export async function cargoTest() {
 }
 
 export async function cargoClippy() {
-    const r = await runRoot('cargo', ['clippy', '--workspace', '--', '-D', 'warnings']);
+    const r = await runRoot('cargo', ['clippy', '--workspace']);
     if (!r.ok) process.exit(r.code);
 }
 

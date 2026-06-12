@@ -18,16 +18,9 @@ fn main() -> Result<()> {
     let cfg = config::load_config();
     let state = app::AppState::Menu { selected: 0 };
 
-    game_loop::run_game_loop(
-        state,
-        &cfg,
-        |st, msg| app::update(st, msg),
-        |st| {
-            terminal
-                .draw(|frame| render::render(st, frame))
-                .ok();
-        },
-    );
+    game_loop::run_game_loop(state, &cfg, app::update, |st| {
+        terminal.draw(|frame| render::render(st, frame)).ok();
+    });
 
     ratatui::restore();
     Ok(())

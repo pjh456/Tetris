@@ -93,8 +93,7 @@ impl NetworkManager {
     }
 
     pub fn send_packet<T: Serialize>(&mut self, packet: &T, channel: u8) -> Result<(), NetError> {
-        let data =
-            bincode::serialize(packet).map_err(|e| NetError::Encode(e.to_string()))?;
+        let data = bincode::serialize(packet).map_err(|e| NetError::Encode(e.to_string()))?;
 
         if let Some(ref mut server) = self.server {
             for client_id in self.connected_clients.keys() {

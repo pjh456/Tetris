@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use rayon::prelude::*;
-use slotmap::{new_key_type, SlotMap};
+use slotmap::{SlotMap, new_key_type};
 use tetris_core::engine::{Action, Engine};
 
 use crate::error::NetError;
@@ -72,10 +72,10 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
     }
 
     pub fn queue_delta(&mut self, player_key: PlayerKey, local_player_id: u8) {
-        if let Some(pkt) = self.delta_encode(player_key, local_player_id) {
-            if let Ok(data) = bincode::serialize(&pkt) {
-                self.pending_packets.push(data);
-            }
+        if let Some(pkt) = self.delta_encode(player_key, local_player_id)
+            && let Ok(data) = bincode::serialize(&pkt)
+        {
+            self.pending_packets.push(data);
         }
     }
 
@@ -89,7 +89,11 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
         net.send_packet(&batch, channel)
     }
 
-    pub fn delta_encode(&mut self, player_key: PlayerKey, local_player_id: u8) -> Option<PktDeltaSync> {
+    pub fn delta_encode(
+        &mut self,
+        player_key: PlayerKey,
+        local_player_id: u8,
+    ) -> Option<PktDeltaSync> {
         let engine = self.engines.get(player_key)?;
         let prev = self.prev_board_rows.get(&player_key)?;
 
@@ -167,31 +171,31 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
 
         match header.packet_type {
             PacketType::GameStart => {
-                let pkt: PktGameStart = bincode::deserialize(data)
-                    .map_err(|e| NetError::Decode(e.to_string()))?;
+                let pkt: PktGameStart =
+                    bincode::deserialize(data).map_err(|e| NetError::Decode(e.to_string()))?;
                 if let Some(cb) = self.on_game_start.take() {
                     cb(pkt.random_seed);
                 }
             }
             PacketType::PlayerAction => {
-                let pkt: PktPlayerAction = bincode::deserialize(data)
-                    .map_err(|e| NetError::Decode(e.to_string()))?;
-                if let Some(key) = self.player_key_from_id(header.player_id) {
-                    if let Some(engine) = self.engines.get_mut(key) {
-                        engine.handle_action(pkt.action);
-                    }
+                let pkt: PktPlayerAction =
+                    bincode::deserialize(data).map_err(|e| NetError::Decode(e.to_string()))?;
+                if let Some(key) = self.player_key_from_id(header.player_id)
+                    && let Some(engine) = self.engines.get_mut(key)
+                {
+                    engine.handle_action(pkt.action);
                 }
             }
             PacketType::PlayerAttack => {
-                let pkt: PktPlayerAttack = bincode::deserialize(data)
-                    .map_err(|e| NetError::Decode(e.to_string()))?;
+                let pkt: PktPlayerAttack =
+                    bincode::deserialize(data).map_err(|e| NetError::Decode(e.to_string()))?;
                 if let Some(engine) = self.engines.get_mut(self.local_key) {
                     engine.state.pending_garbage += pkt.lines;
                 }
             }
             PacketType::StateSync => {
-                let pkt: PktStateSync = bincode::deserialize(data)
-                    .map_err(|e| NetError::Decode(e.to_string()))?;
+                let pkt: PktStateSync =
+                    bincode::deserialize(data).map_err(|e| NetError::Decode(e.to_string()))?;
                 if let Some(key) = self.player_key_from_id(header.player_id) {
                     if let Some(engine) = self.engines.get_mut(key) {
                         for (i, &val) in pkt.board_rows.iter().enumerate() {
@@ -215,16 +219,16 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
                         engine.state.pending_garbage = pkt.pending_garbage;
                         engine.state.rng = pkt.rng_state;
                     }
-                    if let Some(cache) = self.prev_board_rows.get_mut(&key) {
-                        if let Some(engine) = self.engines.get(key) {
-                            cache.copy_from_slice(&engine.state.board.rows);
-                        }
+                    if let Some(cache) = self.prev_board_rows.get_mut(&key)
+                        && let Some(engine) = self.engines.get(key)
+                    {
+                        cache.copy_from_slice(&engine.state.board.rows);
                     }
                 }
             }
             PacketType::DeltaSync => {
-                let pkt: PktDeltaSync = bincode::deserialize(data)
-                    .map_err(|e| NetError::Decode(e.to_string()))?;
+                let pkt: PktDeltaSync =
+                    bincode::deserialize(data).map_err(|e| NetError::Decode(e.to_string()))?;
                 let expected_seq = self.last_remote_seq + 1;
                 if self.last_remote_seq == 0 && pkt.seq == 0 {
                 } else if pkt.seq != expected_seq {
@@ -233,27 +237,27 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
                         expected_seq, pkt.seq
                     )));
                 }
-                if let Some(key) = self.player_key_from_id(header.player_id) {
-                    if let Some(engine) = self.engines.get_mut(key) {
-                        for &(row_idx, new_val) in &pkt.changed_rows {
-                            if (row_idx as usize) < H {
-                                engine.state.board.rows[row_idx as usize] = new_val;
-                            }
+                if let Some(key) = self.player_key_from_id(header.player_id)
+                    && let Some(engine) = self.engines.get_mut(key)
+                {
+                    for &(row_idx, new_val) in &pkt.changed_rows {
+                        if (row_idx as usize) < H {
+                            engine.state.board.rows[row_idx as usize] = new_val;
                         }
-                        engine.state.piece = pkt.piece;
-                        engine.state.rot = pkt.rot;
-                        engine.state.x = pkt.x;
-                        engine.state.y = pkt.y;
-                        engine.state.hold = pkt.hold;
-                        engine.state.hold_used = pkt.hold_used;
-                        engine.state.next = [
-                            pkt.next[0],
-                            pkt.next[1],
-                            pkt.next[2],
-                            pkt.next[0],
-                            pkt.next[0],
-                        ];
                     }
+                    engine.state.piece = pkt.piece;
+                    engine.state.rot = pkt.rot;
+                    engine.state.x = pkt.x;
+                    engine.state.y = pkt.y;
+                    engine.state.hold = pkt.hold;
+                    engine.state.hold_used = pkt.hold_used;
+                    engine.state.next = [
+                        pkt.next[0],
+                        pkt.next[1],
+                        pkt.next[2],
+                        pkt.next[0],
+                        pkt.next[0],
+                    ];
                 }
                 self.last_remote_seq = pkt.seq;
             }
@@ -273,7 +277,11 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
         }
     }
 
-    pub fn send_action(&mut self, net: &mut NetworkManager, action: Action) -> Result<(), NetError> {
+    pub fn send_action(
+        &mut self,
+        net: &mut NetworkManager,
+        action: Action,
+    ) -> Result<(), NetError> {
         let pkt = PktPlayerAction {
             header: PacketHeader {
                 version: PROTOCOL_VERSION,

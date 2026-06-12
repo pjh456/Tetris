@@ -1,6 +1,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
+#[allow(dead_code)]
 pub enum WasmError {
     #[error("wasm init error: {0}")]
     Init(String),

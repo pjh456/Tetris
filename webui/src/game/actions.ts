@@ -5,7 +5,7 @@ export const Actions = {
   HardDrop: 3,
   RotateCW: 4,
   RotateCCW: 5,
-  Hold: 6
+  Hold: 6,
 } as const;
 
 export type ActionValue = (typeof Actions)[keyof typeof Actions];

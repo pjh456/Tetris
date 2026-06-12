@@ -20,8 +20,13 @@ export function create_gameover_screen(): HTMLElement {
   try {
     const wasm = get_wasm();
     const s = wasm.get_game_stats() as {
-      score: number; lines: number; level: number;
-      game_time_ms: number; max_combo: number; tspin_count: number; total_pieces: number;
+      score: number;
+      lines: number;
+      level: number;
+      game_time_ms: number;
+      max_combo: number;
+      tspin_count: number;
+      total_pieces: number;
     };
     const time_sec = s.game_time_ms / 1000;
     const pps = time_sec > 0 ? (s.total_pieces / time_sec).toFixed(1) : '0.0';
@@ -53,9 +58,15 @@ export function create_gameover_screen(): HTMLElement {
     </div>
   `;
 
-  el.querySelector('#go-retry')!.addEventListener('click', () => { page.value = 'game'; });
-  el.querySelector('#go-new')!.addEventListener('click', () => { page.value = 'game'; });
-  el.querySelector('#go-menu')!.addEventListener('click', () => { page.value = 'home'; });
+  el.querySelector('#go-retry')!.addEventListener('click', () => {
+    page.value = 'game';
+  });
+  el.querySelector('#go-new')!.addEventListener('click', () => {
+    page.value = 'game';
+  });
+  el.querySelector('#go-menu')!.addEventListener('click', () => {
+    page.value = 'home';
+  });
 
   return el;
 }

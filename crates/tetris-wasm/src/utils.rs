@@ -127,7 +127,10 @@ mod tests {
         let ghost_y = get_ghost_y(&e.state) as i32;
         let grid = build_grid(&e.state, ghost_y, false);
         let active_count = grid.iter().filter(|&&v| v >= 3).count();
-        assert!(active_count > 0, "active piece should produce non-zero cells");
+        assert!(
+            active_count > 0,
+            "active piece should produce non-zero cells"
+        );
     }
 
     #[test]

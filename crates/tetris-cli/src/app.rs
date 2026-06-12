@@ -55,6 +55,7 @@ pub enum Message {
     Key(KeyCode),
     Tick,
     FrameTick,
+    #[allow(dead_code)]
     Quit,
 }
 
@@ -88,9 +89,7 @@ fn step(state: AppState, msg: Message) -> (AppState, bool) {
     match state {
         AppState::Menu { mut selected } => match msg {
             Message::Key(KeyCode::Up) => {
-                if selected > 0 {
-                    selected -= 1;
-                }
+                selected = selected.saturating_sub(1);
                 (AppState::Menu { selected }, false)
             }
             Message::Key(KeyCode::Down) => {
@@ -159,13 +158,7 @@ fn step(state: AppState, msg: Message) -> (AppState, bool) {
                     engine.handle_action(Action::Hold);
                 }
                 Message::Key(KeyCode::Char('p')) => {
-                    return (
-                        AppState::Pause {
-                            engine,
-                            start_time,
-                        },
-                        false,
-                    );
+                    return (AppState::Pause { engine, start_time }, false);
                 }
                 Message::Tick => {
                     gravity_accum_ms += 20;
@@ -200,12 +193,8 @@ fn step(state: AppState, msg: Message) -> (AppState, bool) {
                     }
                 }
                 Message::FrameTick => {
-                    if clear_flash_timer > 0 {
-                        clear_flash_timer -= 1;
-                    }
-                    if score_flash_timer > 0 {
-                        score_flash_timer -= 1;
-                    }
+                    clear_flash_timer = clear_flash_timer.saturating_sub(1);
+                    score_flash_timer = score_flash_timer.saturating_sub(1);
                 }
                 Message::Quit => return (AppState::Menu { selected: 0 }, true),
                 _ => {}
@@ -240,10 +229,7 @@ fn step(state: AppState, msg: Message) -> (AppState, bool) {
             )
         }
 
-        AppState::Pause {
-            engine,
-            start_time,
-        } => match msg {
+        AppState::Pause { engine, start_time } => match msg {
             Message::Key(KeyCode::Char('p')) => (
                 AppState::Playing {
                     engine,

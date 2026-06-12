@@ -5,44 +5,44 @@ const SHAPES: number[][][] = [
     [0, 0, 0, 0],
     [1, 1, 1, 1],
     [0, 0, 0, 0],
-    [0, 0, 0, 0]
+    [0, 0, 0, 0],
   ],
   [
     [0, 1, 1, 0],
     [0, 1, 1, 0],
     [0, 0, 0, 0],
-    [0, 0, 0, 0]
+    [0, 0, 0, 0],
   ],
   [
     [0, 1, 0, 0],
     [1, 1, 1, 0],
     [0, 0, 0, 0],
-    [0, 0, 0, 0]
+    [0, 0, 0, 0],
   ],
   [
     [0, 1, 1, 0],
     [1, 1, 0, 0],
     [0, 0, 0, 0],
-    [0, 0, 0, 0]
+    [0, 0, 0, 0],
   ],
   [
     [1, 1, 0, 0],
     [0, 1, 1, 0],
     [0, 0, 0, 0],
-    [0, 0, 0, 0]
+    [0, 0, 0, 0],
   ],
   [
     [1, 0, 0, 0],
     [1, 1, 1, 0],
     [0, 0, 0, 0],
-    [0, 0, 0, 0]
+    [0, 0, 0, 0],
   ],
   [
     [0, 0, 1, 0],
     [1, 1, 1, 0],
     [0, 0, 0, 0],
-    [0, 0, 0, 0]
-  ]
+    [0, 0, 0, 0],
+  ],
 ];
 
 type PreviewRenderer = {
@@ -59,7 +59,7 @@ type PreviewOptions = {
 
 export function createPreviewRenderer(
   canvas: HTMLCanvasElement,
-  options: PreviewOptions = {}
+  options: PreviewOptions = {},
 ): PreviewRenderer {
   const ctx = canvas.getContext('2d')!;
   const showGrid = options.showGrid !== false;
@@ -93,7 +93,7 @@ export function createPreviewRenderer(
           ctx.fillRect(x * cell + 2, y * cell + 2, cell - 4, cell - 4);
         }
       }
-    }
+    },
   };
 }
 
@@ -129,6 +129,6 @@ export function createNextStackRenderer(canvas: HTMLCanvasElement): NextStackRen
         }
         yCursor += pieceHeight * scale + gap * scale;
       });
-    }
+    },
   };
 }

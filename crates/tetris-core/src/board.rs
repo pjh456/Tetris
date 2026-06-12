@@ -41,12 +41,12 @@ impl<const W: usize, const H: usize> Board<W, H> {
         let mut mask: u32 = 0;
 
         for read in (0..H).rev() {
-            if self.rows[read] != Self::FULL {
-                write = write.wrapping_sub(1);
-                self.rows[write] = self.rows[read];
-            } else {
+            if self.rows[read] == Self::FULL {
                 cleared += 1;
                 mask |= 1u32 << read;
+            } else {
+                write = write.wrapping_sub(1);
+                self.rows[write] = self.rows[read];
             }
         }
 

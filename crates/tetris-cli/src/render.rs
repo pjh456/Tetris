@@ -1,8 +1,8 @@
+use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
-use ratatui::Frame;
 
 use tetris_core::piece::PIECES;
 use tetris_core::rules::get_ghost_y;
@@ -73,7 +73,10 @@ fn render_menu(frame: &mut Frame, selected: usize) {
     let mut lines: Vec<Line> = Vec::new();
     lines.push(Line::from(""));
     for row in &ascii_art {
-        lines.push(Line::from(Span::styled(*row, Style::default().fg(Color::Cyan))));
+        lines.push(Line::from(Span::styled(
+            *row,
+            Style::default().fg(Color::Cyan),
+        )));
     }
     lines.push(Line::from(""));
     lines.push(Line::from(""));
@@ -85,10 +88,7 @@ fn render_menu(frame: &mut Frame, selected: usize) {
         } else {
             Style::default().fg(Color::Gray)
         };
-        lines.push(Line::from(Span::styled(
-            format!("{marker}{item}"),
-            style,
-        )));
+        lines.push(Line::from(Span::styled(format!("{marker}{item}"), style)));
     }
 
     lines.push(Line::from(""));
@@ -145,7 +145,16 @@ fn render_playing(
     .split(area);
 
     render_hold(frame, engine, layout[0]);
-    render_board(frame, engine, layout[1], use_half, clear_flash, prev_grid, prev_flash_mask, prev_half);
+    render_board(
+        frame,
+        engine,
+        layout[1],
+        use_half,
+        clear_flash,
+        prev_grid,
+        prev_flash_mask,
+        prev_half,
+    );
     render_sidebar(frame, engine, layout[2], score_flash);
 }
 
@@ -212,9 +221,12 @@ fn render_board(
                 if active_shape.row[dy] & (1 << dx) == 0 {
                     continue;
                 }
-                let gx = st.x as i32 + dx as i32;
+                let gx = st.x as i32 + dx;
                 let gy = ghost_y + dy as i32;
-                if (0..10).contains(&gx) && (0..20).contains(&gy) && grid[gy as usize][gx as usize] == CellType::Empty {
+                if (0..10).contains(&gx)
+                    && (0..20).contains(&gy)
+                    && grid[gy as usize][gx as usize] == CellType::Empty
+                {
                     grid[gy as usize][gx as usize] = CellType::Ghost;
                 }
             }
@@ -227,7 +239,7 @@ fn render_board(
                 if active_shape.row[dy] & (1 << dx) == 0 {
                     continue;
                 }
-                let px = st.x as i32 + dx as i32;
+                let px = st.x as i32 + dx;
                 let py = st.y as i32 + dy as i32;
                 if (0..10).contains(&px) && (0..20).contains(&py) {
                     grid[py as usize][px as usize] = CellType::Active(st.piece);
@@ -260,7 +272,11 @@ fn render_board(
                 let mut spans = Vec::new();
                 for x in 0..10 {
                     let top = grid[y][x];
-                    let bot = if y + 1 < 20 { grid[y + 1][x] } else { CellType::Empty };
+                    let bot = if y + 1 < 20 {
+                        grid[y + 1][x]
+                    } else {
+                        CellType::Empty
+                    };
                     let (ch, style) = half_cell(top, bot, flash_top || flash_bot);
                     spans.push(Span::styled(ch, style));
                 }
@@ -276,9 +292,7 @@ fn render_board(
         for y in 0..20 {
             let flashing = flash_mask & (1 << y) != 0;
             let prev_flashing = *prev_flash_mask & (1 << y) != 0;
-            let row_changed = mode_changed
-                || prev_grid[y] != grid[y]
-                || flashing != prev_flashing;
+            let row_changed = mode_changed || prev_grid[y] != grid[y] || flashing != prev_flashing;
             if row_changed {
                 let mut spans = Vec::new();
                 for x in 0..10 {
@@ -303,7 +317,10 @@ use crate::app::CellType;
 
 fn cell_style(cell: CellType, flashing: bool) -> (String, Style) {
     if flashing {
-        return ("██".into(), Style::default().fg(Color::White).bg(Color::White));
+        return (
+            "██".into(),
+            Style::default().fg(Color::White).bg(Color::White),
+        );
     }
     match cell {
         CellType::Empty => ("··".into(), Style::default().fg(Color::DarkGray)),
@@ -313,11 +330,12 @@ fn cell_style(cell: CellType, flashing: bool) -> (String, Style) {
     }
 }
 
-
-
 fn half_cell(top: CellType, bot: CellType, flashing: bool) -> (String, Style) {
     if flashing {
-        return ("▀".into(), Style::default().fg(Color::White).bg(Color::White));
+        return (
+            "▀".into(),
+            Style::default().fg(Color::White).bg(Color::White),
+        );
     }
     let fg = cell_fg(top);
     let bg = cell_fg(bot);

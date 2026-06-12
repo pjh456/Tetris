@@ -12,9 +12,17 @@ describe('create_hud_overlay', () => {
   it('update does not throw with valid data', () => {
     const container = document.createElement('div');
     const hud = create_hud_overlay(container);
-    expect(() => hud.update({
-      score: 1000, level: 2, lines: 10, combo: 3, b2b: 1, tspin: 0, all_clear: 0,
-    })).not.toThrow();
+    expect(() =>
+      hud.update({
+        score: 1000,
+        level: 2,
+        lines: 10,
+        combo: 3,
+        b2b: 1,
+        tspin: 0,
+        all_clear: 0,
+      }),
+    ).not.toThrow();
   });
 
   it('destroy removes HUD from DOM', () => {

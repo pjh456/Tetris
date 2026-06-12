@@ -4,9 +4,17 @@ import { createPreviewRenderer, createNextStackRenderer } from '../../render/pre
 function create_mock_canvas() {
   const canvas = document.createElement('canvas');
   const ctx = {
-    fillRect: vi.fn(), clearRect: vi.fn(), fillStyle: '', strokeStyle: '',
-    globalAlpha: 1, save: vi.fn(), restore: vi.fn(), scale: vi.fn(),
-    strokeRect: vi.fn(), lineWidth: 1, setTransform: vi.fn(),
+    fillRect: vi.fn(),
+    clearRect: vi.fn(),
+    fillStyle: '',
+    strokeStyle: '',
+    globalAlpha: 1,
+    save: vi.fn(),
+    restore: vi.fn(),
+    scale: vi.fn(),
+    strokeRect: vi.fn(),
+    lineWidth: 1,
+    setTransform: vi.fn(),
   };
   vi.spyOn(canvas, 'getContext').mockReturnValue(ctx as unknown as CanvasRenderingContext2D);
   return { canvas, ctx };

@@ -1,7 +1,4 @@
-export function run_collapse_animation(
-  canvas: HTMLCanvasElement,
-  on_complete: () => void,
-): void {
+export function run_collapse_animation(canvas: HTMLCanvasElement, on_complete: () => void): void {
   const ctx = canvas.getContext('2d')!;
   const css_h = parseFloat(canvas.style.height) || canvas.height;
   const rows = 20;

@@ -59,7 +59,7 @@ impl InputHandler {
     pub fn process_repeats(&mut self) -> Vec<Message> {
         let now = Instant::now();
         let mut msgs = Vec::new();
-        for (key, state) in self.held_keys.iter_mut() {
+        for (key, state) in &mut self.held_keys {
             let elapsed = (now - state.pressed_at).as_millis() as u64;
             if elapsed < self.das_ms {
                 continue;

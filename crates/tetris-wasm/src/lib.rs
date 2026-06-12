@@ -222,6 +222,9 @@ mod tests {
         let wt2 = WebTetris::new(999);
         let same_piece = wt1.engine.state.piece == wt2.engine.state.piece;
         let same_next = wt1.engine.state.next == wt2.engine.state.next;
-        assert!(!(same_piece && same_next), "different seeds should produce different states");
+        assert!(
+            !(same_piece && same_next),
+            "different seeds should produce different states"
+        );
     }
 }

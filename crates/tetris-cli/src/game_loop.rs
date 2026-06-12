@@ -4,8 +4,12 @@ use crate::app::{AppState, Message};
 use crate::config::CliConfig;
 use crate::input::InputHandler;
 
-pub fn run_game_loop<F, G>(mut state: AppState, config: &CliConfig, mut on_update: F, mut on_render: G)
-where
+pub fn run_game_loop<F, G>(
+    mut state: AppState,
+    config: &CliConfig,
+    mut on_update: F,
+    mut on_render: G,
+) where
     F: FnMut(&mut AppState, Message) -> bool,
     G: FnMut(&mut AppState),
 {

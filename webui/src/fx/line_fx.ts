@@ -143,7 +143,7 @@ function makeParticle(): Particle {
     size: 2,
     life: 0,
     maxLife: 0,
-    color: ''
+    color: '',
   };
 }
 
