@@ -295,6 +295,7 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
     cleanup_keyboard?.();
     document.removeEventListener('visibilitychange', on_visibility_change);
     hud.destroy();
+    renderer.destroy();
   }
 
   const kbd_config: KeyboardConfig = {
