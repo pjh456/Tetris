@@ -49,7 +49,7 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
     await run_countdown(root);
   }
 
-  audio_manager.start_bgm();
+  audio_manager.start_bgm(settings.value.theme);
   root.innerHTML = '';
 
   const board_css_w = 360;
@@ -242,7 +242,7 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
       audio_manager.stop_bgm();
       show_pause_overlay();
     } else {
-      audio_manager.start_bgm();
+      audio_manager.start_bgm(settings.value.theme);
       hide_pause_overlay();
     }
   }
@@ -327,9 +327,18 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
         if (action === Actions.MoveLeft && edge_dir === -1) edge_release();
         if (action === Actions.MoveRight && edge_dir === 1) edge_release();
 
+        const prev_lines = lines.value;
         wasm.handle_action(action);
 
-        if (action === Actions.HardDrop) { check_harddrop_fx(); audio_manager.play_sfx('hard_drop'); }
+        if (action === Actions.HardDrop) {
+          check_harddrop_fx();
+          const hud_now = wasm.get_hud_data() as HudData;
+          if (hud_now && hud_now.lines > prev_lines) {
+            audio_manager.play_sfx(hud_now.tspin > 0 ? 't_spin' : 'line_clear');
+          } else {
+            audio_manager.play_sfx('hard_drop');
+          }
+        }
         else if (action === Actions.MoveLeft || action === Actions.MoveRight) audio_manager.play_sfx('move');
         else if (action === Actions.SoftDrop) audio_manager.play_sfx('soft_drop');
         else if (action === Actions.RotateCW || action === Actions.RotateCCW) audio_manager.play_sfx('rotate');

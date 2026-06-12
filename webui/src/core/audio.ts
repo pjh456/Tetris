@@ -17,16 +17,78 @@ const SFX_DEFS: Record<SfxEvent, SfxDef> = {
   rotate:     { freq: 400, freq_end: 600, duration: 0.05, type: 'triangle' },
   hold:       { freq: 500, freq_end: 700, duration: 0.08, type: 'triangle' },
   hard_drop:  { freq: 150, freq_end: 60,  duration: 0.1,  type: 'sine' },
-  line_clear: { freq: 400, freq_end: 800, duration: 0.15, type: 'square' },
+  line_clear: { freq: 500, freq_end: 1200, duration: 0.25, type: 'square' },
   level_up:   { freq: 400, freq_end: 800, duration: 0.2,  type: 'square' },
   t_spin:     { freq: 300, freq_end: 900, duration: 0.3,  type: 'sawtooth' },
   game_over:  { freq: 600, freq_end: 100, duration: 0.5,  type: 'sawtooth' },
 };
 
+type NoteEntry = [number, number]; // [frequency_hz, duration_in_eighths]
+
+const KOROBEINIKI: NoteEntry[] = [
+  [329.63, 2], [246.94, 1], [261.63, 1], [293.66, 2], [261.63, 1], [246.94, 1],
+  [220.00, 2], [220.00, 1], [261.63, 1], [329.63, 2], [293.66, 1], [261.63, 1],
+  [246.94, 2], [246.94, 1], [261.63, 1], [293.66, 2], [329.63, 2],
+  [261.63, 2], [220.00, 2], [220.00, 2], [0, 2],
+  [293.66, 2], [349.23, 1], [440.00, 2], [392.00, 1], [349.23, 1],
+  [329.63, 2], [329.63, 1], [261.63, 1], [329.63, 2], [293.66, 1], [261.63, 1],
+  [246.94, 2], [246.94, 1], [261.63, 1], [293.66, 2], [329.63, 2],
+  [261.63, 2], [220.00, 2], [220.00, 2], [0, 2],
+];
+
+type ThemeAudio = 'cyberpunk' | 'retro' | 'minimal';
+
+function wave_sample(phase: number, type: ThemeAudio): number {
+  const p = phase % 1;
+  switch (type) {
+    case 'minimal':
+      return p < 0.5 ? 0.4 : -0.4;
+    case 'retro':
+      return (1 - 4 * Math.abs(p - 0.5)) * 0.4;
+    case 'cyberpunk':
+      return (2 * p - 1) * 0.35;
+  }
+}
+
+function render_melody(sample_rate: number, theme: ThemeAudio): AudioBuffer {
+  const bpm = 140;
+  const eighth = 60 / bpm / 2;
+  let total_eighths = 0;
+  for (const [, dur] of KOROBEINIKI) total_eighths += dur;
+  const total_seconds = total_eighths * eighth;
+  const total_samples = Math.ceil(total_seconds * sample_rate);
+
+  const ctx = new OfflineAudioContext(1, total_samples, sample_rate);
+  const buffer = ctx.createBuffer(1, total_samples, sample_rate);
+  const data = buffer.getChannelData(0);
+
+  let sample_offset = 0;
+  for (const [freq, dur] of KOROBEINIKI) {
+    const note_samples = Math.floor(dur * eighth * sample_rate);
+    if (freq === 0) {
+      sample_offset += note_samples;
+      continue;
+    }
+    for (let i = 0; i < note_samples; i++) {
+      const t = i / sample_rate;
+      const env = i < note_samples * 0.05 ? i / (note_samples * 0.05)
+        : i > note_samples * 0.8 ? (note_samples - i) / (note_samples * 0.2)
+        : 1.0;
+      const phase = t * freq;
+      data[sample_offset + i] = wave_sample(phase, theme) * env;
+    }
+    sample_offset += note_samples;
+  }
+
+  return buffer;
+}
+
 export class AudioManager {
   private ctx: AudioContext | null = null;
   private sfx_gain: GainNode | null = null;
   private bgm_gain: GainNode | null = null;
+  private bgm_filter: BiquadFilterNode | null = null;
+  private bgm_delay: DelayNode | null = null;
   private bgm_source: AudioBufferSourceNode | null = null;
   private current_priority = -1;
   private current_timeout: ReturnType<typeof setTimeout> | null = null;
@@ -93,25 +155,49 @@ export class AudioManager {
     }
   }
 
-  start_bgm(): void {
+  start_bgm(theme: string = 'cyberpunk'): void {
     if (!this.ctx || !this._initialized) return;
     try {
       this.stop_bgm();
-      const buf = this.ctx.createBuffer(1, this.ctx.sampleRate * 4, this.ctx.sampleRate);
-      const data = buf.getChannelData(0);
-      const notes = [131, 98, 110, 87];
-      const note_samples = Math.floor(this.ctx.sampleRate);
-      for (let n = 0; n < 4; n++) {
-        const freq = notes[n];
-        for (let i = 0; i < note_samples; i++) {
-          const t = i / this.ctx.sampleRate;
-          data[n * note_samples + i] = 0.3 * (((t * freq * 2) % 2) - 1);
-        }
-      }
+      const t = (theme === 'retro' || theme === 'minimal' || theme === 'cyberpunk')
+        ? theme as ThemeAudio : 'cyberpunk';
+
+      const buffer = render_melody(this.ctx.sampleRate, t);
       this.bgm_source = this.ctx.createBufferSource();
-      this.bgm_source.buffer = buf;
+      this.bgm_source.buffer = buffer;
       this.bgm_source.loop = true;
-      this.bgm_source.connect(this.bgm_gain!);
+
+      let chain: AudioNode = this.bgm_source;
+
+      if (t === 'cyberpunk') {
+        this.bgm_filter = this.ctx.createBiquadFilter();
+        this.bgm_filter.type = 'lowpass';
+        this.bgm_filter.frequency.value = 2000;
+        this.bgm_filter.Q.value = 5;
+        chain.connect(this.bgm_filter);
+        chain = this.bgm_filter;
+
+        this.bgm_delay = this.ctx.createDelay(1);
+        this.bgm_delay.delayTime.value = 0.25;
+        const feedback = this.ctx.createGain();
+        feedback.gain.value = 0.25;
+        chain.connect(this.bgm_delay);
+        this.bgm_delay.connect(feedback);
+        feedback.connect(this.bgm_delay);
+        this.bgm_delay.connect(this.bgm_gain!);
+        chain.connect(this.bgm_gain!);
+      } else if (t === 'retro') {
+        this.bgm_filter = this.ctx.createBiquadFilter();
+        this.bgm_filter.type = 'bandpass';
+        this.bgm_filter.frequency.value = 800;
+        this.bgm_filter.Q.value = 2;
+        chain.connect(this.bgm_filter);
+        chain = this.bgm_filter;
+        chain.connect(this.bgm_gain!);
+      } else {
+        chain.connect(this.bgm_gain!);
+      }
+
       this.bgm_source.start();
     } catch {
       // Fail silently
@@ -120,7 +206,11 @@ export class AudioManager {
 
   stop_bgm(): void {
     try { this.bgm_source?.stop(); } catch { /* */ }
+    try { this.bgm_filter?.disconnect(); } catch { /* */ }
+    try { this.bgm_delay?.disconnect(); } catch { /* */ }
     this.bgm_source = null;
+    this.bgm_filter = null;
+    this.bgm_delay = null;
   }
 
   set_sfx_volume(v: number): void {
