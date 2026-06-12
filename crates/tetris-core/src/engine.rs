@@ -362,6 +362,32 @@ impl Piece {
     }
 }
 
+impl<const W: usize, const H: usize> crate::traits::GameEngine for Engine<W, H> {
+    fn new() -> Self {
+        Engine::new()
+    }
+
+    fn reset(&mut self, seed: u32) {
+        self.reset(seed);
+    }
+
+    fn spawn(&mut self) {
+        self.spawn();
+    }
+
+    fn handle_action(&mut self, action: Action) -> AttackResult {
+        self.handle_action(action)
+    }
+
+    fn tick(&mut self) -> AttackResult {
+        self.tick()
+    }
+
+    fn get_lock_timer(&self) -> i32 {
+        self.get_lock_timer()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

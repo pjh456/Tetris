@@ -81,6 +81,38 @@ impl<const W: usize, const H: usize> Default for Board<W, H> {
     }
 }
 
+impl<const W: usize, const H: usize> crate::traits::TetrisBoard for Board<W, H> {
+    const FULL: u64 = Board::<W, H>::FULL;
+
+    fn new() -> Self {
+        Board::new()
+    }
+
+    fn collide(&self, y: u8, mask: u64) -> bool {
+        self.collide(y, mask)
+    }
+
+    fn place(&mut self, y: u8, mask: u64) {
+        self.place(y, mask);
+    }
+
+    fn full(&self, y: u8) -> bool {
+        self.full(y)
+    }
+
+    fn is_empty(&self) -> bool {
+        self.is_empty()
+    }
+
+    fn clear_lines(&mut self) -> ClearResult {
+        self.clear_lines()
+    }
+
+    fn insert_garbage(&mut self, lines: u8, hole_x: u8) {
+        self.insert_garbage(lines, hole_x);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
