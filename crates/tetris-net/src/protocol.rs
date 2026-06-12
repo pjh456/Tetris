@@ -16,6 +16,8 @@ pub enum PacketType {
     StateSync,
     GameOver,
     VersionError,
+    DeltaSync = 10,
+    ResyncRequest = 11,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -80,6 +82,26 @@ pub struct PktStateSync {
     pub next: [Piece; 3],
     pub pending_garbage: u8,
     pub rng_state: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PktDeltaSync {
+    pub header: PacketHeader,
+    pub seq: u32,
+    pub changed_rows: Vec<(u8, u64)>,
+    pub piece: Piece,
+    pub rot: Rot,
+    pub x: i8,
+    pub y: i8,
+    pub hold: Piece,
+    pub hold_used: bool,
+    pub next: [Piece; 3],
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PktResyncRequest {
+    pub header: PacketHeader,
+    pub last_good_seq: u32,
 }
 
 #[cfg(test)]
@@ -189,5 +211,66 @@ mod tests {
     #[test]
     fn test_client_join_type() {
         assert_eq!(PacketType::ClientJoin as u8, 1);
+    }
+
+    #[test]
+    fn test_delta_sync_round_trip() {
+        let pkt = PktDeltaSync {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::DeltaSync,
+                player_id: 0,
+            },
+            seq: 42,
+            changed_rows: vec![(5, 0xFF), (19, 0x3FF)],
+            piece: Piece::T,
+            rot: Rot::R0,
+            x: 3,
+            y: 0,
+            hold: Piece::I,
+            hold_used: false,
+            next: [Piece::S, Piece::Z, Piece::L],
+        };
+        bincode_round_trip(&pkt);
+    }
+
+    #[test]
+    fn test_delta_sync_empty_rows() {
+        let pkt = PktDeltaSync {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::DeltaSync,
+                player_id: 0,
+            },
+            seq: 0,
+            changed_rows: vec![],
+            piece: Piece::O,
+            rot: Rot::R0,
+            x: 4,
+            y: 0,
+            hold: Piece::I,
+            hold_used: false,
+            next: [Piece::I; 3],
+        };
+        bincode_round_trip(&pkt);
+    }
+
+    #[test]
+    fn test_resync_request_round_trip() {
+        let pkt = PktResyncRequest {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::ResyncRequest,
+                player_id: 1,
+            },
+            last_good_seq: 100,
+        };
+        bincode_round_trip(&pkt);
+    }
+
+    #[test]
+    fn test_delta_sync_packet_type() {
+        assert_eq!(PacketType::DeltaSync as u8, 10);
+        assert_eq!(PacketType::ResyncRequest as u8, 11);
     }
 }
