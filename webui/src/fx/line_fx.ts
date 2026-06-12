@@ -17,6 +17,10 @@ export class LineFx {
     this.ctx = ctx;
   }
 
+  private get css_w(): number {
+    return parseFloat(this.canvas.style.width) || this.canvas.width;
+  }
+
   resize(width: number, height: number) {
     this.canvas.width = width;
     this.canvas.height = height;
@@ -60,9 +64,9 @@ export class LineFx {
       const t = f.ttl / f.life;
       const alpha = Math.max(0, t);
       ctx.fillStyle = `rgba(200, 240, 255, ${0.75 * alpha})`;
-      ctx.fillRect(0, f.y, this.canvas.width, f.height);
+      ctx.fillRect(0, f.y, this.css_w, f.height);
       ctx.fillStyle = `rgba(255, 255, 255, ${0.45 * alpha})`;
-      ctx.fillRect(0, f.y + f.height * 0.2, this.canvas.width, f.height * 0.6);
+      ctx.fillRect(0, f.y + f.height * 0.2, this.css_w, f.height * 0.6);
     }
 
     for (const p of this.particles) {
@@ -79,7 +83,7 @@ export class LineFx {
     const count = 16;
     for (let i = 0; i < count; i++) {
       const p = this.pool.pop() ?? makeParticle();
-      p.x = Math.random() * this.canvas.width;
+      p.x = Math.random() * this.css_w;
       p.y = y + Math.random() * height;
       p.vx = (Math.random() - 0.5) * 0.3;
       p.vy = -0.35 - Math.random() * 0.25;
@@ -93,7 +97,7 @@ export class LineFx {
 
   triggerColumnBurst(mask: number, yStart: number, yEnd: number, color: string) {
     const cols = 10;
-    const cell = this.canvas.width / cols;
+    const cell = this.css_w / cols;
     const minY = Math.min(yStart, yEnd);
     const maxY = Math.max(yStart, yEnd);
     for (let col = 0; col < cols; col++) {

@@ -1,18 +1,17 @@
 import { get_theme_colors } from './colors';
 
 type BoardRenderer = {
-  render: (grid: number[]) => void;
+  render: (grid: number[], colors?: string[]) => void;
 };
 
-export function createBoardRenderer(
-  canvas: HTMLCanvasElement,
-  colors: string[] = get_theme_colors()
-): BoardRenderer {
+export function createBoardRenderer(canvas: HTMLCanvasElement): BoardRenderer {
   const ctx = canvas.getContext('2d')!;
 
   return {
-    render(grid: number[]) {
-      const cell = Math.min(canvas.width / 10, canvas.height / 20);
+    render(grid: number[], colors: string[] = get_theme_colors()) {
+      const css_w = parseFloat(canvas.style.width) || canvas.width;
+      const css_h = parseFloat(canvas.style.height) || canvas.height;
+      const cell = Math.min(css_w / 10, css_h / 20);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       for (let y = 0; y < 20; y++) {
         for (let x = 0; x < 10; x++) {
@@ -30,6 +29,6 @@ export function createBoardRenderer(
           }
         }
       }
-    }
+    },
   };
 }

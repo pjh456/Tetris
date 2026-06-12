@@ -54,33 +54,34 @@ export function wasm_error_screen(msg: string): HTMLElement {
   return el;
 }
 
-export async function init_wasm(): Promise<WebTetris> {
-  const app = document.getElementById('app');
-  if (!app) throw new Error('No #app element');
+export async function init_wasm(container?: HTMLElement): Promise<WebTetris> {
+  if (instance) return instance;
+
+  const target = container || document.getElementById('app');
+  if (!target) throw new Error('No container element');
 
   const loading = wasm_loading_screen();
-  app.innerHTML = '';
-  app.appendChild(loading);
+  target.innerHTML = '';
+  target.appendChild(loading);
+
+  const cleanup_timer = () => {
+    const fn = (loading as unknown as Record<string, unknown>)._cleanup as
+      | (() => void)
+      | undefined;
+    fn?.();
+  };
 
   try {
     await init();
     const seed = Date.now() >>> 0;
     instance = new WebTetris(seed);
-
-    const cleanup = (loading as unknown as Record<string, unknown>)._cleanup as
-      | (() => void)
-      | undefined;
-    cleanup?.();
-    app.innerHTML = '';
+    cleanup_timer();
+    target.innerHTML = '';
     return instance;
   } catch (err) {
-    const cleanup = (loading as unknown as Record<string, unknown>)._cleanup as
-      | (() => void)
-      | undefined;
-    cleanup?.();
-
-    app.innerHTML = '';
-    app.appendChild(
+    cleanup_timer();
+    target.innerHTML = '';
+    target.appendChild(
       wasm_error_screen(err instanceof Error ? err.message : 'Unknown error'),
     );
     throw err;

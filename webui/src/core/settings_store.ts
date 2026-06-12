@@ -21,8 +21,8 @@ const DEFAULT_KEYMAP: Record<string, KeyBind> = {
 };
 
 const DEFAULTS: Settings = {
-  das_ms: 133,
-  arr_ms: 10,
+  das_ms: 100,
+  arr_ms: 50,
   sfx_volume: 0.8,
   bgm_volume: 0.5,
   theme: 'cyberpunk',

@@ -452,3 +452,109 @@ body {
   padding: var(--space-xl);
   text-align: center;
 }
+
+.hud-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  margin-top: var(--space-sm);
+  padding: var(--space-sm);
+  border: 1px solid var(--color-panel-border);
+  background: var(--color-panel);
+}
+
+.hud-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 0;
+}
+
+.hud-label {
+  font-size: var(--text-label);
+  color: var(--color-muted);
+  letter-spacing: 1px;
+}
+
+.hud-value {
+  font-size: var(--text-body);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.hud-b2b {
+  color: var(--color-accent);
+  text-shadow: 0 0 8px var(--color-accent);
+}
+
+.hud-flash {
+  animation: hud-flash 300ms ease-out;
+}
+
+@keyframes hud-flash {
+  0% { color: var(--color-accent); }
+  100% { color: var(--color-text); }
+}
+
+.combo-popup {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-family: var(--font-display);
+  font-size: var(--text-display);
+  color: var(--color-accent);
+  text-shadow: 0 0 12px var(--color-accent);
+  pointer-events: none;
+  z-index: 5;
+  animation: popup-fade 1s ease-out forwards;
+}
+
+@keyframes popup-fade {
+  0% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+  100% { opacity: 0; transform: translate(-50%, -60%) scale(1); }
+}
+
+.countdown-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg-gradient);
+  font-family: var(--font-display);
+  font-size: 48px;
+  color: var(--color-accent);
+  z-index: 100;
+}
+
+@keyframes countdown-pop {
+  0% { transform: scale(2); opacity: 0; }
+  50% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.8); opacity: 0.8; }
+}
+
+.pause-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.pause-panel {
+  padding: var(--space-2xl);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.pause-title {
+  font-family: var(--font-display);
+  font-size: var(--text-display);
+  color: var(--color-accent);
+  margin: 0 0 var(--space-md);
+}
