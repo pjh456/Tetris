@@ -617,3 +617,70 @@ body {
   from { opacity: 0; }
   to { opacity: 1; }
 }
+
+html {
+  -webkit-overflow-scrolling: touch;
+  touch-action: manipulation;
+  overscroll-behavior: none;
+}
+
+@media (max-width: 767px) {
+  #app {
+    padding: var(--space-sm);
+  }
+
+  .home {
+    width: 100% !important;
+    padding-left: 0 !important;
+    gap: var(--space-md) !important;
+  }
+
+  .menu-card {
+    width: 100% !important;
+    height: 120px !important;
+    grid-template-columns: 60px 1fr !important;
+  }
+
+  .menu-left {
+    font-size: var(--text-heading) !important;
+  }
+
+  .menu-title {
+    font-size: var(--text-body) !important;
+  }
+
+  .game-layout {
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: var(--space-sm) !important;
+  }
+
+  .hud-panel {
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    gap: var(--space-sm) !important;
+  }
+
+  .settings-page {
+    max-width: 100% !important;
+    padding: var(--space-md) !important;
+  }
+
+  .settings-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  .settings-row label {
+    min-width: unset !important;
+  }
+
+  .gameover-panel {
+    min-width: unset !important;
+    padding: var(--space-lg) !important;
+  }
+
+  .gameover-buttons {
+    flex-direction: column !important;
+  }
+}

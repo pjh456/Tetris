@@ -60,6 +60,7 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
   wrapper.style.position = 'relative';
 
   const layout = document.createElement('div');
+  layout.className = 'game-layout';
   layout.style.cssText = 'display:flex;gap:16px;align-items:flex-start;justify-content:center;';
 
   const hold_col = document.createElement('div');

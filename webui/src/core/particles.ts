@@ -1,14 +1,101 @@
-export async function init_particles(): Promise<void> {
-  const container = document.createElement('div');
-  container.id = 'particles-bg';
-  container.style.position = 'fixed';
-  container.style.inset = '0';
-  container.style.zIndex = '-1';
-  container.style.pointerEvents = 'none';
-  document.body.prepend(container);
+import { tsParticles, type Container } from '@tsparticles/engine';
+import { loadSlim } from '@tsparticles/slim';
+import type { ThemeName } from './theme';
+
+let container: Container | null = null;
+let initialized = false;
+
+export async function init_particles(theme: ThemeName = 'cyberpunk'): Promise<void> {
+  if (initialized) return;
+
+  await loadSlim(tsParticles);
+  initialized = true;
+
+  let el = document.getElementById('particles-bg');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'particles-bg';
+    el.style.position = 'fixed';
+    el.style.inset = '0';
+    el.style.zIndex = '-1';
+    el.style.pointerEvents = 'none';
+    document.body.prepend(el);
+  }
+
+  container = await tsParticles.load({
+    id: 'particles-bg',
+    options: get_config(theme),
+  });
+}
+
+export async function apply_theme_particles(theme: ThemeName): Promise<void> {
+  if (!initialized) return;
+  if (container) {
+    container.destroy();
+    container = null;
+  }
+  container = await tsParticles.load({
+    id: 'particles-bg',
+    options: get_config(theme),
+  });
 }
 
 export function destroy_particles(): void {
-  const el = document.getElementById('particles-bg');
-  if (el) el.remove();
+  container?.destroy();
+  container = null;
+  document.getElementById('particles-bg')?.remove();
+  initialized = false;
+}
+
+function get_config(theme: ThemeName): Record<string, unknown> {
+  const base = {
+    fullScreen: { enable: false },
+    background: { color: 'transparent' },
+    fpsLimit: 30,
+    detectRetina: true,
+  };
+
+  switch (theme) {
+    case 'cyberpunk':
+      return {
+        ...base,
+        particles: {
+          number: { value: 40, density: { enable: true } },
+          color: { value: '#5de2ff' },
+          shape: { type: 'circle' },
+          opacity: { value: { min: 0.1, max: 0.3 } },
+          size: { value: { min: 1, max: 3 } },
+          move: { enable: true, speed: 0.5, direction: 'none' as const, random: true },
+          links: { enable: true, distance: 150, color: '#5de2ff', opacity: 0.1 },
+        },
+      };
+    case 'retro':
+      return {
+        ...base,
+        particles: {
+          number: { value: 30, density: { enable: true } },
+          color: { value: '#e94560' },
+          shape: { type: 'square' },
+          opacity: { value: { min: 0.2, max: 0.4 } },
+          size: { value: { min: 2, max: 5 } },
+          move: { enable: true, speed: 0.3, direction: 'none' as const, random: true },
+          links: { enable: true, distance: 120, color: '#533483', opacity: 0.15 },
+        },
+      };
+    case 'minimal':
+      return {
+        ...base,
+        particles: {
+          number: { value: 20, density: { enable: true } },
+          color: { value: '#999999' },
+          shape: { type: 'circle' },
+          opacity: { value: { min: 0.05, max: 0.2 } },
+          size: { value: { min: 1, max: 2 } },
+          move: { enable: true, speed: 0.2, direction: 'none' as const, random: true },
+          links: { enable: false },
+        },
+      };
+    default:
+      return get_config('cyberpunk');
+  }
 }

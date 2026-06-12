@@ -2,14 +2,21 @@ import './style.css';
 import { effect } from '@preact/signals-core';
 import { page, settings } from './state';
 import { apply_theme, type ThemeName } from './core/theme';
-import { init_particles } from './core/particles';
+import { init_particles, apply_theme_particles } from './core/particles';
 import { create_home_screen } from './screens/home';
 import { create_game_screen } from './screens/game';
 import { create_settings_screen } from './screens/settings';
 import { create_gameover_screen } from './screens/gameover';
 
-apply_theme((settings.value.theme as ThemeName) || 'cyberpunk');
-init_particles();
+const boot_theme = (settings.value.theme as ThemeName) || 'cyberpunk';
+apply_theme(boot_theme);
+init_particles(boot_theme);
+
+effect(() => {
+  const theme = (settings.value.theme as ThemeName) || 'cyberpunk';
+  apply_theme(theme);
+  apply_theme_particles(theme);
+});
 
 const app = document.getElementById('app')!;
 
