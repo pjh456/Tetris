@@ -8,6 +8,9 @@ serde.workspace = true
 thiserror.workspace = true
 instant = "0.1"
 
+[lints]
+workspace = true
+
 [dev-dependencies]
 rstest.workspace = true
 proptest.workspace = true
