@@ -1959,6 +1959,7 @@ dependencies = [
  "serde",
  "tetris-core",
  "tetris-net",
+ "thiserror 2.0.18",
  "tokio",
  "toml",
 ]
@@ -2001,6 +2002,7 @@ dependencies = [
  "serde",
  "serde-wasm-bindgen",
  "tetris-core",
+ "thiserror 2.0.18",
  "wasm-bindgen",
 ]
 

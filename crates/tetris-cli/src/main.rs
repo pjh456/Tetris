@@ -1,5 +1,6 @@
 mod app;
 mod config;
+mod error;
 mod game_loop;
 mod input;
 mod render;

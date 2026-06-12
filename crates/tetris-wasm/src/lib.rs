@@ -4,6 +4,7 @@ use tetris_core::engine::Engine;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
+mod error;
 mod utils;
 
 #[cfg(target_arch = "wasm32")]

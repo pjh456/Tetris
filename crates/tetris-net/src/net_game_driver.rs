@@ -4,6 +4,7 @@ use rayon::prelude::*;
 use slotmap::{new_key_type, SlotMap};
 use tetris_core::engine::{Action, Engine};
 
+use crate::error::NetError;
 use crate::network_manager::NetworkManager;
 use crate::protocol::*;
 
@@ -78,7 +79,7 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
         }
     }
 
-    pub fn flush_batch(&mut self, net: &mut NetworkManager, channel: u8) -> Result<(), String> {
+    pub fn flush_batch(&mut self, net: &mut NetworkManager, channel: u8) -> Result<(), NetError> {
         if self.pending_packets.is_empty() {
             return Ok(());
         }
@@ -135,7 +136,7 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
         &mut self,
         net: &mut NetworkManager,
         player_key: PlayerKey,
-    ) -> Result<bool, String> {
+    ) -> Result<bool, NetError> {
         if let Some(pkt) = self.delta_encode(player_key, net.local_player_id) {
             net.send_packet(&pkt, 2)?;
             Ok(true)
@@ -148,7 +149,7 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
         &self,
         net: &mut NetworkManager,
         last_good_seq: u32,
-    ) -> Result<(), String> {
+    ) -> Result<(), NetError> {
         let pkt = PktResyncRequest {
             header: PacketHeader {
                 version: PROTOCOL_VERSION,
@@ -160,21 +161,21 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
         net.send_packet(&pkt, 0)
     }
 
-    pub fn handle_packet(&mut self, data: &[u8]) -> Result<(), String> {
+    pub fn handle_packet(&mut self, data: &[u8]) -> Result<(), NetError> {
         let header: PacketHeader =
-            bincode::deserialize(data).map_err(|e| format!("decode header error: {}", e))?;
+            bincode::deserialize(data).map_err(|e| NetError::Decode(e.to_string()))?;
 
         match header.packet_type {
             PacketType::GameStart => {
                 let pkt: PktGameStart = bincode::deserialize(data)
-                    .map_err(|e| format!("decode GameStart error: {}", e))?;
+                    .map_err(|e| NetError::Decode(e.to_string()))?;
                 if let Some(cb) = self.on_game_start.take() {
                     cb(pkt.random_seed);
                 }
             }
             PacketType::PlayerAction => {
                 let pkt: PktPlayerAction = bincode::deserialize(data)
-                    .map_err(|e| format!("decode PlayerAction error: {}", e))?;
+                    .map_err(|e| NetError::Decode(e.to_string()))?;
                 if let Some(key) = self.player_key_from_id(header.player_id) {
                     if let Some(engine) = self.engines.get_mut(key) {
                         engine.handle_action(pkt.action);
@@ -183,14 +184,14 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
             }
             PacketType::PlayerAttack => {
                 let pkt: PktPlayerAttack = bincode::deserialize(data)
-                    .map_err(|e| format!("decode PlayerAttack error: {}", e))?;
+                    .map_err(|e| NetError::Decode(e.to_string()))?;
                 if let Some(engine) = self.engines.get_mut(self.local_key) {
                     engine.state.pending_garbage += pkt.lines;
                 }
             }
             PacketType::StateSync => {
                 let pkt: PktStateSync = bincode::deserialize(data)
-                    .map_err(|e| format!("decode StateSync error: {}", e))?;
+                    .map_err(|e| NetError::Decode(e.to_string()))?;
                 if let Some(key) = self.player_key_from_id(header.player_id) {
                     if let Some(engine) = self.engines.get_mut(key) {
                         for (i, &val) in pkt.board_rows.iter().enumerate() {
@@ -223,14 +224,14 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
             }
             PacketType::DeltaSync => {
                 let pkt: PktDeltaSync = bincode::deserialize(data)
-                    .map_err(|e| format!("decode DeltaSync error: {}", e))?;
+                    .map_err(|e| NetError::Decode(e.to_string()))?;
                 let expected_seq = self.last_remote_seq + 1;
                 if self.last_remote_seq == 0 && pkt.seq == 0 {
                 } else if pkt.seq != expected_seq {
-                    return Err(format!(
+                    return Err(NetError::Protocol(format!(
                         "seq gap: expected {}, got {} (resync needed)",
                         expected_seq, pkt.seq
-                    ));
+                    )));
                 }
                 if let Some(key) = self.player_key_from_id(header.player_id) {
                     if let Some(engine) = self.engines.get_mut(key) {
@@ -265,12 +266,14 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
     pub fn process_network(&mut self, net: &mut NetworkManager) {
         for channel in 0..3 {
             for data in net.receive_messages(channel) {
-                let _ = self.handle_packet(&data);
+                if let Err(e) = self.handle_packet(&data) {
+                    eprintln!("packet error: {e}");
+                }
             }
         }
     }
 
-    pub fn send_action(&mut self, net: &mut NetworkManager, action: Action) -> Result<(), String> {
+    pub fn send_action(&mut self, net: &mut NetworkManager, action: Action) -> Result<(), NetError> {
         let pkt = PktPlayerAction {
             header: PacketHeader {
                 version: PROTOCOL_VERSION,
@@ -287,7 +290,7 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
         net: &mut NetworkManager,
         lines: u8,
         hole_x: u8,
-    ) -> Result<(), String> {
+    ) -> Result<(), NetError> {
         let pkt = PktPlayerAttack {
             header: PacketHeader {
                 version: PROTOCOL_VERSION,
@@ -304,11 +307,11 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
         &mut self,
         net: &mut NetworkManager,
         player_key: PlayerKey,
-    ) -> Result<(), String> {
+    ) -> Result<(), NetError> {
         let engine = self
             .engines
             .get(player_key)
-            .ok_or_else(|| "invalid player key".to_string())?;
+            .ok_or(NetError::Protocol("invalid player key".into()))?;
         let pkt = PktStateSync {
             header: PacketHeader {
                 version: PROTOCOL_VERSION,
@@ -561,6 +564,6 @@ mod tests {
         let data2 = bincode::serialize(&gap_pkt).unwrap();
         let result = driver.handle_packet(&data2);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("seq gap"));
+        assert!(result.unwrap_err().to_string().contains("seq gap"));
     }
 }

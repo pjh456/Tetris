@@ -4,6 +4,8 @@ use std::time::Duration;
 use renet::{ChannelConfig, ConnectionConfig, RenetClient, RenetServer, SendType};
 use serde::Serialize;
 
+use crate::error::NetError;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Role {
     None,
@@ -67,7 +69,7 @@ impl NetworkManager {
         }
     }
 
-    pub fn start_server(&mut self, _port: u16, max_players: u8) -> Result<(), String> {
+    pub fn start_server(&mut self, _port: u16, max_players: u8) -> Result<(), NetError> {
         let server = RenetServer::new(connection_config());
         self.server = Some(server);
         self.role = Role::Host;
@@ -76,7 +78,7 @@ impl NetworkManager {
         Ok(())
     }
 
-    pub fn connect_to_server(&mut self, _ip: &str, _port: u16) -> Result<(), String> {
+    pub fn connect_to_server(&mut self, _ip: &str, _port: u16) -> Result<(), NetError> {
         let client = RenetClient::new(connection_config());
         self.client = Some(client);
         self.role = Role::Client;
@@ -90,9 +92,9 @@ impl NetworkManager {
         self.connected_clients.clear();
     }
 
-    pub fn send_packet<T: Serialize>(&mut self, packet: &T, channel: u8) -> Result<(), String> {
+    pub fn send_packet<T: Serialize>(&mut self, packet: &T, channel: u8) -> Result<(), NetError> {
         let data =
-            bincode::serialize(packet).map_err(|e| format!("bincode encode error: {}", e))?;
+            bincode::serialize(packet).map_err(|e| NetError::Encode(e.to_string()))?;
 
         if let Some(ref mut server) = self.server {
             for client_id in self.connected_clients.keys() {

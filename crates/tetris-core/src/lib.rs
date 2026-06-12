@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+pub mod error;
 pub mod attack;
 pub mod board;
 pub mod engine;
