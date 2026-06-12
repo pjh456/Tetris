@@ -1,17 +1,61 @@
+import { get_wasm } from '../core/wasm';
 import { page } from '../state';
+import { audio_manager } from '../core/audio';
+
+function format_time(ms: number): string {
+  const total_sec = Math.floor(ms / 1000);
+  const min = Math.floor(total_sec / 60);
+  const sec = total_sec % 60;
+  return `${min}:${sec.toString().padStart(2, '0')}`;
+}
 
 export function create_gameover_screen(): HTMLElement {
   const el = document.createElement('div');
-  el.className = 'content';
-  el.style.cssText = 'display:flex;align-items:center;justify-content:center;';
+  el.className = 'gameover-page';
+
+  audio_manager.play_sfx('game_over');
+  audio_manager.stop_bgm();
+
+  let stats_html = '';
+  try {
+    const wasm = get_wasm();
+    const s = wasm.get_game_stats() as {
+      score: number; lines: number; level: number;
+      game_time_ms: number; max_combo: number; tspin_count: number; total_pieces: number;
+    };
+    const time_sec = s.game_time_ms / 1000;
+    const pps = time_sec > 0 ? (s.total_pieces / time_sec).toFixed(1) : '0.0';
+
+    stats_html = `
+      <div class="stat-row"><span class="stat-label">Score</span><span class="stat-value stat-score">${s.score.toLocaleString()}</span></div>
+      <div class="stat-row"><span class="stat-label">Level</span><span class="stat-value">${s.level}</span></div>
+      <div class="stat-row"><span class="stat-label">Lines</span><span class="stat-value">${s.lines}</span></div>
+      <div class="stat-row"><span class="stat-label">Time</span><span class="stat-value">${format_time(s.game_time_ms)}</span></div>
+      <div class="stat-row"><span class="stat-label">Max Combo</span><span class="stat-value">${s.max_combo}</span></div>
+      <div class="stat-row"><span class="stat-label">T-Spins</span><span class="stat-value">${s.tspin_count}</span></div>
+      <div class="stat-row"><span class="stat-label">PPS</span><span class="stat-value">${pps}</span></div>
+      <div class="stat-row"><span class="stat-label">APM</span><span class="stat-value">--</span></div>
+      <div class="stat-row"><span class="stat-label">Pieces</span><span class="stat-value">${s.total_pieces}</span></div>
+    `;
+  } catch {
+    stats_html = '<div class="stat-row"><span class="stat-label">No stats available</span></div>';
+  }
+
   el.innerHTML = `
-    <div style="text-align:center;color:var(--color-muted);">
-      <div style="font-size:26px;color:var(--color-destructive);margin-bottom:8px;">GAME OVER</div>
-      <div style="font-size:12px;">Full implementation in Plan 08</div>
-      <button class="btn" style="margin-top:16px;">Return to Menu</button>
+    <div class="gameover-panel glass">
+      <h1 class="gameover-title">GAME OVER</h1>
+      <div class="gameover-stats">${stats_html}</div>
+      <div class="gameover-buttons">
+        <button class="btn" id="go-retry">Retry Game</button>
+        <button class="btn" id="go-new">New Game</button>
+        <button class="btn" id="go-menu">Menu</button>
+      </div>
     </div>
   `;
-  const btn = el.querySelector('button');
-  if (btn) btn.onclick = () => { page.value = 'home'; };
+
+  el.querySelector('#go-retry')!.addEventListener('click', () => { page.value = 'game'; });
+  el.querySelector('#go-new')!.addEventListener('click', () => { page.value = 'game'; });
+  el.querySelector('#go-menu')!.addEventListener('click', () => { page.value = 'home'; });
+
   return el;
 }

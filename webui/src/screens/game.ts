@@ -7,8 +7,10 @@ import { get_theme_colors } from '../render/colors';
 import { LineFx } from '../fx/line_fx';
 import { HardDropFx } from '../fx/harddrop_fx';
 import { shake_screen } from '../fx/shake';
+import { run_collapse_animation } from '../fx/gameover_fx';
 import { bindKeyboard, type KeyboardConfig } from '../input/keyboard';
 import { Actions } from '../game/actions';
+import { audio_manager } from '../core/audio';
 
 function gravity_interval_ms(lvl: number): number {
   const l = Math.max(1, lvl);
@@ -39,11 +41,15 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
 
   const seed = Date.now() >>> 0;
   wasm.reset(seed);
+  await audio_manager.init();
+  audio_manager.set_sfx_volume(settings.value.sfx_volume);
+  audio_manager.set_bgm_volume(settings.value.bgm_volume);
 
   if (settings.value.show_countdown) {
     await run_countdown(root);
   }
 
+  audio_manager.start_bgm();
   root.innerHTML = '';
 
   const board_css_w = 360;
@@ -191,12 +197,27 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
     if (!wasm.is_game_over) {
       const interval = gravity_interval_ms(level.value);
       if (time - last_tick >= interval) {
+        const prev_level = level.value;
+        const prev_lines = lines.value;
         wasm.tick();
         last_tick = time;
+
+        const hud_after = wasm.get_hud_data() as HudData;
+        if (hud_after && hud_after.lines > prev_lines) {
+          audio_manager.play_sfx(hud_after.tspin > 0 ? 't_spin' : 'line_clear');
+        }
+        if (hud_after && hud_after.level > prev_level) {
+          audio_manager.play_sfx('level_up');
+        }
       }
     } else {
-      destroy();
-      page.value = 'gameover';
+      cancelAnimationFrame(raf_id);
+      cleanup_keyboard?.();
+      audio_manager.stop_bgm();
+      run_collapse_animation(board_canvas, () => {
+        destroy();
+        page.value = 'gameover';
+      });
       return;
     }
 
@@ -217,7 +238,13 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
   function toggle_pause() {
     if (wasm.is_game_over) return;
     paused = !paused;
-    if (paused) show_pause_overlay(); else hide_pause_overlay();
+    if (paused) {
+      audio_manager.stop_bgm();
+      show_pause_overlay();
+    } else {
+      audio_manager.start_bgm();
+      hide_pause_overlay();
+    }
   }
 
   let pause_overlay_el: HTMLElement | null = null;
@@ -301,7 +328,12 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
         if (action === Actions.MoveRight && edge_dir === 1) edge_release();
 
         wasm.handle_action(action);
-        if (action === Actions.HardDrop) check_harddrop_fx();
+
+        if (action === Actions.HardDrop) { check_harddrop_fx(); audio_manager.play_sfx('hard_drop'); }
+        else if (action === Actions.MoveLeft || action === Actions.MoveRight) audio_manager.play_sfx('move');
+        else if (action === Actions.SoftDrop) audio_manager.play_sfx('soft_drop');
+        else if (action === Actions.RotateCW || action === Actions.RotateCCW) audio_manager.play_sfx('rotate');
+        else if (action === Actions.Hold) audio_manager.play_sfx('hold');
       },
       isGameOver: () => wasm.is_game_over as boolean,
       render: render_all,
