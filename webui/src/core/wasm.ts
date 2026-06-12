@@ -1,6 +1,20 @@
-import init, { WebTetris } from '../../wasm/tetris_wasm.js';
+import init, { WebTetris, wasm_memory } from '../../wasm/tetris_wasm.js';
 
 let instance: WebTetris | null = null;
+let grid_view: Uint8Array | null = null;
+
+function create_grid_view(wasm: WebTetris): Uint8Array {
+  const memory = wasm_memory() as unknown as WebAssembly.Memory;
+  return new Uint8Array(memory.buffer, wasm.grid_ptr(), wasm.grid_len());
+}
+
+export function get_grid_view(): Uint8Array {
+  if (!instance) throw new Error('WASM not initialized');
+  if (!grid_view || grid_view.byteLength === 0) {
+    grid_view = create_grid_view(instance);
+  }
+  return grid_view;
+}
 
 const TIPS = [
   'Press Space to Hard Drop',
@@ -75,6 +89,7 @@ export async function init_wasm(container?: HTMLElement): Promise<WebTetris> {
     await init();
     const seed = Date.now() >>> 0;
     instance = new WebTetris(seed);
+    grid_view = create_grid_view(instance);
     cleanup_timer();
     target.innerHTML = '';
     return instance;
@@ -97,5 +112,6 @@ export function reset_wasm(): WebTetris {
   if (!instance) throw new Error('WASM not initialized');
   const seed = Date.now() >>> 0;
   instance.reset(seed);
+  grid_view = create_grid_view(instance);
   return instance;
 }

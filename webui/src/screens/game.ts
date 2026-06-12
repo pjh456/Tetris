@@ -1,4 +1,4 @@
-import { init_wasm, get_wasm, reset_wasm } from '../core/wasm';
+import { init_wasm, get_wasm, reset_wasm, get_grid_view } from '../core/wasm';
 import { page, score, level, combo, b2b_count, lines, settings } from '../state';
 import { createBoardRenderer } from '../render/board';
 import { createPreviewRenderer, createNextStackRenderer } from '../render/preview';
@@ -150,8 +150,8 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
 
   function render_all() {
     const colors = get_theme_colors();
-    const grid = wasm.get_grid();
-    renderer.render(Array.from(grid as Uint8Array), colors);
+    wasm.update_grid();
+    renderer.render(get_grid_view(), colors);
     hold_renderer.render(wasm.get_hold() as number);
     next_renderer.render(wasm.get_next() as Uint8Array);
 

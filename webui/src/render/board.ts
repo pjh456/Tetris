@@ -1,14 +1,14 @@
 import { get_theme_colors } from './colors';
 
 type BoardRenderer = {
-  render: (grid: number[], colors?: string[]) => void;
+  render: (grid: ArrayLike<number>, colors?: string[]) => void;
 };
 
 export function createBoardRenderer(canvas: HTMLCanvasElement): BoardRenderer {
   const ctx = canvas.getContext('2d')!;
 
   return {
-    render(grid: number[], colors: string[] = get_theme_colors()) {
+    render(grid: ArrayLike<number>, colors: string[] = get_theme_colors()) {
       const css_w = parseFloat(canvas.style.width) || canvas.width;
       const css_h = parseFloat(canvas.style.height) || canvas.height;
       const cell = Math.min(css_w / 10, css_h / 20);

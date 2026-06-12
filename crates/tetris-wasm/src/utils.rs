@@ -37,11 +37,18 @@ pub struct GameStats {
 #[allow(dead_code)]
 pub fn build_grid(state: &State<10, 20>, ghost_y: i32, game_over: bool) -> [u8; 200] {
     let mut grid = [0u8; 200];
+    fill_grid_buf(state, ghost_y, game_over, &mut grid);
+    grid
+}
+
+#[allow(dead_code)]
+pub fn fill_grid_buf(state: &State<10, 20>, ghost_y: i32, game_over: bool, buf: &mut [u8]) {
+    buf.iter_mut().for_each(|b| *b = 0);
 
     for y in 0..20usize {
         for x in 0..10usize {
             if state.board.rows[y] & (1u64 << x) != 0 {
-                grid[y * 10 + x] = 1;
+                buf[y * 10 + x] = 1;
             }
         }
     }
@@ -60,7 +67,7 @@ pub fn build_grid(state: &State<10, 20>, ghost_y: i32, game_over: bool) -> [u8; 
                 if !(0..10).contains(&xx) || !(0..20).contains(&yy) {
                     continue;
                 }
-                grid[yy as usize * 10 + xx as usize] = piece_id;
+                buf[yy as usize * 10 + xx as usize] = piece_id;
             }
         }
 
@@ -76,15 +83,13 @@ pub fn build_grid(state: &State<10, 20>, ghost_y: i32, game_over: bool) -> [u8; 
                     if !(0..10).contains(&xx) || !(0..20).contains(&yy) {
                         continue;
                     }
-                    if grid[yy as usize * 10 + xx as usize] == 0 {
-                        grid[yy as usize * 10 + xx as usize] = 2;
+                    if buf[yy as usize * 10 + xx as usize] == 0 {
+                        buf[yy as usize * 10 + xx as usize] = 2;
                     }
                 }
             }
         }
     }
-
-    grid
 }
 
 #[allow(dead_code)]

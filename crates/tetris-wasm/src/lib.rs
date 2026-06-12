@@ -12,6 +12,7 @@ mod utils;
 pub struct WebTetris {
     engine: Engine<10, 20>,
     has_hold: bool,
+    grid_buf: Vec<u8>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -21,9 +22,11 @@ impl WebTetris {
     pub fn new(seed: u32) -> Self {
         let mut engine = Engine::<10, 20>::new();
         engine.reset(seed);
+        let grid_buf = vec![0u8; 200];
         WebTetris {
             engine,
             has_hold: false,
+            grid_buf,
         }
     }
 
@@ -59,6 +62,24 @@ impl WebTetris {
             arr.set_index(i as u32, v);
         }
         arr
+    }
+
+    pub fn grid_ptr(&self) -> *const u8 {
+        self.grid_buf.as_ptr()
+    }
+
+    pub fn grid_len(&self) -> usize {
+        self.grid_buf.len()
+    }
+
+    pub fn update_grid(&mut self) {
+        let ghost_y = tetris_core::rules::get_ghost_y(&self.engine.state);
+        utils::fill_grid_buf(
+            &self.engine.state,
+            ghost_y,
+            self.engine.game_over,
+            &mut self.grid_buf,
+        );
     }
 
     pub fn get_hold(&self) -> i32 {
@@ -147,12 +168,19 @@ impl WebTetris {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn wasm_memory() -> JsValue {
+    wasm_bindgen::memory()
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code)]
 pub struct WebTetris {
     #[allow(dead_code)]
     pub engine: Engine<10, 20>,
     has_hold: bool,
+    grid_buf: Vec<u8>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -163,6 +191,7 @@ impl WebTetris {
         WebTetris {
             engine,
             has_hold: false,
+            grid_buf: vec![0u8; 200],
         }
     }
 }
