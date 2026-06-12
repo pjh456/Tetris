@@ -16,7 +16,7 @@ export function create_gameover_screen(): HTMLElement {
   audio_manager.play_sfx('game_over');
   audio_manager.stop_bgm();
 
-  let stats_html = '';
+  let stats_html: string;
   try {
     const wasm = get_wasm();
     const s = wasm.get_game_stats() as {

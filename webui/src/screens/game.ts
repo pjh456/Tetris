@@ -1,8 +1,9 @@
-import { init_wasm, get_wasm, reset_wasm, get_grid_view } from '../core/wasm';
+import { init_wasm, reset_wasm, get_grid_view, type WebTetris } from '../core/wasm';
+import { is_hud_data, is_hard_drop_info } from '../types/predicates';
 import { page, score, level, combo, b2b_count, lines, settings } from '../state';
 import { createBoardRenderer } from '../render/board';
 import { createPreviewRenderer, createNextStackRenderer } from '../render/preview';
-import { create_hud_overlay, type HudData } from '../render/hud';
+import { create_hud_overlay } from '../render/hud';
 import { get_theme_colors } from '../render/colors';
 import { LineFx } from '../fx/line_fx';
 import { HardDropFx } from '../fx/harddrop_fx';
@@ -32,7 +33,7 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
   root.innerHTML = '';
   root.className = 'content';
 
-  let wasm;
+  let wasm: WebTetris;
   try {
     wasm = await init_wasm(root);
   } catch {
@@ -152,10 +153,10 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
     const colors = get_theme_colors();
     wasm.update_grid();
     renderer.render(get_grid_view(), colors);
-    hold_renderer.render(wasm.get_hold() as number);
-    next_renderer.render(wasm.get_next() as Uint8Array);
+    hold_renderer.render(wasm.get_hold());
+    next_renderer.render(Array.from(wasm.get_next()));
 
-    const lock_timer = wasm.get_lock_timer() as number;
+    const lock_timer = wasm.get_lock_timer();
     if (lock_timer > 0) {
       const ctx = board_canvas.getContext('2d')!;
       const pct = lock_timer / 500;
@@ -165,7 +166,7 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
       ctx.fillRect(0, 720 - bar_h, 360 * pct, bar_h);
     }
 
-    const clear_mask = wasm.get_last_clear_mask() as number;
+    const clear_mask = wasm.get_last_clear_mask();
     if (clear_mask) {
       for (let row = 0; row < 20; row++) {
         if (clear_mask & (1 << row)) {
@@ -174,8 +175,8 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
       }
     }
 
-    const hud_raw = wasm.get_hud_data() as HudData;
-    if (hud_raw) {
+    const hud_raw: unknown = wasm.get_hud_data();
+    if (is_hud_data(hud_raw)) {
       hud.update(hud_raw);
       score.value = hud_raw.score;
       level.value = hud_raw.level;
@@ -203,12 +204,14 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
         wasm.tick();
         last_tick = time;
 
-        const hud_after = wasm.get_hud_data() as HudData;
-        if (hud_after && hud_after.lines > prev_lines) {
-          audio_manager.play_sfx(hud_after.tspin > 0 ? 't_spin' : 'line_clear');
-        }
-        if (hud_after && hud_after.level > prev_level) {
-          audio_manager.play_sfx('level_up');
+        const hud_after: unknown = wasm.get_hud_data();
+        if (is_hud_data(hud_after)) {
+          if (hud_after.lines > prev_lines) {
+            audio_manager.play_sfx(hud_after.tspin > 0 ? 't_spin' : 'line_clear');
+          }
+          if (hud_after.level > prev_level) {
+            audio_manager.play_sfx('level_up');
+          }
         }
       }
     } else {
@@ -305,12 +308,11 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
   };
 
   function check_harddrop_fx() {
-    const hd_info = wasm.get_last_hard_drop_info();
-    if (hd_info && (hd_info as { cols: number }).cols) {
-      const info = hd_info as { cols: number; start_y: number; end_y: number; piece: number };
+    const hd_info: unknown = wasm.get_last_hard_drop_info();
+    if (is_hard_drop_info(hd_info)) {
       const colors = get_theme_colors();
-      const color = colors[info.piece + 3] ?? '#c8f0ff';
-      harddrop_fx.trigger(info.cols, info.start_y * cell, info.end_y * cell, color);
+      const color = colors[hd_info.piece + 3] ?? '#c8f0ff';
+      harddrop_fx.trigger(hd_info.cols, hd_info.start_y * cell, hd_info.end_y * cell, color);
       shake_screen(board_frame);
     }
   }
@@ -318,11 +320,11 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
   cleanup_keyboard = bindKeyboard(
     {
       handleAction: (action) => {
-        if (action === Actions.MoveLeft && !(wasm.can_move(-1) as boolean)) {
+        if (action === Actions.MoveLeft && !wasm.can_move(-1)) {
           edge_bump(-1);
           return;
         }
-        if (action === Actions.MoveRight && !(wasm.can_move(1) as boolean)) {
+        if (action === Actions.MoveRight && !wasm.can_move(1)) {
           edge_bump(1);
           return;
         }
@@ -334,8 +336,8 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
 
         if (action === Actions.HardDrop) {
           check_harddrop_fx();
-          const hud_now = wasm.get_hud_data() as HudData;
-          if (hud_now && hud_now.lines > prev_lines) {
+          const hud_now: unknown = wasm.get_hud_data();
+          if (is_hud_data(hud_now) && hud_now.lines > prev_lines) {
             audio_manager.play_sfx(hud_now.tspin > 0 ? 't_spin' : 'line_clear');
           } else {
             audio_manager.play_sfx('hard_drop');
@@ -346,7 +348,7 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
         else if (action === Actions.RotateCW || action === Actions.RotateCCW) audio_manager.play_sfx('rotate');
         else if (action === Actions.Hold) audio_manager.play_sfx('hold');
       },
-      isGameOver: () => wasm.is_game_over as boolean,
+      isGameOver: () => wasm.is_game_over,
       render: render_all,
       onRelease: (action) => {
         if (action === Actions.MoveLeft) edge_release();

@@ -255,7 +255,7 @@ function show_rebind_overlay(action: string, on_bind: (key: string, code: string
   document.body.appendChild(overlay);
 }
 
-function show_reset_modal(parent: HTMLElement, on_reset: () => void) {
+function show_reset_modal(_parent: HTMLElement, on_reset: () => void) {
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.innerHTML = `

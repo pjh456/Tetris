@@ -6,12 +6,14 @@ type Flash = {
 };
 
 export class LineFx {
+  private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private flashes: Flash[] = [];
   private particles: Particle[] = [];
   private pool: Particle[] = [];
 
-  constructor(private canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement) {
+    this.canvas = canvas;
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('2D context not available');
     this.ctx = ctx;

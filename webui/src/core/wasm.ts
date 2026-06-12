@@ -1,5 +1,9 @@
 import init, { WebTetris, wasm_memory } from '../../wasm/tetris_wasm.js';
 
+interface LoadingElement extends HTMLElement {
+  _cleanup?: () => void;
+}
+
 let instance: WebTetris | null = null;
 let grid_view: Uint8Array | null = null;
 
@@ -49,7 +53,7 @@ export function wasm_loading_screen(): HTMLElement {
     tip_el.textContent = TIPS[idx];
   }, 3000);
 
-  (el as unknown as Record<string, unknown>)._cleanup = () => clearInterval(timer);
+  (el as LoadingElement)._cleanup = () => clearInterval(timer);
   return el;
 }
 
@@ -79,10 +83,7 @@ export async function init_wasm(container?: HTMLElement): Promise<WebTetris> {
   target.appendChild(loading);
 
   const cleanup_timer = () => {
-    const fn = (loading as unknown as Record<string, unknown>)._cleanup as
-      | (() => void)
-      | undefined;
-    fn?.();
+    (loading as LoadingElement)._cleanup?.();
   };
 
   try {
@@ -107,6 +108,8 @@ export function get_wasm(): WebTetris {
   if (!instance) throw new Error('WASM not initialized');
   return instance;
 }
+
+export type { WebTetris };
 
 export function reset_wasm(): WebTetris {
   if (!instance) throw new Error('WASM not initialized');

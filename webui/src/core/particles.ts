@@ -2,7 +2,7 @@ import { tsParticles, type Container } from '@tsparticles/engine';
 import { loadSlim } from '@tsparticles/slim';
 import type { ThemeName } from './theme';
 
-let container: Container | null = null;
+let container: Container | undefined = undefined;
 let initialized = false;
 
 export async function init_particles(theme: ThemeName = 'cyberpunk'): Promise<void> {
@@ -32,7 +32,7 @@ export async function apply_theme_particles(theme: ThemeName): Promise<void> {
   if (!initialized) return;
   if (container) {
     container.destroy();
-    container = null;
+    container = undefined;
   }
   container = await tsParticles.load({
     id: 'particles-bg',
@@ -42,7 +42,7 @@ export async function apply_theme_particles(theme: ThemeName): Promise<void> {
 
 export function destroy_particles(): void {
   container?.destroy();
-  container = null;
+  container = undefined;
   document.getElementById('particles-bg')?.remove();
   initialized = false;
 }
