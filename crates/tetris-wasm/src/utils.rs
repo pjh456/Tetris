@@ -100,3 +100,68 @@ pub fn build_next(state: &State<10, 20>) -> [u8; 5] {
     }
     next
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tetris_core::engine::Engine;
+    use tetris_core::rules::get_ghost_y;
+
+    fn test_engine() -> Engine<10, 20> {
+        let mut e = Engine::<10, 20>::new();
+        e.reset(42);
+        e
+    }
+
+    #[test]
+    fn test_build_grid_length() {
+        let e = test_engine();
+        let ghost_y = get_ghost_y(&e.state) as i32;
+        let grid = build_grid(&e.state, ghost_y, false);
+        assert_eq!(grid.len(), 200);
+    }
+
+    #[test]
+    fn test_build_grid_has_active_piece() {
+        let e = test_engine();
+        let ghost_y = get_ghost_y(&e.state) as i32;
+        let grid = build_grid(&e.state, ghost_y, false);
+        let active_count = grid.iter().filter(|&&v| v >= 3).count();
+        assert!(active_count > 0, "active piece should produce non-zero cells");
+    }
+
+    #[test]
+    fn test_build_grid_game_over_no_active() {
+        let e = test_engine();
+        let grid = build_grid(&e.state, -1, true);
+        let active_count = grid.iter().filter(|&&v| v >= 3).count();
+        assert_eq!(active_count, 0, "game over should hide active piece");
+    }
+
+    #[test]
+    fn test_fill_grid_buf_matches_build_grid() {
+        let e = test_engine();
+        let ghost_y = get_ghost_y(&e.state) as i32;
+        let expected = build_grid(&e.state, ghost_y, false);
+        let mut buf = vec![0u8; 200];
+        fill_grid_buf(&e.state, ghost_y, false, &mut buf);
+        assert_eq!(&buf[..], &expected[..]);
+    }
+
+    #[test]
+    fn test_build_next_returns_5_pieces() {
+        let e = test_engine();
+        let next = build_next(&e.state);
+        assert_eq!(next.len(), 5);
+        for &p in &next {
+            assert!(p <= 6, "piece ID {p} out of range 0-6");
+        }
+    }
+
+    #[test]
+    fn test_build_next_deterministic() {
+        let e1 = test_engine();
+        let e2 = test_engine();
+        assert_eq!(build_next(&e1.state), build_next(&e2.state));
+    }
+}

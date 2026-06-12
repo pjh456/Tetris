@@ -307,3 +307,121 @@ fn step(state: AppState, msg: Message) -> (AppState, bool) {
         },
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_gravity_level_1() {
+        let ms = gravity_interval_ms(1);
+        assert_eq!(ms, 1000, "level 1: {ms}ms");
+    }
+
+    #[test]
+    fn test_gravity_level_15() {
+        let ms = gravity_interval_ms(15);
+        assert!(ms <= 10, "level 15: {ms}ms");
+    }
+
+    #[test]
+    fn test_gravity_monotonic_decreasing() {
+        for lvl in 1..15 {
+            assert!(
+                gravity_interval_ms(lvl) > gravity_interval_ms(lvl + 1),
+                "level {lvl} not > level {}",
+                lvl + 1
+            );
+        }
+    }
+
+    #[test]
+    fn test_gravity_min_floor() {
+        assert!(gravity_interval_ms(100) >= 1);
+    }
+
+    #[test]
+    fn test_menu_navigate_down() {
+        let (next, quit) = step(AppState::Menu { selected: 0 }, Message::Key(KeyCode::Down));
+        assert!(!quit);
+        match next {
+            AppState::Menu { selected } => assert_eq!(selected, 1),
+            _ => panic!("expected Menu"),
+        }
+    }
+
+    #[test]
+    fn test_menu_navigate_up_clamp() {
+        let (next, _) = step(AppState::Menu { selected: 0 }, Message::Key(KeyCode::Up));
+        match next {
+            AppState::Menu { selected } => assert_eq!(selected, 0),
+            _ => panic!("expected Menu"),
+        }
+    }
+
+    #[test]
+    fn test_menu_enter_starts_game() {
+        let (next, quit) = step(AppState::Menu { selected: 0 }, Message::Key(KeyCode::Enter));
+        assert!(!quit);
+        assert!(matches!(next, AppState::Playing { .. }));
+    }
+
+    #[test]
+    fn test_menu_quit_index_3() {
+        let (_, quit) = step(AppState::Menu { selected: 3 }, Message::Key(KeyCode::Enter));
+        assert!(quit);
+    }
+
+    #[test]
+    fn test_playing_to_pause() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset(42);
+        let state = AppState::Playing {
+            engine,
+            start_time: Instant::now(),
+            clear_flash_timer: 0,
+            score_flash_timer: 0,
+            gravity_accum_ms: 0,
+            prev_grid: [[CellType::Empty; 10]; 20],
+            prev_flash_mask: 0,
+            prev_half: false,
+        };
+        let (next, quit) = step(state, Message::Key(KeyCode::Char('p')));
+        assert!(!quit);
+        assert!(matches!(next, AppState::Pause { .. }));
+    }
+
+    #[test]
+    fn test_pause_to_playing() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset(42);
+        let state = AppState::Pause {
+            engine,
+            start_time: Instant::now(),
+        };
+        let (next, quit) = step(state, Message::Key(KeyCode::Char('p')));
+        assert!(!quit);
+        assert!(matches!(next, AppState::Playing { .. }));
+    }
+
+    #[test]
+    fn test_gameover_enter_returns_menu() {
+        let state = AppState::GameOver {
+            score: 1000,
+            lines: 10,
+            level: 2,
+            max_combo: 3,
+            tspin_count: 1,
+        };
+        let (next, quit) = step(state, Message::Key(KeyCode::Enter));
+        assert!(!quit);
+        assert!(matches!(next, AppState::Menu { .. }));
+    }
+
+    #[test]
+    fn test_update_quit_signal() {
+        let mut state = AppState::Menu { selected: 0 };
+        let quit = update(&mut state, Message::Quit);
+        assert!(quit);
+    }
+}

@@ -196,3 +196,32 @@ impl WebTetris {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_web_tetris_new() {
+        let wt = WebTetris::new(42);
+        assert!(!wt.engine.game_over);
+        assert!(!wt.has_hold);
+        assert_eq!(wt.grid_buf.len(), 200);
+    }
+
+    #[test]
+    fn test_web_tetris_deterministic_seed() {
+        let wt1 = WebTetris::new(42);
+        let wt2 = WebTetris::new(42);
+        assert_eq!(wt1.engine.state.piece, wt2.engine.state.piece);
+    }
+
+    #[test]
+    fn test_web_tetris_different_seeds() {
+        let wt1 = WebTetris::new(1);
+        let wt2 = WebTetris::new(999);
+        let same_piece = wt1.engine.state.piece == wt2.engine.state.piece;
+        let same_next = wt1.engine.state.next == wt2.engine.state.next;
+        assert!(!(same_piece && same_next), "different seeds should produce different states");
+    }
+}

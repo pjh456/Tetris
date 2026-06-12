@@ -41,3 +41,23 @@ pub fn save_config(config: &CliConfig) -> Result<()> {
     std::fs::write(config_dir.join("config.toml"), content)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_config() {
+        let cfg = CliConfig::default();
+        assert_eq!(cfg.das_ms, 133);
+        assert_eq!(cfg.arr_ms, 10);
+        assert_eq!(cfg.theme, "cyberpunk");
+    }
+
+    #[test]
+    fn test_load_config_no_file_returns_defaults() {
+        let cfg = load_config();
+        assert_eq!(cfg.das_ms, 133);
+        assert_eq!(cfg.arr_ms, 10);
+    }
+}
