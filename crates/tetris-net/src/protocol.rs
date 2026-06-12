@@ -85,6 +85,11 @@ pub struct PktStateSync {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PktBatch {
+    pub packets: Vec<Vec<u8>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PktDeltaSync {
     pub header: PacketHeader,
     pub seq: u32,
@@ -266,6 +271,34 @@ mod tests {
             last_good_seq: 100,
         };
         bincode_round_trip(&pkt);
+    }
+
+    #[test]
+    fn test_batch_round_trip() {
+        let inner1 = bincode::serialize(&PktPlayerAction {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::PlayerAction,
+                player_id: 0,
+            },
+            action: Action::MoveLeft,
+        })
+        .unwrap();
+        let inner2 = bincode::serialize(&PktPlayerAttack {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::PlayerAttack,
+                player_id: 0,
+            },
+            lines: 2,
+            hole_x: 3,
+        })
+        .unwrap();
+        let batch = PktBatch {
+            packets: vec![inner1, inner2],
+        };
+        bincode_round_trip(&batch);
+        assert_eq!(batch.packets.len(), 2);
     }
 
     #[test]

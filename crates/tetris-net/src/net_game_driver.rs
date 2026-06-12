@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use rayon::prelude::*;
 use slotmap::{new_key_type, SlotMap};
 use tetris_core::engine::{Action, Engine};
 
@@ -16,6 +17,7 @@ pub struct NetGameDriver<const W: usize, const H: usize> {
     prev_board_rows: HashMap<PlayerKey, Vec<u64>>,
     pub seq: u32,
     pub last_remote_seq: u32,
+    pending_packets: Vec<Vec<u8>>,
 }
 
 impl<const W: usize, const H: usize> NetGameDriver<W, H> {
@@ -33,6 +35,7 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
             prev_board_rows,
             seq: 0,
             last_remote_seq: 0,
+            pending_packets: Vec::new(),
         }
     }
 
@@ -54,6 +57,35 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
 
     pub fn player_key_from_id(&self, player_id: u8) -> Option<PlayerKey> {
         self.key_by_player_id.get(player_id as usize).copied()
+    }
+
+    pub fn tick_all(&mut self) {
+        let mut engines: Vec<&mut Engine<W, H>> = self.engines.values_mut().collect();
+        engines.par_iter_mut().for_each(|engine| {
+            engine.tick();
+        });
+    }
+
+    pub fn queue_packet(&mut self, data: Vec<u8>) {
+        self.pending_packets.push(data);
+    }
+
+    pub fn queue_delta(&mut self, player_key: PlayerKey, local_player_id: u8) {
+        if let Some(pkt) = self.delta_encode(player_key, local_player_id) {
+            if let Ok(data) = bincode::serialize(&pkt) {
+                self.pending_packets.push(data);
+            }
+        }
+    }
+
+    pub fn flush_batch(&mut self, net: &mut NetworkManager, channel: u8) -> Result<(), String> {
+        if self.pending_packets.is_empty() {
+            return Ok(());
+        }
+        let batch = PktBatch {
+            packets: std::mem::take(&mut self.pending_packets),
+        };
+        net.send_packet(&batch, channel)
     }
 
     pub fn delta_encode(&mut self, player_key: PlayerKey, local_player_id: u8) -> Option<PktDeltaSync> {
@@ -454,6 +486,34 @@ mod tests {
 
         let remote_key = driver.player_key_from_id(1).unwrap();
         assert_eq!(driver.engines[remote_key].state.board.rows[19], 0x3FF);
+    }
+
+    #[test]
+    fn test_tick_all_parallel() {
+        let mut driver = NetGameDriver::<10, 20>::new(Engine::new());
+        for i in 0..7 {
+            let mut engine = Engine::<10, 20>::new();
+            engine.reset((42 + i * 100) as u32);
+            driver.add_player(engine);
+        }
+        assert_eq!(driver.engines.len(), 8);
+        driver.tick_all();
+        driver.tick_all();
+        driver.tick_all();
+    }
+
+    #[test]
+    fn test_queue_and_flush() {
+        let mut driver = NetGameDriver::<10, 20>::new(Engine::new());
+        driver.queue_packet(vec![1, 2, 3]);
+        driver.queue_packet(vec![4, 5, 6]);
+        assert_eq!(driver.pending_packets.len(), 2);
+
+        let batch = PktBatch {
+            packets: std::mem::take(&mut driver.pending_packets),
+        };
+        assert_eq!(batch.packets.len(), 2);
+        assert!(driver.pending_packets.is_empty());
     }
 
     #[test]

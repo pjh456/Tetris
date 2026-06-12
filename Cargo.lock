@@ -1981,6 +1981,7 @@ name = "tetris-net"
 version = "0.1.0"
 dependencies = [
  "bincode",
+ "rayon",
  "renet",
  "rstest",
  "serde",

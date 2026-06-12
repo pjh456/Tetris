@@ -11,7 +11,12 @@ serde.workspace = true
 bincode = "1.3"
 thiserror.workspace = true
 slotmap = "1.1"
+rayon = "1.12"
 
 [dev-dependencies]
 rstest.workspace = true
 tokio-test = "0.4"
+
+[[bench]]
+name = "macro_bench"
+harness = false
