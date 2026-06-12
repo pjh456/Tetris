@@ -24,7 +24,7 @@ fn piece_color(p: Piece) -> Color {
     PIECE_COLORS[p as usize]
 }
 
-pub fn render(state: &AppState, frame: &mut Frame) {
+pub fn render(state: &mut AppState, frame: &mut Frame) {
     match state {
         AppState::Menu { selected } => render_menu(frame, *selected),
         AppState::Lobby => render_lobby(frame),
@@ -32,8 +32,19 @@ pub fn render(state: &AppState, frame: &mut Frame) {
             engine,
             clear_flash_timer,
             score_flash_timer,
+            prev_grid,
+            prev_flash_mask,
+            prev_half,
             ..
-        } => render_playing(frame, engine, *clear_flash_timer, *score_flash_timer),
+        } => render_playing(
+            frame,
+            engine,
+            *clear_flash_timer,
+            *score_flash_timer,
+            prev_grid,
+            prev_flash_mask,
+            prev_half,
+        ),
         AppState::Pause { .. } => render_pause(frame),
         AppState::GameOver {
             score,
@@ -118,6 +129,9 @@ fn render_playing(
     engine: &tetris_core::engine::Engine<10, 20>,
     clear_flash: u8,
     score_flash: u8,
+    prev_grid: &mut [[CellType; 10]; 20],
+    prev_flash_mask: &mut u32,
+    prev_half: &mut bool,
 ) {
     let area = frame.area();
     let use_half = area.height < 40;
@@ -131,7 +145,7 @@ fn render_playing(
     .split(area);
 
     render_hold(frame, engine, layout[0]);
-    render_board(frame, engine, layout[1], use_half, clear_flash);
+    render_board(frame, engine, layout[1], use_half, clear_flash, prev_grid, prev_flash_mask, prev_half);
     render_sidebar(frame, engine, layout[2], score_flash);
 }
 
@@ -170,6 +184,9 @@ fn render_board(
     area: Rect,
     use_half: bool,
     clear_flash: u8,
+    prev_grid: &mut [[CellType; 10]; 20],
+    prev_flash_mask: &mut u32,
+    prev_half: &mut bool,
 ) {
     let block = Block::default().borders(Borders::ALL);
     let inner = block.inner(area);
@@ -225,20 +242,64 @@ fn render_board(
         0
     };
 
+    let mode_changed = *prev_half != use_half;
+
     if use_half {
-        render_board_half(frame, &grid, inner, flash_mask);
+        let mut lines = Vec::new();
+        for y in (0..20).step_by(2) {
+            let flash_top = flash_mask & (1 << y) != 0;
+            let flash_bot = y + 1 < 20 && flash_mask & (1 << (y + 1)) != 0;
+            let prev_flash_top = *prev_flash_mask & (1 << y) != 0;
+            let prev_flash_bot = y + 1 < 20 && *prev_flash_mask & (1 << (y + 1)) != 0;
+            let row_changed = mode_changed
+                || prev_grid[y] != grid[y]
+                || (y + 1 < 20 && prev_grid[y + 1] != grid[y + 1])
+                || flash_top != prev_flash_top
+                || flash_bot != prev_flash_bot;
+            if row_changed {
+                let mut spans = Vec::new();
+                for x in 0..10 {
+                    let top = grid[y][x];
+                    let bot = if y + 1 < 20 { grid[y + 1][x] } else { CellType::Empty };
+                    let (ch, style) = half_cell(top, bot, flash_top || flash_bot);
+                    spans.push(Span::styled(ch, style));
+                }
+                lines.push(Line::from(spans));
+            } else {
+                lines.push(Line::from(""));
+            }
+        }
+        let para = Paragraph::new(lines);
+        frame.render_widget(para, inner);
     } else {
-        render_board_full(frame, &grid, inner, flash_mask);
+        let mut lines = Vec::new();
+        for y in 0..20 {
+            let flashing = flash_mask & (1 << y) != 0;
+            let prev_flashing = *prev_flash_mask & (1 << y) != 0;
+            let row_changed = mode_changed
+                || prev_grid[y] != grid[y]
+                || flashing != prev_flashing;
+            if row_changed {
+                let mut spans = Vec::new();
+                for x in 0..10 {
+                    let (text, style) = cell_style(grid[y][x], flashing);
+                    spans.push(Span::styled(text, style));
+                }
+                lines.push(Line::from(spans));
+            } else {
+                lines.push(Line::from(""));
+            }
+        }
+        let para = Paragraph::new(lines);
+        frame.render_widget(para, inner);
     }
+
+    *prev_grid = grid;
+    *prev_flash_mask = flash_mask;
+    *prev_half = use_half;
 }
 
-#[derive(Clone, Copy, PartialEq)]
-enum CellType {
-    Empty,
-    Locked,
-    Ghost,
-    Active(Piece),
-}
+use crate::app::CellType;
 
 fn cell_style(cell: CellType, flashing: bool) -> (String, Style) {
     if flashing {
@@ -252,48 +313,7 @@ fn cell_style(cell: CellType, flashing: bool) -> (String, Style) {
     }
 }
 
-fn render_board_full(
-    frame: &mut Frame,
-    grid: &[[CellType; 10]; 20],
-    area: Rect,
-    flash_mask: u32,
-) {
-    let mut lines = Vec::new();
-    for y in 0..20 {
-        let flashing = flash_mask & (1 << y) != 0;
-        let mut spans = Vec::new();
-        for x in 0..10 {
-            let (text, style) = cell_style(grid[y][x], flashing);
-            spans.push(Span::styled(text, style));
-        }
-        lines.push(Line::from(spans));
-    }
-    let para = Paragraph::new(lines);
-    frame.render_widget(para, area);
-}
 
-fn render_board_half(
-    frame: &mut Frame,
-    grid: &[[CellType; 10]; 20],
-    area: Rect,
-    flash_mask: u32,
-) {
-    let mut lines = Vec::new();
-    for y in (0..20).step_by(2) {
-        let flash_top = flash_mask & (1 << y) != 0;
-        let flash_bot = y + 1 < 20 && flash_mask & (1 << (y + 1)) != 0;
-        let mut spans = Vec::new();
-        for x in 0..10 {
-            let top = grid[y][x];
-            let bot = if y + 1 < 20 { grid[y + 1][x] } else { CellType::Empty };
-            let (ch, style) = half_cell(top, bot, flash_top || flash_bot);
-            spans.push(Span::styled(ch, style));
-        }
-        lines.push(Line::from(spans));
-    }
-    let para = Paragraph::new(lines);
-    frame.render_widget(para, area);
-}
 
 fn half_cell(top: CellType, bot: CellType, flashing: bool) -> (String, Style) {
     if flashing {

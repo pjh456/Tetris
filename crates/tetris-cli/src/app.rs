@@ -1,6 +1,15 @@
 use crossterm::event::KeyCode;
 use std::time::Instant;
 use tetris_core::engine::{Action, Engine};
+use tetris_core::types::Piece;
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum CellType {
+    Empty,
+    Locked,
+    Ghost,
+    Active(Piece),
+}
 
 fn gravity_interval_ms(level: u32) -> u32 {
     let lvl = level.max(1) as f64;
@@ -19,6 +28,9 @@ pub enum AppState {
         clear_flash_timer: u8,
         score_flash_timer: u8,
         gravity_accum_ms: u32,
+        prev_grid: [[CellType; 10]; 20],
+        prev_flash_mask: u32,
+        prev_half: bool,
     },
     Pause {
         engine: Engine<10, 20>,
@@ -66,6 +78,9 @@ fn start_game() -> AppState {
         clear_flash_timer: 0,
         score_flash_timer: 0,
         gravity_accum_ms: 0,
+        prev_grid: [[CellType::Empty; 10]; 20],
+        prev_flash_mask: 0,
+        prev_half: false,
     }
 }
 
@@ -107,6 +122,9 @@ fn step(state: AppState, msg: Message) -> (AppState, bool) {
             mut clear_flash_timer,
             mut score_flash_timer,
             mut gravity_accum_ms,
+            prev_grid,
+            prev_flash_mask,
+            prev_half,
         } => {
             match msg {
                 Message::Key(KeyCode::Left) => {
@@ -214,6 +232,9 @@ fn step(state: AppState, msg: Message) -> (AppState, bool) {
                     clear_flash_timer,
                     score_flash_timer,
                     gravity_accum_ms,
+                    prev_grid,
+                    prev_flash_mask,
+                    prev_half,
                 },
                 false,
             )
@@ -230,6 +251,9 @@ fn step(state: AppState, msg: Message) -> (AppState, bool) {
                     clear_flash_timer: 0,
                     score_flash_timer: 0,
                     gravity_accum_ms: 0,
+                    prev_grid: [[CellType::Empty; 10]; 20],
+                    prev_flash_mask: 0,
+                    prev_half: false,
                 },
                 false,
             ),

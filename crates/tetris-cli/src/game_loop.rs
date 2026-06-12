@@ -7,7 +7,7 @@ use crate::input::InputHandler;
 pub fn run_game_loop<F, G>(mut state: AppState, config: &CliConfig, mut on_update: F, mut on_render: G)
 where
     F: FnMut(&mut AppState, Message) -> bool,
-    G: FnMut(&AppState),
+    G: FnMut(&mut AppState),
 {
     let tick_interval = Duration::from_millis(20);
     let frame_interval = Duration::from_millis(16);
@@ -39,7 +39,7 @@ where
 
         if now - last_frame >= frame_interval {
             let _ = on_update(&mut state, Message::FrameTick);
-            on_render(&state);
+            on_render(&mut state);
             last_frame = now;
         }
 
