@@ -1,9 +1,12 @@
 import { signal, computed } from '@preact/signals-core';
 import { load_settings, type Settings } from './core/settings_store';
 
-export type Page = 'home' | 'game' | 'settings' | 'gameover';
+export type Page = 'home' | 'game' | 'settings' | 'gameover' | 'lobby' | 'leaderboard' | 'spectator';
 
 export const page = signal<Page>('home');
+export const is_multiplayer = signal(false);
+export const room_code = signal<string | null>(null);
+export const connection_status = signal<'offline' | 'connecting' | 'connected' | 'disconnected'>('offline');
 
 export const score = signal(0);
 export const level = signal(1);

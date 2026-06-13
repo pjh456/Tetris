@@ -1,6 +1,7 @@
 import { get_wasm } from '../core/wasm';
 import { page } from '../state';
 import { audio_manager } from '../core/audio';
+import { save_score_to_leaderboard } from '../core/settings_store';
 
 function format_time(ms: number): string {
   const total_sec = Math.floor(ms / 1000);
@@ -30,8 +31,10 @@ export function create_gameover_screen(): HTMLElement {
     };
     const time_sec = s.game_time_ms / 1000;
     const pps = time_sec > 0 ? (s.total_pieces / time_sec).toFixed(1) : '0.0';
+    const rank = save_score_to_leaderboard(s.score, s.level, s.lines);
+    const rank_html = rank > 0 ? `<div class="stat-row"><span class="stat-label">Rank</span><span class="stat-value stat-score">NEW #${rank}</span></div>` : '';
 
-    stats_html = `
+    stats_html = `${rank_html}
       <div class="stat-row"><span class="stat-label">Score</span><span class="stat-value stat-score">${s.score.toLocaleString()}</span></div>
       <div class="stat-row"><span class="stat-label">Level</span><span class="stat-value">${s.level}</span></div>
       <div class="stat-row"><span class="stat-label">Lines</span><span class="stat-value">${s.lines}</span></div>

@@ -93,3 +93,55 @@ export function reset_settings(): Settings {
   save_settings(defaults);
   return defaults;
 }
+
+export type LeaderboardEntry = {
+  score: number;
+  level: number;
+  lines: number;
+  date: string;
+};
+
+const LEADERBOARD_KEY = 'tetris-leaderboard';
+
+export function get_leaderboard(): LeaderboardEntry[] {
+  try {
+    const raw = localStorage.getItem(LEADERBOARD_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (e: unknown) =>
+          e &&
+          typeof e === 'object' &&
+          typeof (e as LeaderboardEntry).score === 'number' &&
+          typeof (e as LeaderboardEntry).level === 'number' &&
+          typeof (e as LeaderboardEntry).lines === 'number' &&
+          typeof (e as LeaderboardEntry).date === 'string',
+      )
+      .sort((a: LeaderboardEntry, b: LeaderboardEntry) => b.score - a.score)
+      .slice(0, 10);
+  } catch {
+    return [];
+  }
+}
+
+export function save_score_to_leaderboard(score: number, level: number, lines: number): number {
+  const entries = get_leaderboard();
+  const entry: LeaderboardEntry = {
+    score,
+    level,
+    lines,
+    date: new Date().toISOString(),
+  };
+  entries.push(entry);
+  entries.sort((a, b) => b.score - a.score);
+  const top10 = entries.slice(0, 10);
+  localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(top10));
+  const rank = top10.findIndex((e) => e === entry);
+  return rank >= 0 ? rank + 1 : 0;
+}
+
+export function clear_leaderboard(): void {
+  localStorage.removeItem(LEADERBOARD_KEY);
+}

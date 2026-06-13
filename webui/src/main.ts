@@ -7,6 +7,7 @@ import { create_home_screen } from './screens/home';
 import { create_game_screen } from './screens/game';
 import { create_settings_screen } from './screens/settings';
 import { create_gameover_screen } from './screens/gameover';
+import { create_leaderboard_screen } from './screens/leaderboard';
 
 const boot_theme = (settings.value.theme as ThemeName) || 'cyberpunk';
 apply_theme(boot_theme);
@@ -73,6 +74,10 @@ effect(() => {
     }
     case 'gameover': {
       app.appendChild(create_gameover_screen());
+      break;
+    }
+    case 'leaderboard': {
+      app.appendChild(create_leaderboard_screen());
       break;
     }
   }
