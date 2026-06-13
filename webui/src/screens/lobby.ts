@@ -4,28 +4,31 @@ export function create_lobby_screen(): HTMLElement {
   const container = document.createElement('div');
   container.className = 'lobby';
 
-  build_lobby_content(container);
-  return container;
-}
+  const layout = document.createElement('div');
+  layout.className = 'lobby-layout';
 
-function build_lobby_content(container: HTMLElement) {
-  container.innerHTML = '';
+  const main = document.createElement('div');
+  main.className = 'lobby-main';
 
-  const panel = document.createElement('div');
-  panel.className = 'lobby-panel glass';
+  main.appendChild(build_room_code_section());
+  main.appendChild(build_player_list());
+  main.appendChild(build_ready_button());
 
-  panel.appendChild(build_room_code_section());
-  panel.appendChild(build_player_list());
-  panel.appendChild(build_ready_button());
-  panel.appendChild(build_chat_section());
+  const sidebar = document.createElement('div');
+  sidebar.className = 'lobby-sidebar';
+  sidebar.appendChild(build_chat_section());
 
-  container.appendChild(panel);
+  layout.appendChild(main);
+  layout.appendChild(sidebar);
+  container.appendChild(layout);
 
   container.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       page.value = 'home';
     }
   });
+
+  return container;
 }
 
 function build_room_code_section(): HTMLElement {
@@ -117,9 +120,23 @@ function build_chat_section(): HTMLElement {
   send_btn.className = 'btn';
   send_btn.textContent = 'Send';
 
+  function send_message() {
+    const text = input.value.trim();
+    if (!text) return;
+    const el = document.createElement('div');
+    el.className = 'chat-message';
+    el.textContent = text;
+    const empty = messages.querySelector('.chat-empty');
+    if (empty) empty.remove();
+    messages.appendChild(el);
+    messages.scrollTop = messages.scrollHeight;
+    input.value = '';
+  }
+
+  send_btn.addEventListener('click', send_message);
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && input.value.trim()) {
-      send_btn.click();
+    if (e.key === 'Enter') {
+      send_message();
     }
   });
 
