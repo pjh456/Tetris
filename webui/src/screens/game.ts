@@ -12,6 +12,7 @@ import { run_collapse_animation } from '../fx/gameover_fx';
 import { bindKeyboard, type KeyboardConfig } from '../input/keyboard';
 import { Actions } from '../game/actions';
 import { audio_manager } from '../core/audio';
+import { create_touch_overlay } from '../input/touch';
 
 function setup_hidpi(
   canvas: HTMLCanvasElement,
@@ -301,6 +302,7 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
   function destroy() {
     cancelAnimationFrame(raf_id);
     cleanup_keyboard?.();
+    touch_overlay.destroy();
     document.removeEventListener('visibilitychange', on_visibility_change);
     hud.destroy();
     renderer.destroy();
@@ -366,6 +368,12 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
   );
 
   document.addEventListener('visibilitychange', on_visibility_change);
+
+  const touch_overlay = create_touch_overlay(root, (action_val) => {
+    if (!wasm.is_game_over && !paused) {
+      wasm.handle_action(action_val);
+    }
+  });
 
   last_tick = performance.now();
   last_fx = performance.now();
