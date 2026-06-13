@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use slotmap::{SlotMap, new_key_type};
 use tetris_core::engine::{Action, Engine};
 
@@ -9,6 +10,46 @@ use crate::network_manager::NetworkManager;
 use crate::protocol::*;
 
 new_key_type! { pub struct PlayerKey; }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum RoomMode {
+    #[default]
+    Lobby,
+    Countdown(u8),
+    Playing,
+    GameOver,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RoomSettings {
+    pub max_players: u8,
+    pub start_level: u8,
+    pub attack_mult: f32,
+    pub garbage_delay_secs: u8,
+    pub allow_hold: bool,
+}
+
+impl Default for RoomSettings {
+    fn default() -> Self {
+        Self {
+            max_players: 4,
+            start_level: 1,
+            attack_mult: 1.0,
+            garbage_delay_secs: 1,
+            allow_hold: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlayerInfo {
+    pub player_id: u8,
+    pub name: String,
+    pub uuid: String,
+    pub ready: bool,
+    pub alive: bool,
+    pub away: bool,
+}
 
 pub struct NetGameDriver<const W: usize, const H: usize> {
     pub engines: SlotMap<PlayerKey, Engine<W, H>>,
@@ -19,6 +60,11 @@ pub struct NetGameDriver<const W: usize, const H: usize> {
     pub seq: u32,
     pub last_remote_seq: u32,
     pending_packets: Vec<Vec<u8>>,
+    pub room_code: Option<String>,
+    pub host_player_id: u8,
+    pub player_infos: Vec<PlayerInfo>,
+    pub room_settings: RoomSettings,
+    pub room_mode: RoomMode,
 }
 
 impl<const W: usize, const H: usize> NetGameDriver<W, H> {
@@ -37,6 +83,11 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
             seq: 0,
             last_remote_seq: 0,
             pending_packets: Vec::new(),
+            room_code: None,
+            host_player_id: 0,
+            player_infos: Vec::new(),
+            room_settings: RoomSettings::default(),
+            room_mode: RoomMode::default(),
         }
     }
 
@@ -65,6 +116,130 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
         engines.par_iter_mut().for_each(|engine| {
             engine.tick(delta_ms);
         });
+    }
+
+    pub fn create_room(&mut self, settings: RoomSettings, host_name: &str, host_uuid: &str) {
+        self.room_settings = settings;
+        self.room_mode = RoomMode::Lobby;
+        self.host_player_id = 0;
+        self.player_infos.clear();
+        self.player_infos.push(PlayerInfo {
+            player_id: 0,
+            name: host_name.to_string(),
+            uuid: host_uuid.to_string(),
+            ready: false,
+            alive: true,
+            away: false,
+        });
+    }
+
+    pub fn join_room(&mut self, player_id: u8, name: &str, uuid: &str) -> Result<(), NetError> {
+        if self.player_infos.len() >= self.room_settings.max_players as usize {
+            return Err(NetError::Protocol("room full".into()));
+        }
+        self.player_infos.push(PlayerInfo {
+            player_id,
+            name: name.to_string(),
+            uuid: uuid.to_string(),
+            ready: false,
+            alive: true,
+            away: false,
+        });
+        Ok(())
+    }
+
+    pub fn set_ready(&mut self, player_id: u8, ready: bool) {
+        if let Some(info) = self.player_infos.iter_mut().find(|p| p.player_id == player_id) {
+            info.ready = ready;
+        }
+        if self.room_mode == RoomMode::Lobby && self.all_ready() {
+            self.room_mode = RoomMode::Countdown(3);
+        }
+    }
+
+    pub fn all_ready(&self) -> bool {
+        self.player_infos.len() >= 2 && self.player_infos.iter().all(|p| p.ready)
+    }
+
+    pub fn tick_countdown(&mut self) -> Option<u8> {
+        if let RoomMode::Countdown(remaining) = self.room_mode {
+            if remaining == 0 {
+                self.start_game();
+                return Some(0);
+            }
+            self.room_mode = RoomMode::Countdown(remaining - 1);
+            return Some(remaining - 1);
+        }
+        None
+    }
+
+    pub fn start_game(&mut self) {
+        self.room_mode = RoomMode::Playing;
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as u32)
+            .unwrap_or(42);
+        for engine in self.engines.values_mut() {
+            engine.reset_with_level(seed, self.room_settings.start_level as u32);
+        }
+        for info in &mut self.player_infos {
+            info.alive = true;
+            info.ready = false;
+        }
+    }
+
+    pub fn handle_player_leave(&mut self, player_id: u8) {
+        self.player_infos.retain(|p| p.player_id != player_id);
+        if player_id == self.host_player_id {
+            self.migrate_host();
+        }
+    }
+
+    pub fn migrate_host(&mut self) {
+        if let Some(next) = self.player_infos.first() {
+            self.host_player_id = next.player_id;
+        }
+    }
+
+    pub fn route_attack(&self, _damage: i32, attacker_id: u8) -> Option<u8> {
+        let alive_others: Vec<&PlayerInfo> = self
+            .player_infos
+            .iter()
+            .filter(|p| p.alive && p.player_id != attacker_id)
+            .collect();
+        if alive_others.is_empty() {
+            return None;
+        }
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos())
+            .unwrap_or(0);
+        let idx = (seed as usize) % alive_others.len();
+        Some(alive_others[idx].player_id)
+    }
+
+    pub fn set_away(&mut self, player_id: u8, away: bool) {
+        if let Some(info) = self.player_infos.iter_mut().find(|p| p.player_id == player_id) {
+            info.away = away;
+        }
+    }
+
+    pub fn mark_dead(&mut self, player_id: u8) {
+        if let Some(info) = self.player_infos.iter_mut().find(|p| p.player_id == player_id) {
+            info.alive = false;
+        }
+        let alive_count = self.player_infos.iter().filter(|p| p.alive).count();
+        if alive_count <= 1 {
+            self.room_mode = RoomMode::GameOver;
+        }
+    }
+
+    pub fn reset_to_lobby(&mut self) {
+        self.room_mode = RoomMode::Lobby;
+        for info in &mut self.player_infos {
+            info.ready = false;
+            info.alive = true;
+        }
     }
 
     pub fn queue_packet(&mut self, data: Vec<u8>) {

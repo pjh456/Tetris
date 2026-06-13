@@ -18,6 +18,16 @@ pub enum PacketType {
     VersionError,
     DeltaSync = 10,
     ResyncRequest = 11,
+    CreateRoom = 12,
+    JoinRoom = 13,
+    PlayerReady = 14,
+    PlayerLeave = 15,
+    RoomSettings = 16,
+    ChatMessage = 17,
+    StartCountdown = 18,
+    HostMigrate = 19,
+    PlayerAway = 20,
+    SpectateSwitch = 21,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -107,6 +117,76 @@ pub struct PktDeltaSync {
 pub struct PktResyncRequest {
     pub header: PacketHeader,
     pub last_good_seq: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PktCreateRoom {
+    pub header: PacketHeader,
+    pub max_players: u8,
+    pub start_level: u8,
+    pub attack_mult: f32,
+    pub garbage_delay_secs: u8,
+    pub allow_hold: bool,
+    pub host_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PktJoinRoom {
+    pub header: PacketHeader,
+    pub room_code: String,
+    pub player_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PktRoomSettings {
+    pub header: PacketHeader,
+    pub max_players: u8,
+    pub start_level: u8,
+    pub attack_mult: f32,
+    pub garbage_delay_secs: u8,
+    pub allow_hold: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PktPlayerReady {
+    pub header: PacketHeader,
+    pub ready: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PktPlayerLeave {
+    pub header: PacketHeader,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PktChatMessage {
+    pub header: PacketHeader,
+    pub message: String,
+    pub timestamp: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PktStartCountdown {
+    pub header: PacketHeader,
+    pub remaining_secs: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PktHostMigrate {
+    pub header: PacketHeader,
+    pub new_host_player_id: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PktPlayerAway {
+    pub header: PacketHeader,
+    pub away: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PktSpectateSwitch {
+    pub header: PacketHeader,
+    pub target_player_id: u8,
 }
 
 #[cfg(test)]
@@ -305,5 +385,74 @@ mod tests {
     fn test_delta_sync_packet_type() {
         assert_eq!(PacketType::DeltaSync as u8, 10);
         assert_eq!(PacketType::ResyncRequest as u8, 11);
+    }
+
+    #[test]
+    fn test_create_room_round_trip() {
+        let pkt = PktCreateRoom {
+            header: PacketHeader { version: PROTOCOL_VERSION, packet_type: PacketType::CreateRoom, player_id: 0 },
+            max_players: 4, start_level: 1, attack_mult: 1.0, garbage_delay_secs: 1, allow_hold: true, host_name: "Alice".into(),
+        };
+        bincode_round_trip(&pkt);
+    }
+
+    #[test]
+    fn test_join_room_round_trip() {
+        let pkt = PktJoinRoom {
+            header: PacketHeader { version: PROTOCOL_VERSION, packet_type: PacketType::JoinRoom, player_id: 0 },
+            room_code: "ABCD".into(), player_name: "Bob".into(),
+        };
+        bincode_round_trip(&pkt);
+    }
+
+    #[test]
+    fn test_player_ready_round_trip() {
+        let pkt = PktPlayerReady {
+            header: PacketHeader { version: PROTOCOL_VERSION, packet_type: PacketType::PlayerReady, player_id: 1 },
+            ready: true,
+        };
+        bincode_round_trip(&pkt);
+    }
+
+    #[test]
+    fn test_chat_message_round_trip() {
+        let pkt = PktChatMessage {
+            header: PacketHeader { version: PROTOCOL_VERSION, packet_type: PacketType::ChatMessage, player_id: 1 },
+            message: "hello".into(), timestamp: "2026-06-13T00:00:00Z".into(),
+        };
+        bincode_round_trip(&pkt);
+    }
+
+    #[test]
+    fn test_start_countdown_round_trip() {
+        let pkt = PktStartCountdown {
+            header: PacketHeader { version: PROTOCOL_VERSION, packet_type: PacketType::StartCountdown, player_id: 0 },
+            remaining_secs: 3,
+        };
+        bincode_round_trip(&pkt);
+    }
+
+    #[test]
+    fn test_host_migrate_round_trip() {
+        let pkt = PktHostMigrate {
+            header: PacketHeader { version: PROTOCOL_VERSION, packet_type: PacketType::HostMigrate, player_id: 0 },
+            new_host_player_id: 2,
+        };
+        bincode_round_trip(&pkt);
+    }
+
+    #[test]
+    fn test_spectate_switch_round_trip() {
+        let pkt = PktSpectateSwitch {
+            header: PacketHeader { version: PROTOCOL_VERSION, packet_type: PacketType::SpectateSwitch, player_id: 1 },
+            target_player_id: 3,
+        };
+        bincode_round_trip(&pkt);
+    }
+
+    #[test]
+    fn test_room_packet_types() {
+        assert_eq!(PacketType::CreateRoom as u8, 12);
+        assert_eq!(PacketType::SpectateSwitch as u8, 21);
     }
 }

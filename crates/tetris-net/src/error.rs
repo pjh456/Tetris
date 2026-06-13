@@ -10,4 +10,6 @@ pub enum NetError {
     Protocol(String),
     #[error("connection error: {0}")]
     Connection(String),
+    #[error("mDNS error: {0}")]
+    MdnsError(String),
 }
