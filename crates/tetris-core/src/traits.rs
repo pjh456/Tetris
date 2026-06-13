@@ -19,6 +19,6 @@ pub trait GameEngine {
     fn reset(&mut self, seed: u32);
     fn spawn(&mut self);
     fn handle_action(&mut self, action: Action) -> AttackResult;
-    fn tick(&mut self) -> AttackResult;
+    fn tick(&mut self, delta_ms: u32) -> AttackResult;
     fn get_lock_timer(&self) -> i32;
 }

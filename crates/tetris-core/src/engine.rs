@@ -50,6 +50,13 @@ impl Lcg {
     }
 }
 
+pub fn gravity_interval_ms(level: u32) -> u32 {
+    let level = level.clamp(1, 15);
+    let lvl_minus_1 = (level - 1) as f64;
+    let seconds = (0.8 - lvl_minus_1 * 0.007).powf(level as f64);
+    (seconds * 1000.0).max(1.0) as u32
+}
+
 #[derive(Debug, Clone)]
 pub struct Engine<const W: usize, const H: usize> {
     pub state: State<W, H>,
@@ -59,6 +66,9 @@ pub struct Engine<const W: usize, const H: usize> {
     lock_delay: LockDelay,
     bag: [Piece; 7],
     bag_idx: usize,
+    soft_drop_cells: u8,
+    hard_drop_cells: u8,
+    gravity_accumulator: u32,
 }
 
 impl<const W: usize, const H: usize> Default for Engine<W, H> {
@@ -98,6 +108,9 @@ impl<const W: usize, const H: usize> Engine<W, H> {
             lock_delay: LockDelay::new(),
             bag: [Piece::I; 7],
             bag_idx: 7,
+            soft_drop_cells: 0,
+            hard_drop_cells: 0,
+            gravity_accumulator: 0,
         }
     }
 
@@ -133,7 +146,19 @@ impl<const W: usize, const H: usize> Engine<W, H> {
     fn lock_and_spawn(&mut self) -> AttackResult {
         let lines_cleared = lock_piece(&mut self.state);
         let mut attack_res = calculate_attack(&mut self.state, lines_cleared);
-        self.scorer.update(&attack_res, lines_cleared as u8);
+        self.scorer.update(
+            lines_cleared as u8,
+            attack_res.is_tspin,
+            attack_res.is_mini,
+            attack_res.is_b2b,
+            attack_res.perfect_clear,
+            self.soft_drop_cells,
+            self.hard_drop_cells,
+            self.state.combo.saturating_sub(1).max(0) as u32,
+            self.scorer.level,
+        );
+        self.soft_drop_cells = 0;
+        self.hard_drop_cells = 0;
 
         if attack_res.damage > 0 && self.state.pending_garbage > 0 {
             if attack_res.damage >= self.state.pending_garbage as i32 {
@@ -200,6 +225,10 @@ impl<const W: usize, const H: usize> Engine<W, H> {
     }
 
     pub fn reset(&mut self, seed: u32) {
+        self.reset_with_level(seed, 1);
+    }
+
+    pub fn reset_with_level(&mut self, seed: u32, start_level: u32) {
         self.state = State {
             board: Board::new(),
             piece: Piece::T,
@@ -225,8 +254,12 @@ impl<const W: usize, const H: usize> Engine<W, H> {
         self.game_over = false;
         self.has_hold = false;
         self.scorer = ScoreTracker::default();
+        self.scorer.level = start_level.clamp(1, 15);
         self.bag_idx = 7;
         self.lock_delay.cancel();
+        self.soft_drop_cells = 0;
+        self.hard_drop_cells = 0;
+        self.gravity_accumulator = 0;
 
         for i in 0..5 {
             self.state.next[i] = self.pop_next_piece();
@@ -268,7 +301,9 @@ impl<const W: usize, const H: usize> Engine<W, H> {
                 AttackResult::default()
             }
             Action::SoftDrop => {
-                self.try_move_wrapped(0, 1);
+                if self.try_move_wrapped(0, 1) {
+                    self.soft_drop_cells += 1;
+                }
                 AttackResult::default()
             }
             Action::HardDrop => {
@@ -276,6 +311,7 @@ impl<const W: usize, const H: usize> Engine<W, H> {
                 hard_drop(&mut self.state);
                 let end_y = self.state.y;
                 self.record_harddrop(start_y, end_y);
+                self.hard_drop_cells = (end_y - start_y).max(0) as u8;
                 self.lock_delay.cancel();
                 self.lock_and_spawn()
             }
@@ -324,22 +360,29 @@ impl<const W: usize, const H: usize> Engine<W, H> {
         }
     }
 
-    pub fn tick(&mut self) -> AttackResult {
+    pub fn tick(&mut self, delta_ms: u32) -> AttackResult {
         if self.game_over {
             return AttackResult::default();
         }
 
-        if try_move(&mut self.state, 0, 1) {
-            self.lock_delay.cancel();
-            return AttackResult::default();
+        self.gravity_accumulator += delta_ms;
+        let interval = gravity_interval_ms(self.scorer.level);
+        let mut result = AttackResult::default();
+
+        while self.gravity_accumulator >= interval {
+            self.gravity_accumulator -= interval;
+
+            if try_move(&mut self.state, 0, 1) {
+                self.lock_delay.cancel();
+            } else {
+                self.lock_delay.start();
+                if self.lock_delay.update() {
+                    result = self.lock_and_spawn();
+                }
+            }
         }
 
-        self.lock_delay.start();
-        if self.lock_delay.update() {
-            return self.lock_and_spawn();
-        }
-
-        AttackResult::default()
+        result
     }
 
     pub fn get_lock_timer(&self) -> i32 {
@@ -379,8 +422,8 @@ impl<const W: usize, const H: usize> crate::traits::GameEngine for Engine<W, H> 
         self.handle_action(action)
     }
 
-    fn tick(&mut self) -> AttackResult {
-        self.tick()
+    fn tick(&mut self, delta_ms: u32) -> AttackResult {
+        self.tick(delta_ms)
     }
 
     fn get_lock_timer(&self) -> i32 {
@@ -423,7 +466,7 @@ mod tests {
             if engine.game_over {
                 break;
             }
-            engine.tick();
+            engine.tick(16);
         }
         assert!(!engine.game_over);
     }

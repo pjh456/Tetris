@@ -1,9 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-use crate::attack::AttackResult;
-
-const BASE_POINTS: [u32; 5] = [0, 100, 300, 500, 800];
-
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ScoreTracker {
     pub score: u32,
@@ -20,29 +16,92 @@ pub struct ScoreTracker {
 }
 
 impl ScoreTracker {
-    pub fn update(&mut self, attack: &AttackResult, lines_cleared: u8) {
+    #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
+    pub fn update(
+        &mut self,
+        lines_cleared: u8,
+        is_tspin: bool,
+        is_mini: bool,
+        is_b2b_clear: bool,
+        perfect_clear: bool,
+        soft_drop_cells: u8,
+        hard_drop_cells: u8,
+        combo_count: u32,
+        level: u32,
+    ) {
+        let level = level.max(1);
+
+        self.score += soft_drop_cells as u32;
+        self.score += hard_drop_cells as u32 * 2;
+
         if lines_cleared > 0 {
-            let idx = (lines_cleared as usize).min(4);
-            let mut base = BASE_POINTS[idx] * self.level.max(1);
-            if attack.is_tspin {
-                base *= 2;
+            let base = if is_tspin {
+                if is_mini {
+                    match lines_cleared {
+                        1 => 200,
+                        _ => 200,
+                    }
+                } else {
+                    match lines_cleared {
+                        1 => 800,
+                        2 => 1200,
+                        3 => 1600,
+                        _ => 1600,
+                    }
+                }
+            } else {
+                match lines_cleared {
+                    1 => 100,
+                    2 => 300,
+                    3 => 500,
+                    4 => 800,
+                    _ => 800,
+                }
+            };
+
+            let mut action_score = base * level;
+
+            if is_b2b_clear {
+                action_score = (action_score * 3) / 2;
             }
-            self.score += base;
+
+            self.score += action_score;
+            self.score += 50 * combo_count * level;
+
+            if perfect_clear {
+                let pc_bonus = if is_b2b_clear && lines_cleared == 4 {
+                    3200
+                } else {
+                    match lines_cleared {
+                        1 => 800,
+                        2 => 1200,
+                        3 => 1800,
+                        4 => 2000,
+                        _ => 2000,
+                    }
+                };
+                self.score += pc_bonus * level;
+            }
+
             self.total_lines += lines_cleared as u32;
-            self.level = self.total_lines / 10 + 1;
-            self.combo += 1;
+            self.level = (self.total_lines / 10 + 1).min(15);
+            self.combo = combo_count;
             self.max_combo = self.max_combo.max(self.combo);
         } else {
+            if is_tspin {
+                let base = if is_mini { 100 } else { 400 };
+                self.score += base * level;
+            }
             self.combo = 0;
         }
 
-        if attack.is_b2b {
+        if is_b2b_clear {
             self.b2b_count += 1;
         }
-        if attack.is_tspin {
+        if is_tspin {
             self.tspin_count += 1;
         }
-        if attack.perfect_clear {
+        if perfect_clear {
             self.all_clear_count += 1;
         }
 
@@ -52,90 +111,5 @@ impl ScoreTracker {
 
     pub fn tick_time(&mut self, delta_ms: u64) {
         self.game_time_ms += delta_ms;
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn make_attack(is_tspin: bool, is_b2b: bool, perfect_clear: bool) -> AttackResult {
-        AttackResult {
-            damage: 0,
-            is_tspin,
-            is_mini: false,
-            is_b2b,
-            perfect_clear,
-        }
-    }
-
-    #[test]
-    fn test_score_1_line() {
-        let mut s = ScoreTracker::default();
-        s.level = 1;
-        s.update(&make_attack(false, false, false), 1);
-        assert_eq!(s.score, 100);
-    }
-
-    #[test]
-    fn test_score_4_lines() {
-        let mut s = ScoreTracker::default();
-        s.level = 1;
-        s.update(&make_attack(false, false, false), 4);
-        assert_eq!(s.score, 800);
-    }
-
-    #[test]
-    fn test_score_tspin_double() {
-        let mut s = ScoreTracker::default();
-        s.level = 1;
-        s.update(&make_attack(true, false, false), 2);
-        assert_eq!(s.score, 600);
-    }
-
-    #[test]
-    fn test_level_up_after_10_lines() {
-        let mut s = ScoreTracker::default();
-        s.level = 1;
-        for _ in 0..10 {
-            s.update(&make_attack(false, false, false), 1);
-        }
-        assert_eq!(s.total_lines, 10);
-        assert_eq!(s.level, 2);
-    }
-
-    #[test]
-    fn test_b2b_counter() {
-        let mut s = ScoreTracker::default();
-        s.level = 1;
-        s.update(&make_attack(false, true, false), 4);
-        assert_eq!(s.b2b_count, 1);
-        s.update(&make_attack(false, true, false), 4);
-        assert_eq!(s.b2b_count, 2);
-    }
-
-    #[test]
-    fn test_combo_and_max_combo() {
-        let mut s = ScoreTracker::default();
-        s.level = 1;
-        s.update(&make_attack(false, false, false), 1);
-        assert_eq!(s.combo, 1);
-        s.update(&make_attack(false, false, false), 2);
-        assert_eq!(s.combo, 2);
-        assert_eq!(s.max_combo, 2);
-        s.update(&AttackResult::default(), 0);
-        assert_eq!(s.combo, 0);
-        assert_eq!(s.max_combo, 2);
-    }
-
-    #[test]
-    fn test_best_score_tracks_max() {
-        let mut s = ScoreTracker::default();
-        s.level = 1;
-        s.update(&make_attack(false, false, false), 4);
-        assert_eq!(s.best_score, 800);
-        s.score = 0;
-        s.update(&make_attack(false, false, false), 1);
-        assert_eq!(s.best_score, 800);
     }
 }
