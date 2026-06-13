@@ -27,13 +27,30 @@ function mount_topbar(container: HTMLElement) {
   const topbar = document.createElement('div');
   topbar.className = 'topbar';
   topbar.innerHTML = `
-    <div class="logo">TETRIS</div>
+    <div class="topbar-left">
+      <span class="back-btn" title="Back to Home">←</span>
+      <div class="logo">TETRIS</div>
+    </div>
     <div class="user-info">
       <div>GUEST</div>
       <div class="status">OFFLINE</div>
     </div>
   `;
+  topbar.querySelector('.back-btn')!.addEventListener('click', () => {
+    page.value = 'home';
+  });
   container.prepend(topbar);
+}
+
+function mount_back_button(container: HTMLElement) {
+  const btn = document.createElement('button');
+  btn.className = 'back-float';
+  btn.textContent = '← Back';
+  btn.title = 'Back to Home';
+  btn.addEventListener('click', () => {
+    page.value = 'home';
+  });
+  container.appendChild(btn);
 }
 
 effect(() => {
@@ -64,6 +81,7 @@ effect(() => {
       content.className = 'content';
       app.appendChild(content);
       create_game_screen(content);
+      mount_back_button(app);
       break;
     }
     case 'settings': {
@@ -76,6 +94,7 @@ effect(() => {
     }
     case 'gameover': {
       app.appendChild(create_gameover_screen());
+      mount_back_button(app);
       break;
     }
     case 'leaderboard': {
@@ -89,6 +108,7 @@ effect(() => {
     }
     case 'spectator': {
       app.appendChild(create_spectator_screen([{ id: 1, name: 'Player 1' }]));
+      mount_back_button(app);
       break;
     }
   }
