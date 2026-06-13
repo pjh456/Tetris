@@ -60,10 +60,10 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
         self.key_by_player_id.get(player_id as usize).copied()
     }
 
-    pub fn tick_all(&mut self) {
+    pub fn tick_all(&mut self, delta_ms: u32) {
         let mut engines: Vec<&mut Engine<W, H>> = self.engines.values_mut().collect();
         engines.par_iter_mut().for_each(|engine| {
-            engine.tick();
+            engine.tick(delta_ms);
         });
     }
 
@@ -508,9 +508,9 @@ mod tests {
             driver.add_player(engine);
         }
         assert_eq!(driver.engines.len(), 8);
-        driver.tick_all();
-        driver.tick_all();
-        driver.tick_all();
+        driver.tick_all(16);
+        driver.tick_all(16);
+        driver.tick_all(16);
     }
 
     #[test]

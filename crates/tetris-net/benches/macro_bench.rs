@@ -11,13 +11,13 @@ fn main() {
     }
 
     for _ in 0..100 {
-        driver.tick_all();
+        driver.tick_all(16);
     }
 
     let iterations = 1000u32;
     let start = Instant::now();
     for _ in 0..iterations {
-        driver.tick_all();
+        driver.tick_all(16);
     }
     let elapsed = start.elapsed();
 

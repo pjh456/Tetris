@@ -5,6 +5,7 @@ members = [
     "crates/tetris-cli",
     "crates/tetris-wasm",
     "crates/tetris-ai",
+    "crates/tetris-relay",
 ]
 resolver = "2"
 
