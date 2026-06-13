@@ -1,11 +1,22 @@
+use serde::{Deserialize, Serialize};
 #[cfg(target_arch = "wasm32")]
 use tetris_core::engine::Action;
 use tetris_core::engine::Engine;
+#[cfg(target_arch = "wasm32")]
+use tetris_net::protocol::*;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
 mod error;
 mod utils;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpponentInfo {
+    pub player_id: u8,
+    pub name: String,
+    pub alive: bool,
+    pub away: bool,
+}
 
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
@@ -14,6 +25,11 @@ pub struct WebTetris {
     engine: Engine<10, 20>,
     has_hold: bool,
     grid_buf: Vec<u8>,
+    opponent_engines: Vec<Engine<10, 20>>,
+    opponent_grid_bufs: Vec<Vec<u8>>,
+    opponent_infos: Vec<OpponentInfo>,
+    room_code: Option<String>,
+    local_player_id: u8,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -28,17 +44,28 @@ impl WebTetris {
             engine,
             has_hold: false,
             grid_buf,
+            opponent_engines: Vec::new(),
+            opponent_grid_bufs: Vec::new(),
+            opponent_infos: Vec::new(),
+            room_code: None,
+            local_player_id: 0,
         }
     }
 
     pub fn reset(&mut self, seed: u32) {
         self.has_hold = false;
         self.engine.reset_with_level(seed, 1);
+        self.opponent_engines.clear();
+        self.opponent_grid_bufs.clear();
+        self.opponent_infos.clear();
     }
 
     pub fn reset_with_level(&mut self, seed: u32, start_level: u32) {
         self.has_hold = false;
         self.engine.reset_with_level(seed, start_level.clamp(1, 15));
+        self.opponent_engines.clear();
+        self.opponent_grid_bufs.clear();
+        self.opponent_infos.clear();
     }
 
     pub fn tick(&mut self, delta_ms: u32) -> JsValue {
@@ -172,6 +199,79 @@ impl WebTetris {
         };
         serde_wasm_bindgen::to_value(&data).unwrap_or(JsValue::NULL)
     }
+
+    pub fn parse_packet(&mut self, data: &[u8]) -> JsValue {
+        let header: PacketHeader = match bincode::deserialize(data) {
+            Ok(h) => h,
+            Err(_) => return JsValue::NULL,
+        };
+        if header.version != PROTOCOL_VERSION {
+            return JsValue::NULL;
+        }
+        match header.packet_type {
+            PacketType::GameStart => {
+                self.opponent_engines.clear();
+                self.opponent_grid_bufs.clear();
+                self.opponent_infos.clear();
+                JsValue::from_str("game_start")
+            }
+            PacketType::StateSync => {
+                let pkt: PktStateSync = match bincode::deserialize(data) {
+                    Ok(p) => p,
+                    Err(_) => return JsValue::NULL,
+                };
+                let pid = pkt.header.player_id as usize;
+                while self.opponent_engines.len() <= pid {
+                    let mut e = Engine::<10, 20>::new();
+                    e.reset_with_level(0, 1);
+                    self.opponent_engines.push(e);
+                    self.opponent_grid_bufs.push(vec![0u8; 200]);
+                }
+                JsValue::from_str("state_sync")
+            }
+            PacketType::DeltaSync => match serde_wasm_bindgen::to_value(&header) {
+                Ok(v) => v,
+                Err(_) => JsValue::NULL,
+            },
+            PacketType::ChatMessage => {
+                let pkt: PktChatMessage = match bincode::deserialize(data) {
+                    Ok(p) => p,
+                    Err(_) => return JsValue::NULL,
+                };
+                serde_wasm_bindgen::to_value(&pkt).unwrap_or(JsValue::NULL)
+            }
+            PacketType::PlayerReady => JsValue::from_str("player_ready"),
+            PacketType::StartCountdown => {
+                let pkt: PktStartCountdown = match bincode::deserialize(data) {
+                    Ok(p) => p,
+                    Err(_) => return JsValue::NULL,
+                };
+                serde_wasm_bindgen::to_value(&pkt).unwrap_or(JsValue::NULL)
+            }
+            _ => JsValue::NULL,
+        }
+    }
+
+    pub fn get_opponent_grid(&self, player_id: u8) -> js_sys::Uint8Array {
+        let idx = player_id as usize;
+        if idx >= self.opponent_grid_bufs.len() {
+            return js_sys::Uint8Array::new(&js_sys::Uint8Array::new_with_length(200));
+        }
+        let buf = &self.opponent_grid_bufs[idx];
+        js_sys::Uint8Array::from(buf.as_slice())
+    }
+
+    pub fn opponent_count(&self) -> u8 {
+        self.opponent_infos.len() as u8
+    }
+
+    pub fn get_opponent_info(&self, index: u8) -> JsValue {
+        let idx = index as usize;
+        if idx >= self.opponent_infos.len() {
+            return JsValue::NULL;
+        }
+        serde_wasm_bindgen::to_value(&self.opponent_infos[idx]).unwrap_or(JsValue::NULL)
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -187,6 +287,11 @@ pub struct WebTetris {
     pub engine: Engine<10, 20>,
     has_hold: bool,
     grid_buf: Vec<u8>,
+    opponent_engines: Vec<Engine<10, 20>>,
+    opponent_grid_bufs: Vec<Vec<u8>>,
+    opponent_infos: Vec<OpponentInfo>,
+    room_code: Option<String>,
+    local_player_id: u8,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -198,6 +303,11 @@ impl WebTetris {
             engine,
             has_hold: false,
             grid_buf: vec![0u8; 200],
+            opponent_engines: Vec::new(),
+            opponent_grid_bufs: Vec::new(),
+            opponent_infos: Vec::new(),
+            room_code: None,
+            local_player_id: 0,
         }
     }
 }

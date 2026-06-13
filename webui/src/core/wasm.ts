@@ -116,3 +116,20 @@ export function reset_wasm(): WebTetris {
   grid_view = create_grid_view(instance);
   return instance;
 }
+
+export function get_opponent_grid_view(player_id: number): Uint8Array {
+  if (!instance) throw new Error('WASM not initialized');
+  return instance.get_opponent_grid(player_id);
+}
+
+export function get_opponent_count(): number {
+  if (!instance) return 0;
+  return instance.opponent_count();
+}
+
+export function get_opponent_info(index: number): Record<string, unknown> | null {
+  if (!instance) return null;
+  const result = instance.get_opponent_info(index);
+  if (result === null || result === undefined) return null;
+  return result as Record<string, unknown>;
+}
