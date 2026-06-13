@@ -132,6 +132,13 @@ fn step(state: AppState, msg: Message) -> (AppState, bool) {
                     },
                     false,
                 ),
+                3 => (
+                    AppState::LobbyClient {
+                        room_code: String::new(),
+                        players: vec!["Joining relay...".into()],
+                    },
+                    false,
+                ),
                 4 => (AppState::Menu { selected }, false),
                 5 => (AppState::Menu { selected }, true),
                 _ => (AppState::Menu { selected }, false),
