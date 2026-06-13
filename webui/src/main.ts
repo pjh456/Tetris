@@ -1,5 +1,5 @@
 import './style.css';
-import { effect } from '@preact/signals-core';
+import { effect, untracked } from '@preact/signals-core';
 import { page, settings } from './state';
 import { apply_theme, type ThemeName } from './core/theme';
 import { init_particles, apply_theme_particles } from './core/particles';
@@ -53,8 +53,13 @@ function mount_back_button(container: HTMLElement) {
   container.appendChild(btn);
 }
 
+type CleanableElement = HTMLElement & { _cleanup?: () => void };
+let active_lobby: CleanableElement | null = null;
+
 effect(() => {
   const current = page.value;
+  active_lobby?._cleanup?.();
+  active_lobby = null;
   app.innerHTML = '';
 
   switch (current) {
@@ -103,7 +108,9 @@ effect(() => {
     }
     case 'lobby': {
       mount_topbar(app);
-      app.appendChild(create_lobby_screen());
+      const lobby_el = untracked(() => create_lobby_screen()) as CleanableElement;
+      active_lobby = lobby_el;
+      app.appendChild(lobby_el);
       break;
     }
     case 'spectator': {

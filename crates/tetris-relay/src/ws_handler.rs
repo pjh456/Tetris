@@ -39,7 +39,22 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
         }
     };
 
-    info!("client joined room {room_code}");
+    let peer_id = RoomManager::alloc_peer_id();
+
+    let peers = match state.room_manager.add_peer(&room_code, peer_id).await {
+        Ok(p) => p,
+        Err(e) => {
+            warn!("add_peer failed: {e}");
+            state.room_manager.leave_room(&room_code).await;
+            return;
+        }
+    };
+
+    info!("client {peer_id} joined room {room_code}");
+    state
+        .room_manager
+        .broadcast_presence(&room_code, &peers)
+        .await;
 
     let (sender, mut receiver) = socket.split();
     let room_code_send = room_code.clone();
@@ -68,8 +83,20 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
     }
 
     send_task.abort();
+
+    let remaining = state
+        .room_manager
+        .remove_peer(&room_code, peer_id)
+        .await;
     state.room_manager.leave_room(&room_code).await;
-    info!("client left room {room_code_send}");
+    info!("client {peer_id} left room {room_code_send}");
+
+    if !remaining.is_empty() {
+        state
+            .room_manager
+            .broadcast_presence(&room_code_send, &remaining)
+            .await;
+    }
 }
 
 async fn send_loop(
