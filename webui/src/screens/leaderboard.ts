@@ -47,7 +47,8 @@ function build_table(entries: LeaderboardEntry[]): HTMLElement {
   if (entries.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'leaderboard-empty';
-    empty.textContent = 'No Scores Yet — Complete a solo game to earn your spot on the leaderboard.';
+    empty.textContent =
+      'No Scores Yet — Complete a solo game to earn your spot on the leaderboard.';
     table.appendChild(empty);
     return table;
   }

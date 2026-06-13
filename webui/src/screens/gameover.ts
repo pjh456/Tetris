@@ -32,7 +32,10 @@ export function create_gameover_screen(): HTMLElement {
     const time_sec = s.game_time_ms / 1000;
     const pps = time_sec > 0 ? (s.total_pieces / time_sec).toFixed(1) : '0.0';
     const rank = save_score_to_leaderboard(s.score, s.level, s.lines);
-    const rank_html = rank > 0 ? `<div class="stat-row"><span class="stat-label">Rank</span><span class="stat-value stat-score">NEW #${rank}</span></div>` : '';
+    const rank_html =
+      rank > 0
+        ? `<div class="stat-row"><span class="stat-label">Rank</span><span class="stat-value stat-score">NEW #${rank}</span></div>`
+        : '';
 
     stats_html = `${rank_html}
       <div class="stat-row"><span class="stat-label">Score</span><span class="stat-value stat-score">${s.score.toLocaleString()}</span></div>

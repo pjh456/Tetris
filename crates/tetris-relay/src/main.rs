@@ -5,7 +5,7 @@ use tokio::net::TcpListener;
 use tracing::info;
 
 use tetris_relay::relay::RoomManager;
-use tetris_relay::ws_handler::{ws_handler, AppState};
+use tetris_relay::ws_handler::{AppState, ws_handler};
 
 #[tokio::main]
 async fn main() {
@@ -24,12 +24,10 @@ async fn main() {
     let addr = format!("0.0.0.0:{port}");
     info!("tetris-relay listening on {addr}");
 
-    let listener = TcpListener::bind(&addr)
-        .await
-        .unwrap_or_else(|e| {
-            eprintln!("Failed to bind {addr}: {e}");
-            std::process::exit(1);
-        });
+    let listener = TcpListener::bind(&addr).await.unwrap_or_else(|e| {
+        eprintln!("Failed to bind {addr}: {e}");
+        std::process::exit(1);
+    });
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
@@ -43,7 +41,9 @@ async fn main() {
 fn parse_port() -> u16 {
     let args: Vec<String> = std::env::args().collect();
     for i in 0..args.len() {
-        if args[i] == "--port" && let Some(p) = args.get(i + 1) {
+        if args[i] == "--port"
+            && let Some(p) = args.get(i + 1)
+        {
             return p.parse().unwrap_or(9000);
         }
     }

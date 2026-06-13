@@ -149,7 +149,11 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
     }
 
     pub fn set_ready(&mut self, player_id: u8, ready: bool) {
-        if let Some(info) = self.player_infos.iter_mut().find(|p| p.player_id == player_id) {
+        if let Some(info) = self
+            .player_infos
+            .iter_mut()
+            .find(|p| p.player_id == player_id)
+        {
             info.ready = ready;
         }
         if self.room_mode == RoomMode::Lobby && self.all_ready() {
@@ -219,13 +223,21 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
     }
 
     pub fn set_away(&mut self, player_id: u8, away: bool) {
-        if let Some(info) = self.player_infos.iter_mut().find(|p| p.player_id == player_id) {
+        if let Some(info) = self
+            .player_infos
+            .iter_mut()
+            .find(|p| p.player_id == player_id)
+        {
             info.away = away;
         }
     }
 
     pub fn mark_dead(&mut self, player_id: u8) {
-        if let Some(info) = self.player_infos.iter_mut().find(|p| p.player_id == player_id) {
+        if let Some(info) = self
+            .player_infos
+            .iter_mut()
+            .find(|p| p.player_id == player_id)
+        {
             info.alive = false;
         }
         let alive_count = self.player_infos.iter().filter(|p| p.alive).count();

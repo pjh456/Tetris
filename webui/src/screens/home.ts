@@ -26,7 +26,9 @@ export function create_home_screen(
       title: 'MULTIPLAYER',
       subtitle: 'PLAY ONLINE WITH FRIENDS AND FOES',
       css_class: 'menu-multi',
-      onclick: () => { page.value = 'lobby'; },
+      onclick: () => {
+        page.value = 'lobby';
+      },
     }),
   );
 
@@ -36,7 +38,9 @@ export function create_home_screen(
       title: 'LEADERBOARD',
       subtitle: 'TOP 10 LOCAL RANKINGS',
       css_class: 'menu-leaderboard',
-      onclick: () => { page.value = 'leaderboard'; },
+      onclick: () => {
+        page.value = 'leaderboard';
+      },
     }),
   );
 

@@ -390,8 +390,17 @@ mod tests {
     #[test]
     fn test_create_room_round_trip() {
         let pkt = PktCreateRoom {
-            header: PacketHeader { version: PROTOCOL_VERSION, packet_type: PacketType::CreateRoom, player_id: 0 },
-            max_players: 4, start_level: 1, attack_mult: 1.0, garbage_delay_secs: 1, allow_hold: true, host_name: "Alice".into(),
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::CreateRoom,
+                player_id: 0,
+            },
+            max_players: 4,
+            start_level: 1,
+            attack_mult: 1.0,
+            garbage_delay_secs: 1,
+            allow_hold: true,
+            host_name: "Alice".into(),
         };
         bincode_round_trip(&pkt);
     }
@@ -399,8 +408,13 @@ mod tests {
     #[test]
     fn test_join_room_round_trip() {
         let pkt = PktJoinRoom {
-            header: PacketHeader { version: PROTOCOL_VERSION, packet_type: PacketType::JoinRoom, player_id: 0 },
-            room_code: "ABCD".into(), player_name: "Bob".into(),
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::JoinRoom,
+                player_id: 0,
+            },
+            room_code: "ABCD".into(),
+            player_name: "Bob".into(),
         };
         bincode_round_trip(&pkt);
     }
@@ -408,7 +422,11 @@ mod tests {
     #[test]
     fn test_player_ready_round_trip() {
         let pkt = PktPlayerReady {
-            header: PacketHeader { version: PROTOCOL_VERSION, packet_type: PacketType::PlayerReady, player_id: 1 },
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::PlayerReady,
+                player_id: 1,
+            },
             ready: true,
         };
         bincode_round_trip(&pkt);
@@ -417,8 +435,13 @@ mod tests {
     #[test]
     fn test_chat_message_round_trip() {
         let pkt = PktChatMessage {
-            header: PacketHeader { version: PROTOCOL_VERSION, packet_type: PacketType::ChatMessage, player_id: 1 },
-            message: "hello".into(), timestamp: "2026-06-13T00:00:00Z".into(),
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::ChatMessage,
+                player_id: 1,
+            },
+            message: "hello".into(),
+            timestamp: "2026-06-13T00:00:00Z".into(),
         };
         bincode_round_trip(&pkt);
     }
@@ -426,7 +449,11 @@ mod tests {
     #[test]
     fn test_start_countdown_round_trip() {
         let pkt = PktStartCountdown {
-            header: PacketHeader { version: PROTOCOL_VERSION, packet_type: PacketType::StartCountdown, player_id: 0 },
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::StartCountdown,
+                player_id: 0,
+            },
             remaining_secs: 3,
         };
         bincode_round_trip(&pkt);
@@ -435,7 +462,11 @@ mod tests {
     #[test]
     fn test_host_migrate_round_trip() {
         let pkt = PktHostMigrate {
-            header: PacketHeader { version: PROTOCOL_VERSION, packet_type: PacketType::HostMigrate, player_id: 0 },
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::HostMigrate,
+                player_id: 0,
+            },
             new_host_player_id: 2,
         };
         bincode_round_trip(&pkt);
@@ -444,7 +475,11 @@ mod tests {
     #[test]
     fn test_spectate_switch_round_trip() {
         let pkt = PktSpectateSwitch {
-            header: PacketHeader { version: PROTOCOL_VERSION, packet_type: PacketType::SpectateSwitch, player_id: 1 },
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::SpectateSwitch,
+                player_id: 1,
+            },
             target_player_id: 3,
         };
         bincode_round_trip(&pkt);

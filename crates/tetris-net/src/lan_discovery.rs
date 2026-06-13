@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use mdns_sd::{ServiceDaemon, ServiceInfo, ServiceEvent};
+use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
 
 use crate::error::NetError;
 
@@ -21,8 +21,7 @@ pub struct LanDiscovery {
 
 impl LanDiscovery {
     pub fn new() -> Result<Self, NetError> {
-        let daemon = ServiceDaemon::new()
-            .map_err(|e| NetError::MdnsError(e.to_string()))?;
+        let daemon = ServiceDaemon::new().map_err(|e| NetError::MdnsError(e.to_string()))?;
         Ok(Self {
             daemon,
             service_fullname: None,
@@ -39,7 +38,11 @@ impl LanDiscovery {
             &format!("{host}.local."),
             "",
             port,
-            [("name", player_name), ("version", env!("CARGO_PKG_VERSION"))].as_slice(),
+            [
+                ("name", player_name),
+                ("version", env!("CARGO_PKG_VERSION")),
+            ]
+            .as_slice(),
         )
         .map_err(|e| NetError::MdnsError(e.to_string()))?;
 

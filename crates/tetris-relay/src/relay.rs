@@ -1,8 +1,8 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{RwLock, broadcast};
 
 use crate::error::RelayError;
 
@@ -120,7 +120,6 @@ impl RoomManager {
         rooms.insert(code.to_string(), state);
         Ok(code.to_string())
     }
-
 }
 
 fn generate_room_code(existing: &HashMap<RoomCode, Arc<RoomState>>) -> RoomCode {
