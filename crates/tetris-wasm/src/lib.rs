@@ -22,7 +22,7 @@ impl WebTetris {
     #[wasm_bindgen(constructor)]
     pub fn new(seed: u32) -> Self {
         let mut engine = Engine::<10, 20>::new();
-        engine.reset(seed);
+        engine.reset_with_level(seed, 1);
         let grid_buf = vec![0u8; 200];
         WebTetris {
             engine,
@@ -33,11 +33,16 @@ impl WebTetris {
 
     pub fn reset(&mut self, seed: u32) {
         self.has_hold = false;
-        self.engine.reset(seed);
+        self.engine.reset_with_level(seed, 1);
     }
 
-    pub fn tick(&mut self) -> JsValue {
-        let result = self.engine.tick();
+    pub fn reset_with_level(&mut self, seed: u32, start_level: u32) {
+        self.has_hold = false;
+        self.engine.reset_with_level(seed, start_level.clamp(1, 15));
+    }
+
+    pub fn tick(&mut self, delta_ms: u32) -> JsValue {
+        let result = self.engine.tick(delta_ms);
         serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL)
     }
 
@@ -188,7 +193,7 @@ pub struct WebTetris {
 impl WebTetris {
     pub fn new(seed: u32) -> Self {
         let mut engine = Engine::<10, 20>::new();
-        engine.reset(seed);
+        engine.reset_with_level(seed, 1);
         WebTetris {
             engine,
             has_hold: false,

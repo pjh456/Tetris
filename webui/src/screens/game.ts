@@ -13,11 +13,6 @@ import { bindKeyboard, type KeyboardConfig } from '../input/keyboard';
 import { Actions } from '../game/actions';
 import { audio_manager } from '../core/audio';
 
-function gravity_interval_ms(lvl: number): number {
-  const l = Math.max(1, lvl);
-  return Math.max(1, Math.pow(0.8 - (l - 1) * 0.007, l - 1) * 1000);
-}
-
 function setup_hidpi(
   canvas: HTMLCanvasElement,
   css_w: number,
@@ -207,11 +202,11 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
     }
 
     if (!wasm.is_game_over) {
-      const interval = gravity_interval_ms(level.value);
-      if (time - last_tick >= interval) {
+      const delta_ms = time - last_tick;
+      if (delta_ms >= 16) {
         const prev_level = level.value;
         const prev_lines = lines.value;
-        wasm.tick();
+        wasm.tick(delta_ms);
         last_tick = time;
 
         const hud_after: unknown = wasm.get_hud_data();

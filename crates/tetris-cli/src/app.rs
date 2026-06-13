@@ -11,12 +11,6 @@ pub enum CellType {
     Active(Piece),
 }
 
-fn gravity_interval_ms(level: u32) -> u32 {
-    let lvl = level.max(1) as f64;
-    let seconds = (0.8 - (lvl - 1.0) * 0.007).powf(lvl - 1.0);
-    (seconds * 1000.0).max(1.0) as u32
-}
-
 pub enum AppState {
     Menu {
         selected: usize,
@@ -27,7 +21,6 @@ pub enum AppState {
         start_time: Instant,
         clear_flash_timer: u8,
         score_flash_timer: u8,
-        gravity_accum_ms: u32,
         prev_grid: [[CellType; 10]; 20],
         prev_flash_mask: u32,
         prev_half: bool,
@@ -72,13 +65,12 @@ fn start_game() -> AppState {
         .unwrap_or_default()
         .as_millis() as u32;
     let mut engine = Engine::<10, 20>::new();
-    engine.reset(seed);
+    engine.reset_with_level(seed, 1);
     AppState::Playing {
         engine,
         start_time: Instant::now(),
         clear_flash_timer: 0,
         score_flash_timer: 0,
-        gravity_accum_ms: 0,
         prev_grid: [[CellType::Empty; 10]; 20],
         prev_flash_mask: 0,
         prev_half: false,
@@ -120,7 +112,6 @@ fn step(state: AppState, msg: Message) -> (AppState, bool) {
             start_time,
             mut clear_flash_timer,
             mut score_flash_timer,
-            mut gravity_accum_ms,
             prev_grid,
             prev_flash_mask,
             prev_half,
@@ -161,35 +152,14 @@ fn step(state: AppState, msg: Message) -> (AppState, bool) {
                     return (AppState::Pause { engine, start_time }, false);
                 }
                 Message::Tick => {
-                    gravity_accum_ms += 20;
                     engine.scorer.tick_time(20);
-
-                    let on_surface = !tetris_core::rules::can_place(
-                        &engine.state,
-                        engine.state.x,
-                        engine.state.y + 1,
-                        engine.state.rot,
-                    );
-
-                    let interval = gravity_interval_ms(engine.scorer.level);
-                    let should_tick = if on_surface {
-                        true
-                    } else {
-                        gravity_accum_ms >= interval
-                    };
-
-                    if should_tick {
-                        let prev_score = engine.scorer.score;
-                        engine.tick();
-                        if !on_surface {
-                            gravity_accum_ms = 0;
-                        }
-                        if engine.scorer.score != prev_score {
-                            score_flash_timer = 10;
-                        }
-                        if engine.state.last_clear_count > 0 {
-                            clear_flash_timer = 8;
-                        }
+                    let prev_score = engine.scorer.score;
+                    engine.tick(20);
+                    if engine.scorer.score != prev_score {
+                        score_flash_timer = 10;
+                    }
+                    if engine.state.last_clear_count > 0 {
+                        clear_flash_timer = 8;
                     }
                 }
                 Message::FrameTick => {
@@ -220,7 +190,6 @@ fn step(state: AppState, msg: Message) -> (AppState, bool) {
                     start_time,
                     clear_flash_timer,
                     score_flash_timer,
-                    gravity_accum_ms,
                     prev_grid,
                     prev_flash_mask,
                     prev_half,
@@ -236,7 +205,6 @@ fn step(state: AppState, msg: Message) -> (AppState, bool) {
                     start_time,
                     clear_flash_timer: 0,
                     score_flash_timer: 0,
-                    gravity_accum_ms: 0,
                     prev_grid: [[CellType::Empty; 10]; 20],
                     prev_flash_mask: 0,
                     prev_half: false,
@@ -297,17 +265,18 @@ fn step(state: AppState, msg: Message) -> (AppState, bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tetris_core::engine::gravity_interval_ms;
 
     #[test]
     fn test_gravity_level_1() {
         let ms = gravity_interval_ms(1);
-        assert_eq!(ms, 1000, "level 1: {ms}ms");
+        assert_eq!(ms, 800, "level 1: {ms}ms");
     }
 
     #[test]
     fn test_gravity_level_15() {
         let ms = gravity_interval_ms(15);
-        assert!(ms <= 10, "level 15: {ms}ms");
+        assert!(ms <= 8, "level 15: {ms}ms");
     }
 
     #[test]
@@ -367,7 +336,6 @@ mod tests {
             start_time: Instant::now(),
             clear_flash_timer: 0,
             score_flash_timer: 0,
-            gravity_accum_ms: 0,
             prev_grid: [[CellType::Empty; 10]; 20],
             prev_flash_mask: 0,
             prev_half: false,
