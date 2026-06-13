@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use tetris_core::engine::Action;
 use tetris_core::engine::Engine;
 #[cfg(target_arch = "wasm32")]
-use tetris_net::protocol::*;
+use tetris_protocol::protocol::*;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
@@ -201,7 +201,8 @@ impl WebTetris {
     }
 
     pub fn parse_packet(&mut self, data: &[u8]) -> JsValue {
-        let header: PacketHeader = match bincode::deserialize(data) {
+        use bincode::deserialize;
+        let header: PacketHeader = match deserialize(data) {
             Ok(h) => h,
             Err(_) => return JsValue::NULL,
         };
@@ -216,33 +217,21 @@ impl WebTetris {
                 JsValue::from_str("game_start")
             }
             PacketType::StateSync => {
-                let pkt: PktStateSync = match bincode::deserialize(data) {
+                let _pkt: PktStateSync = match deserialize(data) {
                     Ok(p) => p,
                     Err(_) => return JsValue::NULL,
                 };
-                let pid = pkt.header.player_id as usize;
-                while self.opponent_engines.len() <= pid {
-                    let mut e = Engine::<10, 20>::new();
-                    e.reset_with_level(0, 1);
-                    self.opponent_engines.push(e);
-                    self.opponent_grid_bufs.push(vec![0u8; 200]);
-                }
                 JsValue::from_str("state_sync")
             }
-            PacketType::DeltaSync => match serde_wasm_bindgen::to_value(&header) {
-                Ok(v) => v,
-                Err(_) => JsValue::NULL,
-            },
             PacketType::ChatMessage => {
-                let pkt: PktChatMessage = match bincode::deserialize(data) {
+                let pkt: PktChatMessage = match deserialize(data) {
                     Ok(p) => p,
                     Err(_) => return JsValue::NULL,
                 };
                 serde_wasm_bindgen::to_value(&pkt).unwrap_or(JsValue::NULL)
             }
-            PacketType::PlayerReady => JsValue::from_str("player_ready"),
             PacketType::StartCountdown => {
-                let pkt: PktStartCountdown = match bincode::deserialize(data) {
+                let pkt: PktStartCountdown = match deserialize(data) {
                     Ok(p) => p,
                     Err(_) => return JsValue::NULL,
                 };

@@ -2330,10 +2330,20 @@ dependencies = [
  "serde",
  "slotmap",
  "tetris-core",
+ "tetris-protocol",
  "thiserror 2.0.18",
  "tokio",
  "tokio-test",
  "uuid",
+]
+
+[[package]]
+name = "tetris-protocol"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "serde",
+ "tetris-core",
 ]
 
 [[package]]
@@ -2364,7 +2374,7 @@ dependencies = [
  "serde",
  "serde-wasm-bindgen",
  "tetris-core",
- "tetris-net",
+ "tetris-protocol",
  "thiserror 2.0.18",
  "wasm-bindgen",
 ]

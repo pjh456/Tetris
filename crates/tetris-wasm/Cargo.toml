@@ -8,7 +8,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 tetris-core = { path = "../tetris-core" }
-tetris-net = { path = "../tetris-net" }
+tetris-protocol = { path = "../tetris-protocol" }
 wasm-bindgen = "0.2"
 serde-wasm-bindgen = "0.6"
 js-sys = "0.3"
