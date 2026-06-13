@@ -1148,6 +1148,40 @@ html {
   color: var(--color-muted);
 }
 
+/* Join row */
+.join-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.join-input {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--color-panel-border);
+  padding: var(--space-sm) var(--space-md);
+  color: var(--color-text);
+  font-size: var(--text-body);
+  font-family: var(--font-body);
+  letter-spacing: 4px;
+  text-transform: uppercase;
+}
+
+.join-input::placeholder {
+  letter-spacing: 1px;
+  color: var(--color-muted);
+  text-transform: none;
+}
+
+.join-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.join-btn {
+  width: 100%;
+}
+
 /* Connection status */
 .status-dot {
   display: inline-block;

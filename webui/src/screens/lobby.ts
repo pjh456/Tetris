@@ -152,7 +152,7 @@ function build_room_code_section(): { section: HTMLElement; join_input: HTMLInpu
   join_input.style.textTransform = 'uppercase';
 
   const join_btn = document.createElement('button');
-  join_btn.className = 'btn';
+  join_btn.className = 'btn join-btn';
   join_btn.textContent = 'Join';
 
   join_row.append(join_input, join_btn);
