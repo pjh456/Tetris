@@ -11,11 +11,11 @@ pub enum CellType {
     Active(Piece),
 }
 
+#[allow(dead_code)]
 pub enum AppState {
     Menu {
         selected: usize,
     },
-    Lobby,
     Playing {
         engine: Engine<10, 20>,
         start_time: Instant,
@@ -35,6 +35,32 @@ pub enum AppState {
         level: u32,
         max_combo: u32,
         tspin_count: u32,
+    },
+    LobbyHost {
+        room_code: String,
+        players: Vec<String>,
+    },
+    LobbyClient {
+        room_code: String,
+        players: Vec<String>,
+    },
+    PlayingMulti {
+        engine: Engine<10, 20>,
+        opponents: Vec<Engine<10, 20>>,
+        opponent_names: Vec<String>,
+        start_time: Instant,
+        clear_flash_timer: u8,
+        score_flash_timer: u8,
+        prev_grid: [[CellType; 10]; 20],
+        prev_flash_mask: u32,
+        prev_half: bool,
+        spectating: Option<usize>,
+    },
+    GameOverMulti {
+        score: u32,
+        lines: u32,
+        level: u32,
+        place: u8,
     },
 }
 
@@ -85,15 +111,29 @@ fn step(state: AppState, msg: Message) -> (AppState, bool) {
                 (AppState::Menu { selected }, false)
             }
             Message::Key(KeyCode::Down) => {
-                if selected < 3 {
+                if selected < 5 {
                     selected += 1;
                 }
                 (AppState::Menu { selected }, false)
             }
             Message::Key(KeyCode::Enter) => match selected {
                 0 => (start_game(), false),
-                1 => (AppState::Lobby, false),
-                3 => (AppState::Menu { selected }, true),
+                1 => (
+                    AppState::LobbyHost {
+                        room_code: String::new(),
+                        players: vec!["Host".into()],
+                    },
+                    false,
+                ),
+                2 => (
+                    AppState::LobbyClient {
+                        room_code: String::new(),
+                        players: vec!["Joining...".into()],
+                    },
+                    false,
+                ),
+                4 => (AppState::Menu { selected }, false),
+                5 => (AppState::Menu { selected }, true),
                 _ => (AppState::Menu { selected }, false),
             },
             Message::Key(KeyCode::Char('q')) => (AppState::Menu { selected }, true),
@@ -101,10 +141,16 @@ fn step(state: AppState, msg: Message) -> (AppState, bool) {
             _ => (AppState::Menu { selected }, false),
         },
 
-        AppState::Lobby => match msg {
-            Message::Key(_) => (AppState::Menu { selected: 0 }, false),
+        AppState::LobbyHost { room_code, players } => match msg {
+            Message::Key(_) => (AppState::Menu { selected: 1 }, false),
             Message::Quit => (AppState::Menu { selected: 0 }, true),
-            _ => (AppState::Lobby, false),
+            _ => (AppState::LobbyHost { room_code, players }, false),
+        },
+
+        AppState::LobbyClient { room_code, players } => match msg {
+            Message::Key(_) => (AppState::Menu { selected: 2 }, false),
+            Message::Quit => (AppState::Menu { selected: 0 }, true),
+            _ => (AppState::LobbyClient { room_code, players }, false),
         },
 
         AppState::Playing {
@@ -259,6 +305,89 @@ fn step(state: AppState, msg: Message) -> (AppState, bool) {
                 false,
             ),
         },
+
+        AppState::GameOverMulti {
+            score,
+            lines,
+            level,
+            place,
+        } => match msg {
+            Message::Key(_) => (AppState::Menu { selected: 0 }, false),
+            Message::Quit => (AppState::Menu { selected: 0 }, true),
+            _ => (
+                AppState::GameOverMulti {
+                    score,
+                    lines,
+                    level,
+                    place,
+                },
+                false,
+            ),
+        },
+
+        AppState::PlayingMulti {
+            mut engine,
+            opponents,
+            opponent_names,
+            start_time,
+            clear_flash_timer,
+            score_flash_timer,
+            prev_grid,
+            prev_flash_mask,
+            prev_half,
+            spectating,
+        } => match msg {
+            Message::Tick => {
+                engine.scorer.tick_time(20);
+                engine.tick(20);
+                (
+                    AppState::PlayingMulti {
+                        engine,
+                        opponents,
+                        opponent_names,
+                        start_time,
+                        clear_flash_timer: clear_flash_timer.saturating_sub(1),
+                        score_flash_timer: score_flash_timer.saturating_sub(1),
+                        prev_grid,
+                        prev_flash_mask,
+                        prev_half,
+                        spectating,
+                    },
+                    false,
+                )
+            }
+            Message::FrameTick => (
+                AppState::PlayingMulti {
+                    engine,
+                    opponents,
+                    opponent_names,
+                    start_time,
+                    clear_flash_timer: clear_flash_timer.saturating_sub(1),
+                    score_flash_timer: score_flash_timer.saturating_sub(1),
+                    prev_grid,
+                    prev_flash_mask,
+                    prev_half,
+                    spectating,
+                },
+                false,
+            ),
+            Message::Quit => (AppState::Menu { selected: 0 }, true),
+            _ => (
+                AppState::PlayingMulti {
+                    engine,
+                    opponents,
+                    opponent_names,
+                    start_time,
+                    clear_flash_timer,
+                    score_flash_timer,
+                    prev_grid,
+                    prev_flash_mask,
+                    prev_half,
+                    spectating,
+                },
+                false,
+            ),
+        },
     }
 }
 
@@ -322,8 +451,8 @@ mod tests {
     }
 
     #[test]
-    fn test_menu_quit_index_3() {
-        let (_, quit) = step(AppState::Menu { selected: 3 }, Message::Key(KeyCode::Enter));
+    fn test_menu_quit_index_5() {
+        let (_, quit) = step(AppState::Menu { selected: 5 }, Message::Key(KeyCode::Enter));
         assert!(quit);
     }
 

@@ -27,7 +27,10 @@ fn piece_color(p: Piece) -> Color {
 pub fn render(state: &mut AppState, frame: &mut Frame) {
     match state {
         AppState::Menu { selected } => render_menu(frame, *selected),
-        AppState::Lobby => render_lobby(frame),
+        AppState::LobbyHost { room_code, players } => render_lobby_host(frame, room_code, players),
+        AppState::LobbyClient { room_code, players } => {
+            render_lobby_client(frame, room_code, players)
+        }
         AppState::Playing {
             engine,
             clear_flash_timer,
@@ -53,6 +56,37 @@ pub fn render(state: &mut AppState, frame: &mut Frame) {
             max_combo,
             tspin_count,
         } => render_game_over(frame, *score, *lines, *level, *max_combo, *tspin_count),
+        AppState::GameOverMulti {
+            score,
+            lines,
+            level,
+            place,
+        } => {
+            render_game_over_multi(frame, *score, *lines, *level, *place);
+        }
+        AppState::PlayingMulti {
+            engine,
+            opponents,
+            opponent_names,
+            clear_flash_timer,
+            score_flash_timer,
+            prev_grid,
+            prev_flash_mask,
+            prev_half,
+            spectating,
+            ..
+        } => render_multi(
+            frame,
+            engine,
+            opponents,
+            opponent_names,
+            *clear_flash_timer,
+            *score_flash_timer,
+            prev_grid,
+            prev_flash_mask,
+            prev_half,
+            *spectating,
+        ),
     }
 }
 
@@ -68,7 +102,14 @@ fn render_menu(frame: &mut Frame, selected: usize) {
         "   ╚═╝   ╚══════╝   ╚═╝   ╚═╝  ╚═╝╚═╝╚══════╝",
     ];
 
-    let items = ["SOLO", "MULTIPLAYER", "SETTINGS", "QUIT"];
+    let items = [
+        "SOLO",
+        "HOST LAN",
+        "JOIN LAN",
+        "JOIN RELAY",
+        "SETTINGS",
+        "QUIT",
+    ];
 
     let mut lines: Vec<Line> = Vec::new();
     lines.push(Line::from(""));
@@ -101,27 +142,33 @@ fn render_menu(frame: &mut Frame, selected: usize) {
     frame.render_widget(para, area);
 }
 
-fn render_lobby(frame: &mut Frame) {
+fn render_lobby_host(frame: &mut Frame, room_code: &str, players: &[String]) {
     let area = frame.area();
-    let lines = vec![
+    let mut lines = vec![
         Line::from(""),
         Line::from(Span::styled(
-            "MULTIPLAYER",
+            format!("ROOM: {room_code}"),
             Style::default().fg(Color::Cyan).bold(),
         )),
         Line::from(""),
-        Line::from(Span::styled(
-            "Coming Soon",
-            Style::default().fg(Color::DarkGray),
-        )),
-        Line::from(""),
-        Line::from(Span::styled(
-            "Press any key to return",
-            Style::default().fg(Color::DarkGray),
-        )),
     ];
+    for p in players {
+        lines.push(Line::from(Span::styled(
+            p.clone(),
+            Style::default().fg(Color::White),
+        )));
+    }
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "Press R=Ready, T=Chat, Q=Quit",
+        Style::default().fg(Color::DarkGray),
+    )));
     let para = Paragraph::new(lines).alignment(ratatui::layout::Alignment::Center);
     frame.render_widget(para, area);
+}
+
+fn render_lobby_client(frame: &mut Frame, room_code: &str, players: &[String]) {
+    render_lobby_host(frame, room_code, players);
 }
 
 fn render_playing(
@@ -476,6 +523,71 @@ fn render_game_over(
         )),
         Line::from(Span::styled(
             format!("T-Spins:   {tspin_count}"),
+            Style::default().fg(Color::White),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            "Press any key for Menu",
+            Style::default().fg(Color::DarkGray),
+        )),
+    ];
+    let para = Paragraph::new(lines).alignment(ratatui::layout::Alignment::Center);
+    frame.render_widget(para, area);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_multi(
+    frame: &mut Frame,
+    _engine: &tetris_core::engine::Engine<10, 20>,
+    _opponents: &[tetris_core::engine::Engine<10, 20>],
+    _opponent_names: &[String],
+    _clear_flash_timer: u8,
+    _score_flash_timer: u8,
+    _prev_grid: &[[crate::app::CellType; 10]; 20],
+    _prev_flash_mask: &u32,
+    _prev_half: &bool,
+    _spectating: Option<usize>,
+) {
+    let area = frame.area();
+    let lines = vec![
+        Line::from(""),
+        Line::from(Span::styled(
+            "MULTIPLAYER MODE",
+            Style::default().fg(Color::Cyan).bold(),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            "Own board + opponent mini boards (WIP)",
+            Style::default().fg(Color::DarkGray),
+        )),
+    ];
+    let para = Paragraph::new(lines).alignment(ratatui::layout::Alignment::Center);
+    frame.render_widget(para, area);
+}
+
+fn render_game_over_multi(frame: &mut Frame, score: u32, lines: u32, level: u32, place: u8) {
+    let area = frame.area();
+    let lines = vec![
+        Line::from(""),
+        Line::from(Span::styled(
+            "GAME OVER",
+            Style::default().fg(Color::Red).bold(),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            format!("Place: #{place}"),
+            Style::default().fg(Color::Cyan),
+        )),
+        Line::from(Span::styled(
+            format!("Score: {score}"),
+            Style::default().fg(Color::Yellow),
+        )),
+        Line::from(Span::styled(
+            format!("Lines: {lines}"),
+            Style::default().fg(Color::White),
+        )),
+        Line::from(Span::styled(
+            format!("Level: {level}"),
             Style::default().fg(Color::White),
         )),
         Line::from(""),
