@@ -8,6 +8,8 @@ import { create_game_screen } from './screens/game';
 import { create_settings_screen } from './screens/settings';
 import { create_gameover_screen } from './screens/gameover';
 import { create_leaderboard_screen } from './screens/leaderboard';
+import { create_lobby_screen } from './screens/lobby';
+import { create_spectator_screen } from './screens/spectator';
 
 const boot_theme = (settings.value.theme as ThemeName) || 'cyberpunk';
 apply_theme(boot_theme);
@@ -78,6 +80,15 @@ effect(() => {
     }
     case 'leaderboard': {
       app.appendChild(create_leaderboard_screen());
+      break;
+    }
+    case 'lobby': {
+      mount_topbar(app);
+      app.appendChild(create_lobby_screen());
+      break;
+    }
+    case 'spectator': {
+      app.appendChild(create_spectator_screen([{ id: 1, name: 'Player 1' }]));
       break;
     }
   }
