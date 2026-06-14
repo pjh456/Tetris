@@ -5,13 +5,15 @@ export type RelayMessage =
   | { type: 'presence'; peers: string[] }
   | { type: 'chat'; text: string; from?: string }
   | { type: 'join'; name: string }
-  | { type: 'leave'; name: string };
+  | { type: 'leave'; name: string }
+  | { type: 'ready'; name: string };
 
 export class WsClient {
   private socket: WebSocket | null = null;
   private url: string;
   private wasm: WebTetris | null;
   onmessage: ((msg: RelayMessage) => void) | null = null;
+  onbinary: ((data: Uint8Array) => void) | null = null;
 
   constructor(url: string, wasm: WebTetris | null = null) {
     this.url = url;
@@ -29,7 +31,6 @@ export class WsClient {
 
     this.socket.onmessage = (event: MessageEvent<ArrayBuffer>) => {
       const data = new Uint8Array(event.data);
-      // Try JSON relay message first; fall back to wasm binary protocol
       try {
         const text = new TextDecoder().decode(data);
         const msg = JSON.parse(text) as RelayMessage;
@@ -38,7 +39,8 @@ export class WsClient {
       } catch {
         // not a JSON relay message
       }
-      if (this.wasm) this.wasm.parse_packet(data);
+      if (this.onbinary) this.onbinary(data);
+      else if (this.wasm) this.wasm.parse_packet(data);
     };
 
     this.socket.onclose = () => {

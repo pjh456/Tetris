@@ -1,7 +1,7 @@
 import { init_wasm, reset_wasm, get_grid_view, type WebTetris } from '../core/wasm';
 import { is_hud_data, is_hard_drop_info } from '../types/predicates';
-import { page, score, level, combo, b2b_count, lines, settings } from '../state';
-import { createBoardRenderer } from '../render/board';
+import { page, score, level, combo, b2b_count, lines, settings, is_multiplayer } from '../state';
+import { createBoardRenderer, create_mini_board_renderer } from '../render/board';
 import { createPreviewRenderer, createNextStackRenderer } from '../render/preview';
 import { create_hud_overlay } from '../render/hud';
 import { get_theme_colors } from '../render/colors';
@@ -13,6 +13,7 @@ import { bindKeyboard, type KeyboardConfig } from '../input/keyboard';
 import { Actions } from '../game/actions';
 import { audio_manager } from '../core/audio';
 import { create_touch_overlay } from '../input/touch';
+import { get_multiplayer_ws } from '../core/multiplayer';
 
 function setup_hidpi(
   canvas: HTMLCanvasElement,
@@ -105,9 +106,53 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
 
   const hud = create_hud_overlay(right_col);
 
+  // Opponent mini-grids (multiplayer only)
+  const opponent_col = document.createElement('div');
+  opponent_col.style.cssText = 'display:flex;flex-direction:column;gap:8px;min-width:72px;';
+  const opponent_renderers: Array<{ canvas: HTMLCanvasElement; render: (g: ArrayLike<number>, c: string[]) => void; destroy: () => void }> = [];
+
+  const mp_ws = is_multiplayer.value ? get_multiplayer_ws() : null;
+  const opponent_grids: Map<number, Uint8Array> = new Map();
+
+  if (mp_ws) {
+    const opp_label = document.createElement('div');
+    opp_label.className = 'lobby-label';
+    opp_label.textContent = 'OTHERS';
+    opponent_col.appendChild(opp_label);
+
+    // Reserve slots for up to 3 opponents
+    for (let i = 0; i < 3; i++) {
+      const slot = document.createElement('div');
+      slot.className = 'opponent-panel';
+      const name_el = document.createElement('div');
+      name_el.className = 'opponent-name';
+      name_el.textContent = `P${i + 2}`;
+      const canvas = document.createElement('canvas');
+      canvas.style.display = 'none';
+      const r = create_mini_board_renderer(canvas, 6);
+      opponent_renderers.push({ canvas, render: r.render, destroy: r.destroy });
+      slot.appendChild(name_el);
+      slot.appendChild(canvas);
+      opponent_col.appendChild(slot);
+    }
+
+    mp_ws.onbinary = (data: Uint8Array) => {
+      // Simple protocol: first byte = peer index (0-based opponent), rest = 200-byte grid
+      if (data.length >= 201) {
+        const idx = data[0];
+        if (idx < 3) {
+          const grid = data.slice(1, 201);
+          opponent_grids.set(idx, grid);
+          opponent_renderers[idx].canvas.style.display = '';
+        }
+      }
+    };
+  }
+
   layout.appendChild(hold_col);
   layout.appendChild(board_frame);
   layout.appendChild(right_col);
+  if (mp_ws) layout.appendChild(opponent_col);
   wrapper.appendChild(layout);
   root.appendChild(wrapper);
 
@@ -161,6 +206,13 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
     renderer.render(get_grid_view(), colors);
     hold_renderer.render(wasm.get_hold());
     next_renderer.render(Array.from(wasm.get_next()));
+
+    // Render opponent grids
+    for (const [idx, grid] of opponent_grids) {
+      if (idx < opponent_renderers.length) {
+        opponent_renderers[idx].render(grid, colors);
+      }
+    }
 
     const lock_timer = wasm.get_lock_timer();
     if (lock_timer > 0) {
@@ -294,7 +346,7 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
   }
 
   function on_visibility_change() {
-    if (document.hidden && !wasm.is_game_over && !paused) {
+    if (document.hidden && !wasm.is_game_over && !paused && !is_multiplayer.value) {
       toggle_pause();
     }
   }
@@ -306,6 +358,8 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
     document.removeEventListener('visibilitychange', on_visibility_change);
     hud.destroy();
     renderer.destroy();
+    for (const r of opponent_renderers) r.destroy();
+    if (mp_ws) mp_ws.onbinary = null;
   }
 
   const kbd_config: KeyboardConfig = {

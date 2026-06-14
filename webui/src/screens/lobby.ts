@@ -1,6 +1,7 @@
 import { effect } from '@preact/signals-core';
 import { page, is_multiplayer, room_code, connection_status } from '../state';
 import { WsClient } from '../core/ws_client';
+import { set_multiplayer_ws } from '../core/multiplayer';
 
 const RELAY_URL = 'ws://localhost:9000';
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -21,6 +22,9 @@ export function create_lobby_screen(): HTMLElement {
 
   let current_ws = new WsClient(`${RELAY_URL}/room/${room_code.value}`);
   const peers: string[] = [];
+  const ready_set = new Set<string>();
+  let my_name = '';
+  let is_ready = false;
 
   const layout = document.createElement('div');
   layout.className = 'lobby-layout';
@@ -30,9 +34,11 @@ export function create_lobby_screen(): HTMLElement {
 
   const { section: room_section, join_input, join_btn } = build_room_code_section();
   const { section: player_section, update: update_players } = build_player_list();
+  const { btn: ready_btn, set_ready: set_ready_btn } = build_ready_button();
+
   main.appendChild(room_section);
   main.appendChild(player_section);
-  main.appendChild(build_ready_button());
+  main.appendChild(ready_btn);
 
   const sidebar = document.createElement('div');
   sidebar.className = 'lobby-sidebar';
@@ -45,18 +51,46 @@ export function create_lobby_screen(): HTMLElement {
   layout.appendChild(sidebar);
   container.appendChild(layout);
 
+  function check_all_ready() {
+    if (peers.length < 2) return;
+    const all = peers.every((p) => ready_set.has(p));
+    if (all) {
+      is_multiplayer.value = true;
+      set_multiplayer_ws(current_ws);
+      // Don't close ws — game.ts will use it
+      dispose();
+      page.value = 'game';
+    }
+  }
+
   function attach_handlers(ws: WsClient) {
     ws.onmessage = (msg) => {
       if (msg.type === 'presence') {
         peers.length = 0;
         peers.push(...msg.peers);
-        update_players(peers);
+        // assign my_name on first presence (I'm the last in the list)
+        if (!my_name && peers.length > 0) {
+          my_name = peers[peers.length - 1];
+        }
+        // remove ready flags for peers that left
+        for (const r of ready_set) {
+          if (!peers.includes(r)) ready_set.delete(r);
+        }
+        update_players(peers, ready_set);
+        check_all_ready();
+      } else if (msg.type === 'ready') {
+        ready_set.add(msg.name);
+        update_players(peers, ready_set);
+        append_system(`${msg.name} is ready`);
+        check_all_ready();
       } else if (msg.type === 'chat') {
         append_chat(msg.from ?? 'Player', msg.text);
       } else if (msg.type === 'join') {
         append_system(`${msg.name} joined`);
       } else if (msg.type === 'leave') {
+        ready_set.delete(msg.name);
         append_system(`${msg.name} left`);
+        update_players(peers, ready_set);
       }
     };
   }
@@ -67,11 +101,27 @@ export function create_lobby_screen(): HTMLElement {
     const code_display = room_section.querySelector('.room-code');
     if (code_display) code_display.textContent = code;
     peers.length = 0;
-    update_players([]);
+    ready_set.clear();
+    my_name = '';
+    is_ready = false;
+    set_ready_btn(false);
+    update_players([], new Set());
     current_ws = new WsClient(`${RELAY_URL}/room/${code}`);
     attach_handlers(current_ws);
     current_ws.connect();
   }
+
+  ready_btn.addEventListener('click', () => {
+    if (is_ready) return;
+    is_ready = true;
+    set_ready_btn(true);
+    if (my_name) {
+      ready_set.add(my_name);
+      current_ws.sendJson({ type: 'ready', name: my_name });
+      update_players(peers, ready_set);
+      check_all_ready();
+    }
+  });
 
   attach_handlers(current_ws);
   current_ws.connect();
@@ -103,7 +153,11 @@ export function create_lobby_screen(): HTMLElement {
 
   function cleanup() {
     dispose();
-    current_ws.close();
+    // Only close ws if we didn't hand it off to the game
+    if (!is_multiplayer.value) {
+      current_ws.close();
+      set_multiplayer_ws(null);
+    }
   }
 
   container.addEventListener('keydown', (e) => {
@@ -113,14 +167,16 @@ export function create_lobby_screen(): HTMLElement {
     }
   });
 
-  container.dataset['cleanup'] = 'pending';
-  // Expose cleanup so main.ts can call it on page change
   (container as HTMLElement & { _cleanup?: () => void })._cleanup = cleanup;
 
   return container;
 }
 
-function build_room_code_section(): { section: HTMLElement; join_input: HTMLInputElement; join_btn: HTMLButtonElement } {
+function build_room_code_section(): {
+  section: HTMLElement;
+  join_input: HTMLInputElement;
+  join_btn: HTMLButtonElement;
+} {
   const section = document.createElement('div');
   section.className = 'lobby-section';
 
@@ -166,7 +222,7 @@ function build_room_code_section(): { section: HTMLElement; join_input: HTMLInpu
 
 function build_player_list(): {
   section: HTMLElement;
-  update: (peers: string[]) => void;
+  update: (peers: string[], ready: Set<string>) => void;
 } {
   const section = document.createElement('div');
   section.className = 'lobby-section player-list';
@@ -179,14 +235,17 @@ function build_player_list(): {
   const cards_container = document.createElement('div');
   section.appendChild(cards_container);
 
-  function render(peers: string[]) {
+  function render(peers: string[], ready: Set<string>) {
     cards_container.innerHTML = '';
     const slots = Math.max(peers.length, 1);
     for (let i = 0; i < slots; i++) {
       const card = document.createElement('div');
       card.className = 'player-card glass';
       if (peers[i]) {
-        card.innerHTML = `<span class="player-name">${peers[i]}</span><span class="player-status ready">Connected</span>`;
+        const r = ready.has(peers[i]);
+        const status_class = r ? 'player-status player-ready' : 'player-status';
+        const status_text = r ? '✓ READY' : 'Not Ready';
+        card.innerHTML = `<span class="player-name">${peers[i]}</span><span class="${status_class}">${status_text}</span>`;
       } else {
         card.innerHTML = `<span class="player-name">—</span><span class="player-status">Waiting...</span>`;
       }
@@ -194,20 +253,32 @@ function build_player_list(): {
     }
   }
 
-  render([]);
+  render([], new Set());
 
   return { section, update: render };
 }
 
-function build_ready_button(): HTMLElement {
+function build_ready_button(): {
+  btn: HTMLButtonElement;
+  set_ready: (r: boolean) => void;
+} {
   const btn = document.createElement('button');
   btn.className = 'btn ready-btn';
   btn.textContent = 'READY';
-  btn.addEventListener('click', () => {
-    is_multiplayer.value = true;
-    page.value = 'game';
-  });
-  return btn;
+
+  function set_ready(r: boolean) {
+    if (r) {
+      btn.textContent = 'WAITING...';
+      btn.disabled = true;
+      btn.classList.add('ready-btn-active');
+    } else {
+      btn.textContent = 'READY';
+      btn.disabled = false;
+      btn.classList.remove('ready-btn-active');
+    }
+  }
+
+  return { btn, set_ready };
 }
 
 function build_chat_section(on_send: (text: string) => void): {

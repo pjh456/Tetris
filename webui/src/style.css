@@ -1148,6 +1148,26 @@ html {
   color: var(--color-muted);
 }
 
+.player-ready {
+  color: var(--color-accent);
+  font-weight: 700;
+  font-size: var(--text-label);
+}
+
+.ready-btn-active {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* Chat system message */
+.chat-system {
+  color: var(--color-muted);
+  font-style: italic;
+  font-size: var(--text-label);
+}
+
 /* Join row */
 .join-row {
   display: flex;
