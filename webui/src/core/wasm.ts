@@ -133,3 +133,55 @@ export function get_opponent_info(index: number): Record<string, unknown> | null
   if (result === null || result === undefined) return null;
   return result as Record<string, unknown>;
 }
+
+export type MultiplayerPlayer = {
+  player_id: number;
+  name: string;
+  ready: boolean;
+  alive: boolean;
+  away: boolean;
+  is_host: boolean;
+};
+
+export type MultiplayerSnapshot = {
+  local_player_id: number;
+  room_code: string | null;
+  countdown: number | null;
+  players: MultiplayerPlayer[];
+};
+
+export type MultiplayerEvent = {
+  kind: string;
+  room_code?: string | null;
+  player_id?: number | null;
+  countdown?: number | null;
+  random_seed?: number | null;
+  message?: string | null;
+};
+
+export function get_multiplayer_snapshot(): MultiplayerSnapshot | null {
+  if (!instance) return null;
+  return instance.get_multiplayer_snapshot() as MultiplayerSnapshot;
+}
+
+export function consume_last_multiplayer_event(): MultiplayerEvent | null {
+  if (!instance) return null;
+  const result = instance.consume_last_multiplayer_event();
+  if (result === null || result === undefined) return null;
+  return result as MultiplayerEvent | null;
+}
+
+export function make_join_room_packet(room: string, player_name: string): Uint8Array {
+  if (!instance) throw new Error('WASM not initialized');
+  return instance.make_join_room_packet(room, player_name);
+}
+
+export function make_player_ready_packet(ready: boolean): Uint8Array {
+  if (!instance) throw new Error('WASM not initialized');
+  return instance.make_player_ready_packet(ready);
+}
+
+export function make_chat_message_packet(message: string): Uint8Array {
+  if (!instance) throw new Error('WASM not initialized');
+  return instance.make_chat_message_packet(message, new Date().toISOString());
+}

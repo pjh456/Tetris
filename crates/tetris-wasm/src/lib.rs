@@ -14,8 +14,28 @@ mod utils;
 pub struct OpponentInfo {
     pub player_id: u8,
     pub name: String,
+    pub ready: bool,
     pub alive: bool,
     pub away: bool,
+    pub is_host: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MultiplayerSnapshot {
+    pub local_player_id: u8,
+    pub room_code: Option<String>,
+    pub countdown: Option<u8>,
+    pub players: Vec<OpponentInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MultiplayerEvent {
+    pub kind: String,
+    pub room_code: Option<String>,
+    pub player_id: Option<u8>,
+    pub countdown: Option<u8>,
+    pub random_seed: Option<u32>,
+    pub message: Option<String>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -30,6 +50,8 @@ pub struct WebTetris {
     opponent_infos: Vec<OpponentInfo>,
     room_code: Option<String>,
     local_player_id: u8,
+    countdown: Option<u8>,
+    last_event: Option<MultiplayerEvent>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -49,6 +71,8 @@ impl WebTetris {
             opponent_infos: Vec::new(),
             room_code: None,
             local_player_id: 0,
+            countdown: None,
+            last_event: None,
         }
     }
 
@@ -58,6 +82,8 @@ impl WebTetris {
         self.opponent_engines.clear();
         self.opponent_grid_bufs.clear();
         self.opponent_infos.clear();
+        self.countdown = None;
+        self.last_event = None;
     }
 
     pub fn reset_with_level(&mut self, seed: u32, start_level: u32) {
@@ -66,6 +92,8 @@ impl WebTetris {
         self.opponent_engines.clear();
         self.opponent_grid_bufs.clear();
         self.opponent_infos.clear();
+        self.countdown = None;
+        self.last_event = None;
     }
 
     pub fn tick(&mut self, delta_ms: u32) -> JsValue {
@@ -210,35 +238,174 @@ impl WebTetris {
             return JsValue::NULL;
         }
         match header.packet_type {
+            PacketType::ServerAccept => {
+                let pkt: PktServerAccept = match deserialize(data) {
+                    Ok(p) => p,
+                    Err(_) => return JsValue::NULL,
+                };
+                self.local_player_id = pkt.assigned_player_id;
+                self.last_event = Some(MultiplayerEvent {
+                    kind: "server_accept".into(),
+                    room_code: self.room_code.clone(),
+                    player_id: Some(pkt.assigned_player_id),
+                    countdown: None,
+                    random_seed: None,
+                    message: None,
+                });
+                serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
+            }
+            PacketType::RoomSnapshot => {
+                let pkt: PktRoomSnapshot = match deserialize(data) {
+                    Ok(p) => p,
+                    Err(_) => return JsValue::NULL,
+                };
+                self.room_code = Some(pkt.room_code.clone());
+                self.opponent_infos = pkt
+                    .players
+                    .into_iter()
+                    .map(|player| OpponentInfo {
+                        player_id: player.player_id,
+                        name: player.name,
+                        ready: player.ready,
+                        alive: player.alive,
+                        away: player.away,
+                        is_host: player.is_host,
+                    })
+                    .collect();
+                self.last_event = Some(MultiplayerEvent {
+                    kind: "room_snapshot".into(),
+                    room_code: self.room_code.clone(),
+                    player_id: None,
+                    countdown: self.countdown,
+                    random_seed: None,
+                    message: None,
+                });
+                serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
+            }
             PacketType::GameStart => {
-                self.opponent_engines.clear();
-                self.opponent_grid_bufs.clear();
-                self.opponent_infos.clear();
-                JsValue::from_str("game_start")
+                let pkt: PktGameStart = match deserialize(data) {
+                    Ok(p) => p,
+                    Err(_) => return JsValue::NULL,
+                };
+                self.countdown = None;
+                self.last_event = Some(MultiplayerEvent {
+                    kind: "game_start".into(),
+                    room_code: self.room_code.clone(),
+                    player_id: None,
+                    countdown: None,
+                    random_seed: Some(pkt.random_seed),
+                    message: None,
+                });
+                serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
             PacketType::StateSync => {
                 let _pkt: PktStateSync = match deserialize(data) {
                     Ok(p) => p,
                     Err(_) => return JsValue::NULL,
                 };
-                JsValue::from_str("state_sync")
+                self.last_event = Some(MultiplayerEvent {
+                    kind: "state_sync".into(),
+                    room_code: self.room_code.clone(),
+                    player_id: Some(header.player_id),
+                    countdown: self.countdown,
+                    random_seed: None,
+                    message: None,
+                });
+                serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
             PacketType::ChatMessage => {
                 let pkt: PktChatMessage = match deserialize(data) {
                     Ok(p) => p,
                     Err(_) => return JsValue::NULL,
                 };
-                serde_wasm_bindgen::to_value(&pkt).unwrap_or(JsValue::NULL)
+                self.last_event = Some(MultiplayerEvent {
+                    kind: "chat".into(),
+                    room_code: self.room_code.clone(),
+                    player_id: Some(pkt.header.player_id),
+                    countdown: self.countdown,
+                    random_seed: None,
+                    message: Some(pkt.message.clone()),
+                });
+                serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
             PacketType::StartCountdown => {
                 let pkt: PktStartCountdown = match deserialize(data) {
                     Ok(p) => p,
                     Err(_) => return JsValue::NULL,
                 };
-                serde_wasm_bindgen::to_value(&pkt).unwrap_or(JsValue::NULL)
+                self.countdown = Some(pkt.remaining_secs);
+                self.last_event = Some(MultiplayerEvent {
+                    kind: "countdown".into(),
+                    room_code: self.room_code.clone(),
+                    player_id: None,
+                    countdown: Some(pkt.remaining_secs),
+                    random_seed: None,
+                    message: None,
+                });
+                serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
             _ => JsValue::NULL,
         }
+    }
+
+    pub fn get_multiplayer_snapshot(&self) -> JsValue {
+        let snapshot = MultiplayerSnapshot {
+            local_player_id: self.local_player_id,
+            room_code: self.room_code.clone(),
+            countdown: self.countdown,
+            players: self.opponent_infos.clone(),
+        };
+        serde_wasm_bindgen::to_value(&snapshot).unwrap_or(JsValue::NULL)
+    }
+
+    pub fn consume_last_multiplayer_event(&mut self) -> JsValue {
+        serde_wasm_bindgen::to_value(&self.last_event.take()).unwrap_or(JsValue::NULL)
+    }
+
+    pub fn make_join_room_packet(
+        &self,
+        room_code: String,
+        player_name: String,
+    ) -> js_sys::Uint8Array {
+        let pkt = PktJoinRoom {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::JoinRoom,
+                player_id: self.local_player_id,
+            },
+            room_code,
+            player_name,
+        };
+        packet_to_uint8_array(&pkt)
+    }
+
+    pub fn make_player_ready_packet(&self, ready: bool) -> js_sys::Uint8Array {
+        let pkt = PktPlayerReady {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::PlayerReady,
+                player_id: self.local_player_id,
+            },
+            ready,
+        };
+        packet_to_uint8_array(&pkt)
+    }
+
+    pub fn make_chat_message_packet(
+        &self,
+        message: String,
+        timestamp: String,
+    ) -> js_sys::Uint8Array {
+        let pkt = PktChatMessage {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::ChatMessage,
+                player_id: self.local_player_id,
+            },
+            message,
+            timestamp,
+        };
+        packet_to_uint8_array(&pkt)
     }
 
     pub fn get_opponent_grid(&self, player_id: u8) -> js_sys::Uint8Array {
@@ -269,6 +436,14 @@ pub fn wasm_memory() -> JsValue {
     wasm_bindgen::memory()
 }
 
+#[cfg(target_arch = "wasm32")]
+fn packet_to_uint8_array<T: Serialize>(packet: &T) -> js_sys::Uint8Array {
+    match bincode::serialize(packet) {
+        Ok(bytes) => js_sys::Uint8Array::from(bytes.as_slice()),
+        Err(_) => js_sys::Uint8Array::new_with_length(0),
+    }
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code)]
 pub struct WebTetris {
@@ -281,6 +456,8 @@ pub struct WebTetris {
     opponent_infos: Vec<OpponentInfo>,
     room_code: Option<String>,
     local_player_id: u8,
+    countdown: Option<u8>,
+    last_event: Option<MultiplayerEvent>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -297,6 +474,8 @@ impl WebTetris {
             opponent_infos: Vec::new(),
             room_code: None,
             local_player_id: 0,
+            countdown: None,
+            last_event: None,
         }
     }
 }

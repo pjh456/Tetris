@@ -2,6 +2,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
+use tetris_protocol::protocol::{
+    PROTOCOL_VERSION, PacketHeader, PacketType, PktRoomSnapshot, RoomPlayerSnapshot,
+};
 use tokio::sync::{Mutex, RwLock, broadcast};
 
 use crate::error::RelayError;
@@ -19,14 +22,18 @@ pub struct RoomState {
     pub code: RoomCode,
     pub tx: broadcast::Sender<Vec<u8>>,
     pub player_count: AtomicUsize,
-    pub host_id: RwLock<Option<String>>,
+    pub host_peer_id: RwLock<Option<u64>>,
     pub peers: Mutex<Vec<PeerInfo>>,
+    pub countdown_active: AtomicUsize,
 }
 
 #[derive(Clone)]
 pub struct PeerInfo {
     pub id: u64,
+    pub player_id: u8,
     pub name: String,
+    pub ready: bool,
+    pub away: bool,
 }
 
 pub struct RoomManager {
@@ -53,8 +60,69 @@ impl RoomManager {
             .get(code)
             .ok_or_else(|| RelayError::RoomNotFound(code.into()))?;
         let mut peers = room.peers.lock().await;
+        let player_id = u8::try_from(peers.len())
+            .map_err(|_| RelayError::RoomFull("too many players".into()))?;
         let name = format!("Player {}", peers.len() + 1);
-        peers.push(PeerInfo { id, name });
+        peers.push(PeerInfo {
+            id,
+            player_id,
+            name,
+            ready: false,
+            away: false,
+        });
+        if room.host_peer_id.read().await.is_none() {
+            *room.host_peer_id.write().await = Some(id);
+        }
+        Ok(peers.clone())
+    }
+
+    pub async fn rename_peer(
+        &self,
+        code: &str,
+        id: u64,
+        name: String,
+    ) -> Result<Vec<PeerInfo>, RelayError> {
+        let rooms = self.rooms.read().await;
+        let room = rooms
+            .get(code)
+            .ok_or_else(|| RelayError::RoomNotFound(code.into()))?;
+        let mut peers = room.peers.lock().await;
+        let peer = peers
+            .iter_mut()
+            .find(|peer| peer.id == id)
+            .ok_or_else(|| RelayError::RoomNotFound(code.into()))?;
+        peer.name = name;
+        Ok(peers.clone())
+    }
+
+    pub async fn set_peer_ready(
+        &self,
+        code: &str,
+        id: u64,
+        ready: bool,
+    ) -> Result<Vec<PeerInfo>, RelayError> {
+        let rooms = self.rooms.read().await;
+        let room = rooms
+            .get(code)
+            .ok_or_else(|| RelayError::RoomNotFound(code.into()))?;
+        let mut peers = room.peers.lock().await;
+        let peer = peers
+            .iter_mut()
+            .find(|peer| peer.id == id)
+            .ok_or_else(|| RelayError::RoomNotFound(code.into()))?;
+        peer.ready = ready;
+        Ok(peers.clone())
+    }
+
+    pub async fn reset_ready_states(&self, code: &str) -> Result<Vec<PeerInfo>, RelayError> {
+        let rooms = self.rooms.read().await;
+        let room = rooms
+            .get(code)
+            .ok_or_else(|| RelayError::RoomNotFound(code.into()))?;
+        let mut peers = room.peers.lock().await;
+        for peer in &mut *peers {
+            peer.ready = false;
+        }
         Ok(peers.clone())
     }
 
@@ -64,24 +132,84 @@ impl RoomManager {
         if let Some(room) = rooms.get(code) {
             let mut peers = room.peers.lock().await;
             peers.retain(|p| p.id != id);
+            let mut host_peer_id = room.host_peer_id.write().await;
+            if host_peer_id.as_ref().is_some_and(|host_id| *host_id == id) {
+                *host_peer_id = peers.first().map(|peer| peer.id);
+            }
             peers.clone()
         } else {
             vec![]
         }
     }
 
-    /// Broadcast presence list as JSON-over-binary to all room clients.
-    pub async fn broadcast_presence(&self, code: &str, peers: &[PeerInfo]) {
-        let names_json = peers
+    pub async fn broadcast_snapshot(&self, code: &str, peers: &[PeerInfo]) {
+        let rooms = self.rooms.read().await;
+        let Some(room) = rooms.get(code) else {
+            return;
+        };
+        let host_peer_id = *room.host_peer_id.read().await;
+        let pkt = PktRoomSnapshot {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::RoomSnapshot,
+                player_id: 0,
+            },
+            room_code: code.to_string(),
+            players: peers
+                .iter()
+                .map(|peer| RoomPlayerSnapshot {
+                    player_id: peer.player_id,
+                    name: peer.name.clone(),
+                    ready: peer.ready,
+                    alive: true,
+                    away: peer.away,
+                    is_host: host_peer_id.is_some_and(|host_id| host_id == peer.id),
+                })
+                .collect(),
+        };
+        if let Ok(data) = bincode::serialize(&pkt) {
+            let _ = room.tx.send(data);
+        }
+    }
+
+    pub async fn room_peers(&self, code: &str) -> Result<Vec<PeerInfo>, RelayError> {
+        let rooms = self.rooms.read().await;
+        let room = rooms
+            .get(code)
+            .ok_or_else(|| RelayError::RoomNotFound(code.into()))?;
+        Ok(room.peers.lock().await.clone())
+    }
+
+    pub async fn peer_by_id(&self, code: &str, id: u64) -> Result<PeerInfo, RelayError> {
+        let rooms = self.rooms.read().await;
+        let room = rooms
+            .get(code)
+            .ok_or_else(|| RelayError::RoomNotFound(code.into()))?;
+        room.peers
+            .lock()
+            .await
             .iter()
-            .map(|p| {
-                let escaped = p.name.replace('\\', "\\\\").replace('"', "\\\"");
-                format!("\"{escaped}\"")
-            })
-            .collect::<Vec<_>>()
-            .join(",");
-        let msg = format!("{{\"type\":\"presence\",\"peers\":[{names_json}]}}");
-        let _ = self.broadcast(code, msg.into_bytes()).await;
+            .find(|peer| peer.id == id)
+            .cloned()
+            .ok_or_else(|| RelayError::RoomNotFound(code.into()))
+    }
+
+    pub async fn countdown_active(&self, code: &str) -> Result<bool, RelayError> {
+        let rooms = self.rooms.read().await;
+        let room = rooms
+            .get(code)
+            .ok_or_else(|| RelayError::RoomNotFound(code.into()))?;
+        Ok(room.countdown_active.load(Ordering::SeqCst) != 0)
+    }
+
+    pub async fn set_countdown_active(&self, code: &str, active: bool) -> Result<(), RelayError> {
+        let rooms = self.rooms.read().await;
+        let room = rooms
+            .get(code)
+            .ok_or_else(|| RelayError::RoomNotFound(code.into()))?;
+        room.countdown_active
+            .store(usize::from(active), Ordering::SeqCst);
+        Ok(())
     }
 
     pub async fn create_room(&self) -> Result<RoomCode, RelayError> {
@@ -95,8 +223,9 @@ impl RoomManager {
             code: code.clone(),
             tx,
             player_count: AtomicUsize::new(0),
-            host_id: RwLock::new(None),
+            host_peer_id: RwLock::new(None),
             peers: Mutex::new(vec![]),
+            countdown_active: AtomicUsize::new(0),
         });
         rooms.insert(code.clone(), state);
         Ok(code)
@@ -164,8 +293,9 @@ impl RoomManager {
             code: code.to_string(),
             tx,
             player_count: AtomicUsize::new(0),
-            host_id: RwLock::new(None),
+            host_peer_id: RwLock::new(None),
             peers: Mutex::new(vec![]),
+            countdown_active: AtomicUsize::new(0),
         });
         rooms.insert(code.to_string(), state);
         Ok(code.to_string())

@@ -11,6 +11,7 @@ path = "src/main.rs"
 [dependencies]
 tetris-net = { path = "../tetris-net" }
 tetris-core = { path = "../tetris-core" }
+tetris-protocol = { path = "../tetris-protocol" }
 axum = { version = "0.8", features = ["ws"] }
 tokio = { version = "1", features = ["full"] }
 serde = { workspace = true }

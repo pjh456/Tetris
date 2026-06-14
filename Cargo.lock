@@ -2357,6 +2357,7 @@ dependencies = [
  "serde",
  "tetris-core",
  "tetris-net",
+ "tetris-protocol",
  "thiserror 2.0.18",
  "tokio",
  "tokio-util",

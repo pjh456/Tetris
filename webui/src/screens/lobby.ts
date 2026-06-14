@@ -2,6 +2,15 @@ import { effect } from '@preact/signals-core';
 import { page, is_multiplayer, room_code, connection_status } from '../state';
 import { WsClient } from '../core/ws_client';
 import { set_multiplayer_ws } from '../core/multiplayer';
+import {
+  consume_last_multiplayer_event,
+  get_multiplayer_snapshot,
+  get_wasm,
+  make_chat_message_packet,
+  make_join_room_packet,
+  make_player_ready_packet,
+} from '../core/wasm';
+import type { MultiplayerPlayer } from '../core/wasm';
 
 const RELAY_URL = 'ws://localhost:9000';
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -20,10 +29,10 @@ export function create_lobby_screen(): HTMLElement {
     room_code.value = gen_room_code();
   }
 
-  let current_ws = new WsClient(`${RELAY_URL}/room/${room_code.value}`);
-  const peers: string[] = [];
-  const ready_set = new Set<string>();
-  let my_name = '';
+  const wasm = get_wasm();
+  let current_ws = new WsClient(`${RELAY_URL}/room/${room_code.value}`, wasm);
+  let peers: MultiplayerPlayer[] = [];
+  let my_name = `Guest-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
   let is_ready = false;
 
   const layout = document.createElement('div');
@@ -43,7 +52,7 @@ export function create_lobby_screen(): HTMLElement {
   const sidebar = document.createElement('div');
   sidebar.className = 'lobby-sidebar';
   const { section: chat_section, append_system, append_chat } = build_chat_section((text) => {
-    current_ws.sendJson({ type: 'chat', text });
+    current_ws.send(make_chat_message_packet(text));
   });
   sidebar.appendChild(chat_section);
 
@@ -51,46 +60,49 @@ export function create_lobby_screen(): HTMLElement {
   layout.appendChild(sidebar);
   container.appendChild(layout);
 
-  function check_all_ready() {
-    if (peers.length < 2) return;
-    const all = peers.every((p) => ready_set.has(p));
-    if (all) {
-      is_multiplayer.value = true;
-      set_multiplayer_ws(current_ws);
-      // Don't close ws — game.ts will use it
-      dispose();
-      page.value = 'game';
-    }
-  }
+  const countdown_el = document.createElement('div');
+  countdown_el.className = 'lobby-label';
+  countdown_el.textContent = '';
+  main.appendChild(countdown_el);
 
   function attach_handlers(ws: WsClient) {
-    ws.onmessage = (msg) => {
-      if (msg.type === 'presence') {
-        peers.length = 0;
-        peers.push(...msg.peers);
-        // assign my_name on first presence (I'm the last in the list)
-        if (!my_name && peers.length > 0) {
-          my_name = peers[peers.length - 1];
-        }
-        // remove ready flags for peers that left
-        for (const r of ready_set) {
-          if (!peers.includes(r)) ready_set.delete(r);
-        }
-        update_players(peers, ready_set);
-        check_all_ready();
-      } else if (msg.type === 'ready') {
-        ready_set.add(msg.name);
-        update_players(peers, ready_set);
-        append_system(`${msg.name} is ready`);
-        check_all_ready();
-      } else if (msg.type === 'chat') {
-        append_chat(msg.from ?? 'Player', msg.text);
-      } else if (msg.type === 'join') {
-        append_system(`${msg.name} joined`);
-      } else if (msg.type === 'leave') {
-        ready_set.delete(msg.name);
-        append_system(`${msg.name} left`);
-        update_players(peers, ready_set);
+    ws.onopen = () => {
+      ws.send(make_join_room_packet(room_code.value ?? '----', my_name));
+    };
+    ws.onpacket = (event) => {
+      const last_event = event ?? consume_last_multiplayer_event();
+      const snapshot = get_multiplayer_snapshot();
+      if (snapshot) {
+        peers = snapshot.players;
+        update_players(peers);
+        room_code.value = snapshot.room_code ?? room_code.value;
+        const code_display = room_section.querySelector('.room-code');
+        if (code_display) code_display.textContent = room_code.value ?? '----';
+        const me = peers.find((player) => player.name === my_name);
+        is_ready = me?.ready ?? false;
+        set_ready_btn(is_ready);
+        countdown_el.textContent =
+          snapshot.countdown !== null && snapshot.countdown !== undefined
+            ? `STARTING IN ${snapshot.countdown}`
+            : '';
+      }
+      if (!last_event) {
+        return;
+      }
+      if (last_event.kind === 'chat' && last_event.message) {
+        const speaker =
+          peers.find((player) => player.player_id === last_event.player_id)?.name ?? 'Player';
+        append_chat(speaker, last_event.message);
+      } else if (last_event.kind === 'room_snapshot') {
+        append_system(`Room synced: ${peers.length} player(s)`);
+      } else if (last_event.kind === 'countdown' && typeof last_event.countdown === 'number') {
+        countdown_el.textContent = `STARTING IN ${last_event.countdown}`;
+      } else if (last_event.kind === 'game_start' && typeof last_event.random_seed === 'number') {
+        is_multiplayer.value = true;
+        set_multiplayer_ws(current_ws);
+        wasm.reset(last_event.random_seed >>> 0);
+        dispose();
+        page.value = 'game';
       }
     };
   }
@@ -101,26 +113,18 @@ export function create_lobby_screen(): HTMLElement {
     const code_display = room_section.querySelector('.room-code');
     if (code_display) code_display.textContent = code;
     peers.length = 0;
-    ready_set.clear();
-    my_name = '';
     is_ready = false;
     set_ready_btn(false);
-    update_players([], new Set());
-    current_ws = new WsClient(`${RELAY_URL}/room/${code}`);
+    update_players([]);
+    current_ws = new WsClient(`${RELAY_URL}/room/${code}`, wasm);
     attach_handlers(current_ws);
     current_ws.connect();
   }
 
   ready_btn.addEventListener('click', () => {
-    if (is_ready) return;
-    is_ready = true;
-    set_ready_btn(true);
-    if (my_name) {
-      ready_set.add(my_name);
-      current_ws.sendJson({ type: 'ready', name: my_name });
-      update_players(peers, ready_set);
-      check_all_ready();
-    }
+    is_ready = !is_ready;
+    set_ready_btn(is_ready);
+    current_ws.send(make_player_ready_packet(is_ready));
   });
 
   attach_handlers(current_ws);
@@ -222,7 +226,7 @@ function build_room_code_section(): {
 
 function build_player_list(): {
   section: HTMLElement;
-  update: (peers: string[], ready: Set<string>) => void;
+  update: (peers: MultiplayerPlayer[]) => void;
 } {
   const section = document.createElement('div');
   section.className = 'lobby-section player-list';
@@ -235,17 +239,18 @@ function build_player_list(): {
   const cards_container = document.createElement('div');
   section.appendChild(cards_container);
 
-  function render(peers: string[], ready: Set<string>) {
+  function render(peers: MultiplayerPlayer[]) {
     cards_container.innerHTML = '';
     const slots = Math.max(peers.length, 1);
     for (let i = 0; i < slots; i++) {
       const card = document.createElement('div');
       card.className = 'player-card glass';
       if (peers[i]) {
-        const r = ready.has(peers[i]);
-        const status_class = r ? 'player-status player-ready' : 'player-status';
-        const status_text = r ? '✓ READY' : 'Not Ready';
-        card.innerHTML = `<span class="player-name">${peers[i]}</span><span class="${status_class}">${status_text}</span>`;
+        const player = peers[i];
+        const status_class = player.ready ? 'player-status player-ready' : 'player-status';
+        const status_text = player.ready ? '✓ READY' : player.away ? 'AWAY' : 'Not Ready';
+        const host_tag = player.is_host ? ' (HOST)' : '';
+        card.innerHTML = `<span class="player-name">${player.name}${host_tag}</span><span class="${status_class}">${status_text}</span>`;
       } else {
         card.innerHTML = `<span class="player-name">—</span><span class="player-status">Waiting...</span>`;
       }
@@ -253,7 +258,7 @@ function build_player_list(): {
     }
   }
 
-  render([], new Set());
+  render([]);
 
   return { section, update: render };
 }

@@ -135,18 +135,6 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
       slot.appendChild(canvas);
       opponent_col.appendChild(slot);
     }
-
-    mp_ws.onbinary = (data: Uint8Array) => {
-      // Simple protocol: first byte = peer index (0-based opponent), rest = 200-byte grid
-      if (data.length >= 201) {
-        const idx = data[0];
-        if (idx < 3) {
-          const grid = data.slice(1, 201);
-          opponent_grids.set(idx, grid);
-          opponent_renderers[idx].canvas.style.display = '';
-        }
-      }
-    };
   }
 
   layout.appendChild(hold_col);
@@ -359,7 +347,6 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
     hud.destroy();
     renderer.destroy();
     for (const r of opponent_renderers) r.destroy();
-    if (mp_ws) mp_ws.onbinary = null;
   }
 
   const kbd_config: KeyboardConfig = {

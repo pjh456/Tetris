@@ -28,6 +28,7 @@ pub enum PacketType {
     HostMigrate = 19,
     PlayerAway = 20,
     SpectateSwitch = 21,
+    RoomSnapshot = 22,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -187,6 +188,23 @@ pub struct PktPlayerAway {
 pub struct PktSpectateSwitch {
     pub header: PacketHeader,
     pub target_player_id: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RoomPlayerSnapshot {
+    pub player_id: u8,
+    pub name: String,
+    pub ready: bool,
+    pub alive: bool,
+    pub away: bool,
+    pub is_host: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PktRoomSnapshot {
+    pub header: PacketHeader,
+    pub room_code: String,
+    pub players: Vec<RoomPlayerSnapshot>,
 }
 
 #[cfg(test)]
@@ -489,5 +507,27 @@ mod tests {
     fn test_room_packet_types() {
         assert_eq!(PacketType::CreateRoom as u8, 12);
         assert_eq!(PacketType::SpectateSwitch as u8, 21);
+        assert_eq!(PacketType::RoomSnapshot as u8, 22);
+    }
+
+    #[test]
+    fn test_room_snapshot_round_trip() {
+        let pkt = PktRoomSnapshot {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::RoomSnapshot,
+                player_id: 0,
+            },
+            room_code: "ABCD".into(),
+            players: vec![RoomPlayerSnapshot {
+                player_id: 0,
+                name: "Alice".into(),
+                ready: true,
+                alive: true,
+                away: false,
+                is_host: true,
+            }],
+        };
+        bincode_round_trip(&pkt);
     }
 }
