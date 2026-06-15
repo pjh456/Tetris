@@ -213,11 +213,7 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
         if alive_others.is_empty() {
             return None;
         }
-        let seed = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.subsec_nanos())
-            .unwrap_or(0);
-        let idx = (seed as usize) % alive_others.len();
+        let idx = (attacker_id as usize) % alive_others.len();
         Some(alive_others[idx].player_id)
     }
 
