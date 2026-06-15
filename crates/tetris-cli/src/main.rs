@@ -19,7 +19,9 @@ fn main() -> Result<()> {
     let state = app::AppState::Menu { selected: 0 };
 
     game_loop::run_game_loop(state, &cfg, app::update, |st| {
-        terminal.draw(|frame| render::render(st, frame)).ok();
+        if let Err(e) = terminal.draw(|frame| render::render(st, frame)) {
+            eprintln!("terminal draw error: {e}");
+        }
     });
 
     ratatui::restore();
