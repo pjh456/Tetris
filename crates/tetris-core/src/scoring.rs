@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ScoreTracker {
-    pub score: u32,
+    pub score: u64,
     pub level: u32,
     pub total_lines: u32,
     pub combo: u32,
@@ -12,7 +12,7 @@ pub struct ScoreTracker {
     pub all_clear_count: u32,
     pub game_time_ms: u64,
     pub total_pieces: u32,
-    pub best_score: u32,
+    pub best_score: u64,
 }
 
 impl ScoreTracker {
@@ -31,11 +31,11 @@ impl ScoreTracker {
     ) {
         let level = level.max(1);
 
-        self.score += soft_drop_cells as u32;
-        self.score += hard_drop_cells as u32 * 2;
+        self.score += u64::from(soft_drop_cells);
+        self.score += u64::from(hard_drop_cells) * 2;
 
         if lines_cleared > 0 {
-            let base = if is_tspin {
+            let base: u64 = if is_tspin {
                 if is_mini {
                     match lines_cleared {
                         1 => 200,
@@ -59,17 +59,17 @@ impl ScoreTracker {
                 }
             };
 
-            let mut action_score = base * level;
+            let mut action_score = base * u64::from(level);
 
             if is_b2b_clear {
                 action_score = (action_score * 3) / 2;
             }
 
             self.score += action_score;
-            self.score += 50 * combo_count * level;
+            self.score += 50 * u64::from(combo_count) * u64::from(level);
 
             if perfect_clear {
-                let pc_bonus = if is_b2b_clear && lines_cleared == 4 {
+                let pc_bonus: u64 = if is_b2b_clear && lines_cleared == 4 {
                     3200
                 } else {
                     match lines_cleared {
@@ -80,7 +80,7 @@ impl ScoreTracker {
                         _ => 2000,
                     }
                 };
-                self.score += pc_bonus * level;
+                self.score += pc_bonus * u64::from(level);
             }
 
             self.total_lines += lines_cleared as u32;
@@ -89,8 +89,8 @@ impl ScoreTracker {
             self.max_combo = self.max_combo.max(self.combo);
         } else {
             if is_tspin {
-                let base = if is_mini { 100 } else { 400 };
-                self.score += base * level;
+                let base: u64 = if is_mini { 100 } else { 400 };
+                self.score += base * u64::from(level);
             }
             self.combo = 0;
         }

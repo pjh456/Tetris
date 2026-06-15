@@ -230,7 +230,7 @@ fn step(state: AppState, msg: Message) -> (AppState, bool) {
                 let s = &engine.scorer;
                 return (
                     AppState::GameOver {
-                        score: s.score,
+                        score: s.score as u32,
                         lines: s.total_lines,
                         level: s.level,
                         max_combo: s.max_combo,
@@ -271,7 +271,7 @@ fn step(state: AppState, msg: Message) -> (AppState, bool) {
                 let s = &engine.scorer;
                 (
                     AppState::GameOver {
-                        score: s.score,
+                        score: s.score as u32,
                         lines: s.total_lines,
                         level: s.level,
                         max_combo: s.max_combo,
