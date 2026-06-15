@@ -96,6 +96,8 @@ impl WebTetris {
         self.opponent_infos.clear();
         self.countdown = None;
         self.last_event = None;
+        self.input_buf = input_buffer::ClientInputBuffer::new();
+        self.last_state_hash = None;
     }
 
     pub fn reset_with_level(&mut self, seed: u32, start_level: u32) {
@@ -107,6 +109,8 @@ impl WebTetris {
         self.opponent_infos.clear();
         self.countdown = None;
         self.last_event = None;
+        self.input_buf = input_buffer::ClientInputBuffer::new();
+        self.last_state_hash = None;
     }
 
     fn ensure_opponent_slot(&mut self, player_id: u8) -> Option<usize> {
