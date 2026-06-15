@@ -379,6 +379,37 @@ fn step(state: AppState, msg: Message) -> (AppState, bool) {
                 false,
             ),
             Message::Quit => (AppState::Menu { selected: 0 }, true),
+            Message::Key(k) => {
+                let action = match k {
+                    KeyCode::Left | KeyCode::Char('a') => Action::MoveLeft,
+                    KeyCode::Right | KeyCode::Char('d') => Action::MoveRight,
+                    KeyCode::Down | KeyCode::Char('s') => Action::SoftDrop,
+                    KeyCode::Up | KeyCode::Char('w') => Action::RotateCW,
+                    KeyCode::Char('z') => Action::RotateCCW,
+                    KeyCode::Char(' ') => Action::HardDrop,
+                    KeyCode::Tab => Action::Hold,
+                    KeyCode::Char('p') => return (AppState::Pause { engine, start_time }, false),
+                    _ => return (
+                        AppState::PlayingMulti {
+                            engine, opponents, opponent_names, start_time,
+                            clear_flash_timer, score_flash_timer,
+                            prev_grid, prev_flash_mask, prev_half,
+                            spectating,
+                        },
+                        false,
+                    ),
+                };
+                engine.handle_action(action);
+                (
+                    AppState::PlayingMulti {
+                        engine, opponents, opponent_names, start_time,
+                        clear_flash_timer, score_flash_timer,
+                        prev_grid, prev_flash_mask, prev_half,
+                        spectating,
+                    },
+                    false,
+                )
+            }
             _ => (
                 AppState::PlayingMulti {
                     engine,
