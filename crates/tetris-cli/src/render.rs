@@ -154,7 +154,7 @@ fn render_lobby_host(frame: &mut Frame, room_code: &str, players: &[String]) {
     ];
     for p in players {
         lines.push(Line::from(Span::styled(
-            p.clone(),
+            p.as_str(),
             Style::default().fg(Color::White),
         )));
     }
