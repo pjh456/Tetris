@@ -137,6 +137,7 @@ export class AudioManager {
   private bgm_gain: GainNode | null = null;
   private bgm_filter: BiquadFilterNode | null = null;
   private bgm_delay: DelayNode | null = null;
+  private bgm_feedback: GainNode | null = null;
   private bgm_source: AudioBufferSourceNode | null = null;
   private current_priority = -1;
   private current_timeout: ReturnType<typeof setTimeout> | null = null;
@@ -234,6 +235,7 @@ export class AudioManager {
         this.bgm_delay.delayTime.value = 0.25;
         const feedback = this.ctx.createGain();
         feedback.gain.value = 0.25;
+        this.bgm_feedback = feedback;
         chain.connect(this.bgm_delay);
         this.bgm_delay.connect(feedback);
         feedback.connect(this.bgm_delay);
@@ -273,9 +275,15 @@ export class AudioManager {
     } catch {
       /* */
     }
+    try {
+      this.bgm_feedback?.disconnect();
+    } catch {
+      /* */
+    }
     this.bgm_source = null;
     this.bgm_filter = null;
     this.bgm_delay = null;
+    this.bgm_feedback = null;
   }
 
   set_sfx_volume(v: number): void {
