@@ -85,7 +85,7 @@ impl ScoreTracker {
 
             self.total_lines += lines_cleared as u32;
             self.level = (self.total_lines / 10 + 1).min(15);
-            self.combo = combo_count;
+            self.combo = combo_count.saturating_add(1);
             self.max_combo = self.max_combo.max(self.combo);
         } else {
             if is_tspin {
