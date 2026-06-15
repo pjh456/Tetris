@@ -8,8 +8,9 @@ pub fn can_place<const W: usize, const H: usize>(st: &State<W, H>, x: i8, y: i8,
     let shape = &PIECES[st.piece as usize].rot[rot as usize];
 
     let mut wall_mask: u16 = 0;
+    let signed_shift = (-x).min(15);
     if x < 0 {
-        wall_mask |= (1u16 << (-x)) - 1;
+        wall_mask |= (1u16 << signed_shift) - 1;
     }
     let w = W as i8;
     if x + 4 > w {
