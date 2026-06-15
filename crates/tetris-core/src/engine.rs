@@ -365,6 +365,9 @@ impl<const W: usize, const H: usize> Engine<W, H> {
             Action::Hold => {
                 if !self.state.hold_used {
                     self.lock_delay_wall.cancel();
+                    self.lock_delay_active = false;
+                    self.lock_delay_accumulated_ticks = 0;
+                    self.lock_delay_move_resets = 0;
                     if self.has_hold {
                         std::mem::swap(&mut self.state.hold, &mut self.state.piece);
                         self.state.rot = Rot::R0;
