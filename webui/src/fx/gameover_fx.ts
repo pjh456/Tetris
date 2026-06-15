@@ -1,9 +1,9 @@
 export function run_collapse_animation(canvas: HTMLCanvasElement, on_complete: () => void): void {
   const ctx = canvas.getContext('2d')!;
-  const css_h = parseFloat(canvas.style.height) || canvas.height;
+  const css_h = parseFloat(canvas.style.height) || canvas.clientHeight || canvas.height;
   const rows = 20;
   const cell_h = css_h / rows;
-  const css_w = parseFloat(canvas.style.width) || canvas.width;
+  const css_w = parseFloat(canvas.style.width) || canvas.clientWidth || canvas.width;
   let current_row = 0;
 
   function collapse_next() {
