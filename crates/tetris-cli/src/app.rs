@@ -413,21 +413,6 @@ fn step(state: AppState, msg: Message) -> (AppState, bool) {
                     false,
                 )
             }
-            _ => (
-                AppState::PlayingMulti {
-                    engine,
-                    opponents,
-                    opponent_names,
-                    start_time,
-                    clear_flash_timer,
-                    score_flash_timer,
-                    prev_grid,
-                    prev_flash_mask,
-                    prev_half,
-                    spectating,
-                },
-                false,
-            ),
         },
     }
 }

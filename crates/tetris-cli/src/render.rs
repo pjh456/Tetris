@@ -301,36 +301,23 @@ fn render_board(
         0
     };
 
-    let mode_changed = *prev_half != use_half;
-
     if use_half {
         let mut lines = Vec::new();
         for y in (0..20).step_by(2) {
             let flash_top = flash_mask & (1 << y) != 0;
             let flash_bot = y + 1 < 20 && flash_mask & (1 << (y + 1)) != 0;
-            let prev_flash_top = *prev_flash_mask & (1 << y) != 0;
-            let prev_flash_bot = y + 1 < 20 && *prev_flash_mask & (1 << (y + 1)) != 0;
-            let row_changed = mode_changed
-                || prev_grid[y] != grid[y]
-                || (y + 1 < 20 && prev_grid[y + 1] != grid[y + 1])
-                || flash_top != prev_flash_top
-                || flash_bot != prev_flash_bot;
-            if row_changed {
-                let mut spans = Vec::new();
-                for x in 0..10 {
-                    let top = grid[y][x];
-                    let bot = if y + 1 < 20 {
-                        grid[y + 1][x]
-                    } else {
-                        CellType::Empty
-                    };
-                    let (ch, style) = half_cell(top, bot, flash_top || flash_bot);
-                    spans.push(Span::styled(ch, style));
-                }
-                lines.push(Line::from(spans));
-            } else {
-                lines.push(Line::from(""));
+            let mut spans = Vec::new();
+            for x in 0..10 {
+                let top = grid[y][x];
+                let bot = if y + 1 < 20 {
+                    grid[y + 1][x]
+                } else {
+                    CellType::Empty
+                };
+                let (ch, style) = half_cell(top, bot, flash_top || flash_bot);
+                spans.push(Span::styled(ch, style));
             }
+            lines.push(Line::from(spans));
         }
         let para = Paragraph::new(lines);
         frame.render_widget(para, inner);
@@ -338,18 +325,12 @@ fn render_board(
         let mut lines = Vec::new();
         for y in 0..20 {
             let flashing = flash_mask & (1 << y) != 0;
-            let prev_flashing = *prev_flash_mask & (1 << y) != 0;
-            let row_changed = mode_changed || prev_grid[y] != grid[y] || flashing != prev_flashing;
-            if row_changed {
-                let mut spans = Vec::new();
-                for x in 0..10 {
-                    let (text, style) = cell_style(grid[y][x], flashing);
-                    spans.push(Span::styled(text, style));
-                }
-                lines.push(Line::from(spans));
-            } else {
-                lines.push(Line::from(""));
+            let mut spans = Vec::new();
+            for x in 0..10 {
+                let (text, style) = cell_style(grid[y][x], flashing);
+                spans.push(Span::styled(text, style));
             }
+            lines.push(Line::from(spans));
         }
         let para = Paragraph::new(lines);
         frame.render_widget(para, inner);
