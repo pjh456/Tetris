@@ -413,6 +413,8 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
     if (document.hidden && !wasm.is_game_over && !paused && !is_multiplayer.value) {
       toggle_pause();
     }
+    // Auto-unpause removed: user must manually resume.
+    // Prevents BGM restart when tab returns after manual pause.
   }
 
   function destroy() {
