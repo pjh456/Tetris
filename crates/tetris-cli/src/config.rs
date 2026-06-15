@@ -22,8 +22,20 @@ pub fn load_config() -> CliConfig {
     let config_dir = dirs::config_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
     let config_path = config_dir.join("tetris").join("config.toml");
     if config_path.exists() {
-        let content = std::fs::read_to_string(&config_path).unwrap_or_default();
-        let mut cfg: CliConfig = toml::from_str(&content).unwrap_or_default();
+        let content = match std::fs::read_to_string(&config_path) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("config: failed to read {}: {e}", config_path.display());
+                return CliConfig::default();
+            }
+        };
+        let mut cfg: CliConfig = match toml::from_str(&content) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("config: failed to parse {}: {e}", config_path.display());
+                return CliConfig::default();
+            }
+        };
         cfg.das_ms = cfg.das_ms.clamp(50, 500);
         cfg.arr_ms = cfg.arr_ms.clamp(0, 100);
         cfg
