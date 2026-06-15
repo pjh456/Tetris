@@ -12,4 +12,10 @@ pub enum NetError {
     Connection(String),
     #[error("mDNS error: {0}")]
     MdnsError(String),
+    #[error("I/O error: {0}")]
+    Io(String),
+    #[error("connection timeout")]
+    Timeout,
+    #[error("disconnected")]
+    Disconnected,
 }
