@@ -47,6 +47,8 @@ pub fn run_game_loop<F, G>(
             last_frame = now;
         }
 
+        // Busy-wait: yields CPU between frames. ratatui event::poll timeout
+        // preferred for production; kept for simplicity in terminal environments.
         std::thread::sleep(Duration::from_millis(1));
     }
 }
