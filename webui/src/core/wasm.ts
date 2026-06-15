@@ -14,9 +14,9 @@ function create_grid_view(wasm: WebTetris): Uint8Array {
 
 export function get_grid_view(): Uint8Array {
   if (!instance) throw new Error('WASM not initialized');
-  if (!grid_view || grid_view.byteLength === 0) {
-    grid_view = create_grid_view(instance);
-  }
+  // Recreate on every call: WASM memory may have grown, detaching old view.
+  instance.update_grid();
+  grid_view = create_grid_view(instance);
   return grid_view;
 }
 
