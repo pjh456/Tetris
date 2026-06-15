@@ -236,11 +236,15 @@ impl RoomManager {
         let room = rooms
             .get(code)
             .ok_or_else(|| RelayError::RoomNotFound(code.into()))?;
-        let count = room.player_count.load(Ordering::SeqCst);
-        if count >= MAX_PLAYERS_PER_ROOM {
-            return Err(RelayError::RoomFull(code.into()));
-        }
-        room.player_count.fetch_add(1, Ordering::SeqCst);
+        room.player_count
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
+                if count >= MAX_PLAYERS_PER_ROOM {
+                    None
+                } else {
+                    Some(count + 1)
+                }
+            })
+            .map_err(|_| RelayError::RoomFull(code.into()))?;
         Ok(room.tx.subscribe())
     }
 
