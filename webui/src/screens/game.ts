@@ -165,6 +165,7 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
 
   let paused = false;
   let raf_id = 0;
+  let logic_timer_id: number | null = null;
   let last_tick = performance.now();
   let last_fx = performance.now();
   let last_state_sync = 0;
@@ -172,6 +173,7 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
   let popup_el: HTMLElement | null = null;
   let edge_active = false;
   let edge_dir = 0;
+  let is_tearing_down = false;
 
   function send_state_sync(force = false) {
     if (!mp_ws) return;
@@ -207,6 +209,63 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
       popup_el?.remove();
       popup_el = null;
     }, 1000);
+  }
+
+  function cleanup_runtime() {
+    if (raf_id) {
+      cancelAnimationFrame(raf_id);
+      raf_id = 0;
+    }
+    if (logic_timer_id !== null) {
+      window.clearInterval(logic_timer_id);
+      logic_timer_id = null;
+    }
+    cleanup_keyboard?.();
+  }
+
+  function finish_game() {
+    if (is_tearing_down) return;
+    is_tearing_down = true;
+    cleanup_runtime();
+    audio_manager.stop_bgm();
+    run_collapse_animation(board_canvas, () => {
+      destroy();
+      page.value = 'gameover';
+    });
+  }
+
+  function advance_game(now: number) {
+    if (paused || wasm.is_game_over) {
+      if (wasm.is_game_over) {
+        finish_game();
+      }
+      return;
+    }
+
+    const delta_ms = now - last_tick;
+    if (delta_ms < 16) {
+      return;
+    }
+
+    const prev_level = level.value;
+    const prev_lines = lines.value;
+    wasm.tick(delta_ms);
+    send_state_sync();
+    last_tick = now;
+
+    const hud_after: unknown = wasm.get_hud_data();
+    if (is_hud_data(hud_after)) {
+      if (hud_after.lines > prev_lines) {
+        audio_manager.play_sfx(hud_after.tspin > 0 ? 't_spin' : 'line_clear');
+      }
+      if (hud_after.level > prev_level) {
+        audio_manager.play_sfx('level_up');
+      }
+    }
+
+    if (wasm.is_game_over) {
+      finish_game();
+    }
   }
 
   function render_all() {
@@ -281,33 +340,10 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
       return;
     }
 
-    if (!wasm.is_game_over) {
-      const delta_ms = time - last_tick;
-      if (delta_ms >= 16) {
-        const prev_level = level.value;
-        const prev_lines = lines.value;
-        wasm.tick(delta_ms);
-        send_state_sync();
-        last_tick = time;
-
-        const hud_after: unknown = wasm.get_hud_data();
-        if (is_hud_data(hud_after)) {
-          if (hud_after.lines > prev_lines) {
-            audio_manager.play_sfx(hud_after.tspin > 0 ? 't_spin' : 'line_clear');
-          }
-          if (hud_after.level > prev_level) {
-            audio_manager.play_sfx('level_up');
-          }
-        }
-      }
-    } else {
-      cancelAnimationFrame(raf_id);
-      cleanup_keyboard?.();
-      audio_manager.stop_bgm();
-      run_collapse_animation(board_canvas, () => {
-        destroy();
-        page.value = 'gameover';
-      });
+    if (!mp_ws) {
+      advance_game(time);
+    } else if (wasm.is_game_over) {
+      finish_game();
       return;
     }
 
@@ -380,8 +416,7 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
   }
 
   function destroy() {
-    cancelAnimationFrame(raf_id);
-    cleanup_keyboard?.();
+    cleanup_runtime();
     touch_overlay.destroy();
     document.removeEventListener('visibilitychange', on_visibility_change);
     hud.destroy();
@@ -462,6 +497,11 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
   last_fx = performance.now();
   render_all();
   send_state_sync(true);
+  if (mp_ws) {
+    logic_timer_id = window.setInterval(() => {
+      advance_game(performance.now());
+    }, 50);
+  }
   raf_id = requestAnimationFrame(game_loop);
 }
 
