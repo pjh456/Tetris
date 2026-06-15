@@ -10,7 +10,6 @@ use tetris_protocol::protocol::{
     PROTOCOL_VERSION, PacketHeader, PacketType, PktChatMessage, PktGameStart, PktJoinRoom,
     PktPlayerReady, PktServerAccept, PktStartCountdown, InputEvent,
 };
-use tokio::sync::broadcast;
 use tokio::time::interval;
 use tracing::{info, warn};
 
@@ -38,7 +37,7 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
         return;
     }
 
-    let rx = match state.room_manager.join_room(&room_code).await {
+    let _broadcast_rx = match state.room_manager.join_room(&room_code).await {
         Ok(rx) => rx,
         Err(e) => {
             warn!("join_room failed: {e}");
@@ -60,8 +59,9 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
     let (mut sender, mut receiver) = socket.split();
     let room_code_send = room_code.clone();
 
-    // Per-client bounded input channel for RoomActor (D-18)
+    // Per-client bounded input + outbound channels for RoomActor (D-18)
     let (input_tx, _input_rx) = tokio::sync::mpsc::channel::<InputEvent>(64);
+    let (_outbound_tx, outbound_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
 
     if let Ok(peer) = state.room_manager.peer_by_id(&room_code, peer_id).await {
         let accept = PktServerAccept {
@@ -84,7 +84,7 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
         .broadcast_snapshot(&room_code, &peers)
         .await;
 
-    let send_task = tokio::spawn(send_loop(sender, rx));
+    let send_task = tokio::spawn(send_loop(sender, outbound_rx));
 
     while let Some(msg_result) = receiver.next().await {
         let msg = match msg_result {
@@ -261,7 +261,7 @@ async fn handle_binary_message(
 
 async fn send_loop(
     mut sender: futures_util::stream::SplitSink<WebSocket, Message>,
-    mut rx: broadcast::Receiver<Vec<u8>>,
+    mut rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
 ) {
     let mut ping_interval = interval(Duration::from_secs(3));
 
@@ -269,13 +269,12 @@ async fn send_loop(
         tokio::select! {
             result = rx.recv() => {
                 match result {
-                    Ok(data) => {
+                    Some(data) => {
                         if sender.send(Message::Binary(data.into())).await.is_err() {
                             break;
                         }
                     }
-                    Err(broadcast::error::RecvError::Closed) => break,
-                    Err(broadcast::error::RecvError::Lagged(_)) => {},
+                    None => break,
                 }
             }
             _ = ping_interval.tick() => {

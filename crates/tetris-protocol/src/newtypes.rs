@@ -11,7 +11,7 @@ pub struct TickNumber(pub u64);
 pub struct FrameNumber(pub u64);
 
 /// Player index in room (`0..MAX_PLAYERS`). Per D-17.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct PlayerSlot(pub u8);
 
 /// RNG seed for deterministic engine initialization. Per D-17.
