@@ -375,7 +375,9 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
             PacketType::PlayerAttack => {
                 let pkt: PktPlayerAttack =
                     bincode::deserialize(data).map_err(|e| NetError::Decode(e.to_string()))?;
-                if let Some(engine) = self.engines.get_mut(self.local_key) {
+                if let Some(key) = self.player_key_from_id(header.player_id)
+                    && let Some(engine) = self.engines.get_mut(key)
+                {
                     engine.state.pending_garbage += pkt.lines;
                 }
             }
@@ -579,11 +581,12 @@ mod tests {
         driver.add_player(remote_engine);
 
         let initial_garbage = driver.engines[driver.local_key].state.pending_garbage;
+        // Attack with player_id=0 targets local engine
         let pkt = PktPlayerAttack {
             header: PacketHeader {
                 version: PROTOCOL_VERSION,
                 packet_type: PacketType::PlayerAttack,
-                player_id: 1,
+                player_id: 0,
             },
             lines: 3,
             hole_x: 5,
