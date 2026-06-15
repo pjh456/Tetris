@@ -497,8 +497,7 @@ impl<const W: usize, const H: usize> Engine<W, H> {
             } else {
                 self.lock_delay_active = true;
                 self.lock_delay_accumulated_ticks += 1;
-                if self.lock_delay_move_resets < crate::lockdelay::MAX_MOVE_RESETS as u8
-                    && self.lock_delay_accumulated_ticks >= crate::lockdelay::LOCK_DELAY_TICKS
+                if self.lock_delay_accumulated_ticks >= crate::lockdelay::LOCK_DELAY_TICKS
                 {
                     let res = self.lock_and_spawn();
                     attack_result = Some(res);
