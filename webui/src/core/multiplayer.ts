@@ -9,3 +9,10 @@ export function set_multiplayer_ws(ws: WsClient | null) {
 export function get_multiplayer_ws(): WsClient | null {
   return _ws;
 }
+
+export function reset_multiplayer_ws() {
+  if (_ws) {
+    _ws.close();
+    _ws = null;
+  }
+}
