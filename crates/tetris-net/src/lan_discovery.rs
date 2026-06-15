@@ -53,6 +53,7 @@ impl LanDiscovery {
         Ok(())
     }
 
+    /// Blocking — call from `tokio::task::spawn_blocking` in async contexts.
     pub fn browse(&self, timeout: Duration) -> Result<Vec<DiscoveredHost>, NetError> {
         let receiver = self
             .daemon
