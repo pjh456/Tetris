@@ -1,6 +1,6 @@
 import './style.css';
 import { effect, untracked } from '@preact/signals-core';
-import { page, settings } from './state';
+import { page, settings, is_multiplayer } from './state';
 import { apply_theme, type ThemeName } from './core/theme';
 import { init_particles, apply_theme_particles } from './core/particles';
 import { init_wasm } from './core/wasm';
@@ -62,6 +62,11 @@ effect(() => {
   active_lobby?._cleanup?.();
   active_lobby = null;
   app.innerHTML = '';
+
+  // Reset multiplayer state when leaving multiplayer screens
+  if (current === 'home' || current === 'game') {
+    is_multiplayer.value = false;
+  }
 
   switch (current) {
     case 'home': {
