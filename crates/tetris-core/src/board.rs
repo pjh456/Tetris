@@ -97,7 +97,7 @@ impl<const W: usize, const H: usize> Board<W, H> {
         if lines == 0 {
             return;
         }
-        let l = lines as usize;
+        let l = (lines as usize).min(H);
         for y in 0..(H - l) {
             self.rows[y] = self.rows[y + l];
         }
