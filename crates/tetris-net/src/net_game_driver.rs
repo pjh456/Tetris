@@ -395,15 +395,13 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
                         engine.state.y = pkt.y;
                         engine.state.hold = pkt.hold;
                         engine.state.hold_used = pkt.hold_used;
-                        engine.state.next = [
-                            pkt.next[0],
-                            pkt.next[1],
-                            pkt.next[2],
-                            pkt.next[0],
-                            pkt.next[0],
-                        ];
+                        engine.state.next[0] = pkt.next[0];
+                        engine.state.next[1] = pkt.next[1];
+                        engine.state.next[2] = pkt.next[2];
+                        // next[3],[4] preserved: legacy PktStateSync carries only 3 pieces
                         engine.state.pending_garbage = pkt.pending_garbage;
                         engine.state.rng = pkt.rng_state;
+                        engine.game_over = false;
                     }
                     if let Some(cache) = self.prev_board_rows.get_mut(&key)
                         && let Some(engine) = self.engines.get(key)
@@ -437,15 +435,12 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
                     engine.state.y = pkt.y;
                     engine.state.hold = pkt.hold;
                     engine.state.hold_used = pkt.hold_used;
-                    engine.state.next = [
-                        pkt.next[0],
-                        pkt.next[1],
-                        pkt.next[2],
-                        pkt.next[0],
-                        pkt.next[0],
-                    ];
-                }
-                self.last_remote_seq = pkt.seq;
+                        engine.state.next[0] = pkt.next[0];
+                        engine.state.next[1] = pkt.next[1];
+                        engine.state.next[2] = pkt.next[2];
+                        // next[3],[4] preserved: legacy PktDeltaSync carries only 3 pieces
+                    }
+                    self.last_remote_seq = pkt.seq;
             }
             PacketType::ResyncRequest => {}
             _ => {}
