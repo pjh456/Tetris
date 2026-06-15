@@ -219,6 +219,9 @@ fn step(state: AppState, msg: Message) -> (AppState, bool) {
                     clear_flash_timer = clear_flash_timer.saturating_sub(1);
                     score_flash_timer = score_flash_timer.saturating_sub(1);
                 }
+                Message::Key(KeyCode::Esc) | Message::Key(KeyCode::Char('q')) => {
+                    return (AppState::Menu { selected: 0 }, true);
+                }
                 Message::Quit => return (AppState::Menu { selected: 0 }, true),
                 _ => {}
             }
