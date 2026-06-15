@@ -104,6 +104,10 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
     pub fn remove_player(&mut self, key: PlayerKey) {
         self.engines.remove(key);
         self.prev_board_rows.remove(&key);
+        // Clean up player_id mapping to prevent stale slot references
+        if let Some(pos) = self.key_by_player_id.iter().position(|&k| k == key) {
+            self.key_by_player_id.remove(pos);
+        }
     }
 
     pub fn player_key_from_id(&self, player_id: u8) -> Option<PlayerKey> {
