@@ -36,6 +36,10 @@ export class WsClient {
     this.socket.binaryType = 'arraybuffer';
 
     this.socket.onopen = () => {
+      if (this.reconnect_timeout) {
+        clearTimeout(this.reconnect_timeout);
+        this.reconnect_timeout = null;
+      }
       connection_status.value = 'online';
       this.reconnect_attempt = 0;
       this.last_pong_time = Date.now();
