@@ -26,4 +26,4 @@ pub use rules::{can_place, get_ghost_y, hard_drop, lock_piece, try_move, try_rot
 pub use scoring::ScoreTracker;
 pub use srs::SRS;
 pub use state::State;
-pub use types::{Piece, Rot, Vec2};
+pub use types::{Piece, Rot};

@@ -20,9 +20,3 @@ pub enum Rot {
     R180 = 2,
     R270 = 3,
 }
-
-#[derive(Debug, Clone, Copy)]
-pub struct Vec2 {
-    pub x: i8,
-    pub y: i8,
-}
