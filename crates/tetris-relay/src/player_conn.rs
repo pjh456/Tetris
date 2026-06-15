@@ -45,7 +45,7 @@ impl PlayerConnection<Online> {
             .as_ref()
             .ok_or_else(|| RelayError::WsError("input_tx missing".into()))?
             .try_send(event)
-            .map_err(|e| RelayError::RoomFull(format!("input channel full: {e}")))
+            .map_err(|e| RelayError::WsError(format!("input channel full: {e}")))
     }
 
     pub fn mark_reconnecting(mut self) -> PlayerConnection<Reconnecting> {
