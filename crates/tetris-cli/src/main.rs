@@ -10,7 +10,7 @@ use anyhow::Result;
 fn main() -> Result<()> {
     let orig_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        ratatui::restore();
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(ratatui::restore));
         orig_hook(info);
     }));
 
