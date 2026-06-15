@@ -538,31 +538,131 @@ fn render_game_over(
 #[allow(clippy::too_many_arguments)]
 fn render_multi(
     frame: &mut Frame,
-    _engine: &tetris_core::engine::Engine<10, 20>,
-    _opponents: &[tetris_core::engine::Engine<10, 20>],
-    _opponent_names: &[String],
-    _clear_flash_timer: u8,
-    _score_flash_timer: u8,
-    _prev_grid: &[[crate::app::CellType; 10]; 20],
-    _prev_flash_mask: &u32,
-    _prev_half: &bool,
+    engine: &tetris_core::engine::Engine<10, 20>,
+    opponents: &[tetris_core::engine::Engine<10, 20>],
+    opponent_names: &[String],
+    clear_flash_timer: u8,
+    score_flash_timer: u8,
+    prev_grid: &[[crate::app::CellType; 10]; 20],
+    prev_flash_mask: &u32,
+    prev_half: &bool,
     _spectating: Option<usize>,
 ) {
     let area = frame.area();
-    let lines = vec![
-        Line::from(""),
-        Line::from(Span::styled(
-            "MULTIPLAYER MODE",
-            Style::default().fg(Color::Cyan).bold(),
-        )),
-        Line::from(""),
-        Line::from(Span::styled(
-            "Own board + opponent mini boards (WIP)",
-            Style::default().fg(Color::DarkGray),
-        )),
-    ];
-    let para = Paragraph::new(lines).alignment(ratatui::layout::Alignment::Center);
-    frame.render_widget(para, area);
+    let chunks =
+        Layout::horizontal([Constraint::Percentage(70), Constraint::Percentage(30)]).split(area);
+    let mut local_prev_grid = *prev_grid;
+    let mut local_prev_flash_mask = *prev_flash_mask;
+    let mut local_prev_half = *prev_half;
+
+    render_playing(
+        frame,
+        engine,
+        clear_flash_timer,
+        score_flash_timer,
+        &mut local_prev_grid,
+        &mut local_prev_flash_mask,
+        &mut local_prev_half,
+    );
+
+    let right = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Length(11),
+        Constraint::Length(11),
+        Constraint::Length(11),
+        Constraint::Fill(1),
+    ])
+    .split(chunks[1]);
+
+    let title = Paragraph::new(vec![Line::from(Span::styled(
+        "OPPONENTS",
+        Style::default().fg(Color::Cyan).bold(),
+    ))]);
+    frame.render_widget(title, right[0]);
+
+    for (idx, area) in right.iter().skip(1).take(3).enumerate() {
+        if idx < opponents.len() {
+            let name = opponent_names.get(idx).map_or("P?", String::as_str);
+            render_opponent_panel(frame, &opponents[idx], name, *area);
+        }
+    }
+}
+
+fn render_opponent_panel(
+    frame: &mut Frame,
+    engine: &tetris_core::engine::Engine<10, 20>,
+    name: &str,
+    area: Rect,
+) {
+    let block = Block::default()
+        .title(format!(" {name} "))
+        .borders(Borders::ALL);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let st = &engine.state;
+    let ghost_y = get_ghost_y(st);
+    let shape = &PIECES[st.piece as usize].rot[st.rot as usize];
+    let mut lines = Vec::new();
+
+    for y in (0..20).step_by(2) {
+        let mut spans = Vec::new();
+        for x in 0..10 {
+            let top = render_cell_for_state(st, shape, ghost_y, x, y);
+            let bot = if y + 1 < 20 {
+                render_cell_for_state(st, shape, ghost_y, x, y + 1)
+            } else {
+                crate::app::CellType::Empty
+            };
+            let (ch, style) = half_cell(top, bot, false);
+            spans.push(Span::styled(ch, style));
+        }
+        lines.push(Line::from(spans));
+    }
+
+    frame.render_widget(Paragraph::new(lines), inner);
+}
+
+fn render_cell_for_state(
+    st: &tetris_core::state::State<10, 20>,
+    shape: &tetris_core::piece::Shape,
+    ghost_y: i32,
+    x: usize,
+    y: usize,
+) -> crate::app::CellType {
+    if st.board.rows[y] & (1u64 << x) != 0 {
+        return crate::app::CellType::Locked;
+    }
+
+    if ghost_y >= 0 {
+        for dy in 0..4 {
+            for dx in 0..4 {
+                if shape.row[dy] & (1 << dx) == 0 {
+                    continue;
+                }
+                let gx = st.x as i32 + dx;
+                let gy = ghost_y + dy as i32;
+                if gx == x as i32 && gy == y as i32 {
+                    return crate::app::CellType::Ghost;
+                }
+            }
+        }
+    }
+
+    for dy in 0..4 {
+        for dx in 0..4 {
+            if shape.row[dy] & (1 << dx) == 0 {
+                continue;
+            }
+            let px = st.x as i32 + dx;
+            let py = st.y as i32 + dy as i32;
+            if px == x as i32 && py == y as i32 {
+                return crate::app::CellType::Active(st.piece);
+            }
+        }
+    }
+
+    crate::app::CellType::Empty
 }
 
 fn render_game_over_multi(frame: &mut Frame, score: u32, lines: u32, level: u32, place: u8) {

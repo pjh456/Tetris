@@ -10,6 +10,9 @@ use wasm_bindgen::prelude::*;
 mod error;
 mod utils;
 
+#[cfg(target_arch = "wasm32")]
+const OPPONENT_GRID_LEN: usize = 200;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpponentInfo {
     pub player_id: u8,
@@ -26,6 +29,7 @@ pub struct MultiplayerSnapshot {
     pub room_code: Option<String>,
     pub countdown: Option<u8>,
     pub players: Vec<OpponentInfo>,
+    pub opponents: Vec<OpponentInfo>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,6 +51,7 @@ pub struct WebTetris {
     grid_buf: Vec<u8>,
     opponent_engines: Vec<Engine<10, 20>>,
     opponent_grid_bufs: Vec<Vec<u8>>,
+    room_player_infos: Vec<OpponentInfo>,
     opponent_infos: Vec<OpponentInfo>,
     room_code: Option<String>,
     local_player_id: u8,
@@ -68,6 +73,7 @@ impl WebTetris {
             grid_buf,
             opponent_engines: Vec::new(),
             opponent_grid_bufs: Vec::new(),
+            room_player_infos: Vec::new(),
             opponent_infos: Vec::new(),
             room_code: None,
             local_player_id: 0,
@@ -81,6 +87,7 @@ impl WebTetris {
         self.engine.reset_with_level(seed, 1);
         self.opponent_engines.clear();
         self.opponent_grid_bufs.clear();
+        self.room_player_infos.clear();
         self.opponent_infos.clear();
         self.countdown = None;
         self.last_event = None;
@@ -91,9 +98,91 @@ impl WebTetris {
         self.engine.reset_with_level(seed, start_level.clamp(1, 15));
         self.opponent_engines.clear();
         self.opponent_grid_bufs.clear();
+        self.room_player_infos.clear();
         self.opponent_infos.clear();
         self.countdown = None;
         self.last_event = None;
+    }
+
+    fn ensure_opponent_slot(&mut self, player_id: u8) -> Option<usize> {
+        let idx = player_id as usize;
+        if idx == self.local_player_id as usize {
+            return None;
+        }
+        while self.opponent_engines.len() <= idx {
+            self.opponent_engines.push(Engine::<10, 20>::new());
+            self.opponent_grid_bufs.push(vec![0u8; OPPONENT_GRID_LEN]);
+        }
+        Some(idx)
+    }
+
+    fn refresh_opponent_grid(&mut self, idx: usize) {
+        if idx >= self.opponent_engines.len() || idx >= self.opponent_grid_bufs.len() {
+            return;
+        }
+        let engine = &self.opponent_engines[idx];
+        let ghost_y = tetris_core::rules::get_ghost_y(&engine.state);
+        utils::fill_grid_buf(
+            &engine.state,
+            ghost_y,
+            engine.game_over,
+            &mut self.opponent_grid_bufs[idx],
+        );
+    }
+
+    fn apply_state_sync(&mut self, player_id: u8, pkt: &PktStateSync) {
+        let Some(idx) = self.ensure_opponent_slot(player_id) else {
+            return;
+        };
+        let engine = &mut self.opponent_engines[idx];
+        for (row_idx, row_val) in pkt.board_rows.iter().enumerate().take(20) {
+            engine.state.board.rows[row_idx] = *row_val;
+        }
+        engine.state.piece = pkt.piece;
+        engine.state.rot = pkt.rot;
+        engine.state.x = pkt.x;
+        engine.state.y = pkt.y;
+        engine.state.hold = pkt.hold;
+        engine.state.hold_used = pkt.hold_used;
+        engine.state.next = [
+            pkt.next[0],
+            pkt.next[1],
+            pkt.next[2],
+            pkt.next[0],
+            pkt.next[1],
+        ];
+        engine.state.pending_garbage = pkt.pending_garbage;
+        engine.state.rng = pkt.rng_state;
+        engine.game_over = false;
+        self.refresh_opponent_grid(idx);
+    }
+
+    fn apply_delta_sync(&mut self, player_id: u8, pkt: &PktDeltaSync) {
+        let Some(idx) = self.ensure_opponent_slot(player_id) else {
+            return;
+        };
+        let engine = &mut self.opponent_engines[idx];
+        for &(row_idx, row_val) in &pkt.changed_rows {
+            let row_idx = row_idx as usize;
+            if row_idx < 20 {
+                engine.state.board.rows[row_idx] = row_val;
+            }
+        }
+        engine.state.piece = pkt.piece;
+        engine.state.rot = pkt.rot;
+        engine.state.x = pkt.x;
+        engine.state.y = pkt.y;
+        engine.state.hold = pkt.hold;
+        engine.state.hold_used = pkt.hold_used;
+        engine.state.next = [
+            pkt.next[0],
+            pkt.next[1],
+            pkt.next[2],
+            pkt.next[0],
+            pkt.next[1],
+        ];
+        engine.game_over = false;
+        self.refresh_opponent_grid(idx);
     }
 
     pub fn tick(&mut self, delta_ms: u32) -> JsValue {
@@ -260,17 +349,23 @@ impl WebTetris {
                     Err(_) => return JsValue::NULL,
                 };
                 self.room_code = Some(pkt.room_code.clone());
-                self.opponent_infos = pkt
+                self.room_player_infos = pkt
                     .players
-                    .into_iter()
+                    .iter()
                     .map(|player| OpponentInfo {
                         player_id: player.player_id,
-                        name: player.name,
+                        name: player.name.clone(),
                         ready: player.ready,
                         alive: player.alive,
                         away: player.away,
                         is_host: player.is_host,
                     })
+                    .collect();
+                self.opponent_infos = self
+                    .room_player_infos
+                    .iter()
+                    .filter(|player| player.player_id != self.local_player_id)
+                    .cloned()
                     .collect();
                 self.last_event = Some(MultiplayerEvent {
                     kind: "room_snapshot".into(),
@@ -299,12 +394,29 @@ impl WebTetris {
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
             PacketType::StateSync => {
-                let _pkt: PktStateSync = match deserialize(data) {
+                let pkt: PktStateSync = match deserialize(data) {
                     Ok(p) => p,
                     Err(_) => return JsValue::NULL,
                 };
+                self.apply_state_sync(header.player_id, &pkt);
                 self.last_event = Some(MultiplayerEvent {
                     kind: "state_sync".into(),
+                    room_code: self.room_code.clone(),
+                    player_id: Some(header.player_id),
+                    countdown: self.countdown,
+                    random_seed: None,
+                    message: None,
+                });
+                serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
+            }
+            PacketType::DeltaSync => {
+                let pkt: PktDeltaSync = match deserialize(data) {
+                    Ok(p) => p,
+                    Err(_) => return JsValue::NULL,
+                };
+                self.apply_delta_sync(header.player_id, &pkt);
+                self.last_event = Some(MultiplayerEvent {
+                    kind: "delta_sync".into(),
                     room_code: self.room_code.clone(),
                     player_id: Some(header.player_id),
                     countdown: self.countdown,
@@ -353,7 +465,8 @@ impl WebTetris {
             local_player_id: self.local_player_id,
             room_code: self.room_code.clone(),
             countdown: self.countdown,
-            players: self.opponent_infos.clone(),
+            players: self.room_player_infos.clone(),
+            opponents: self.opponent_infos.clone(),
         };
         serde_wasm_bindgen::to_value(&snapshot).unwrap_or(JsValue::NULL)
     }
@@ -404,6 +517,31 @@ impl WebTetris {
             },
             message,
             timestamp,
+        };
+        packet_to_uint8_array(&pkt)
+    }
+
+    pub fn make_state_sync_packet(&self) -> js_sys::Uint8Array {
+        let pkt = PktStateSync {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::StateSync,
+                player_id: self.local_player_id,
+            },
+            board_rows: self.engine.state.board.rows.to_vec(),
+            piece: self.engine.state.piece,
+            rot: self.engine.state.rot,
+            x: self.engine.state.x,
+            y: self.engine.state.y,
+            hold: self.engine.state.hold,
+            hold_used: self.engine.state.hold_used,
+            next: [
+                self.engine.state.next[0],
+                self.engine.state.next[1],
+                self.engine.state.next[2],
+            ],
+            pending_garbage: self.engine.state.pending_garbage,
+            rng_state: self.engine.state.rng,
         };
         packet_to_uint8_array(&pkt)
     }

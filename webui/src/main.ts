@@ -3,6 +3,7 @@ import { effect, untracked } from '@preact/signals-core';
 import { page, settings } from './state';
 import { apply_theme, type ThemeName } from './core/theme';
 import { init_particles, apply_theme_particles } from './core/particles';
+import { init_wasm } from './core/wasm';
 import { create_home_screen } from './screens/home';
 import { create_game_screen } from './screens/game';
 import { create_settings_screen } from './screens/settings';
@@ -108,9 +109,24 @@ effect(() => {
     }
     case 'lobby': {
       mount_topbar(app);
-      const lobby_el = untracked(() => create_lobby_screen()) as CleanableElement;
-      active_lobby = lobby_el;
-      app.appendChild(lobby_el);
+      const content = document.createElement('div');
+      content.className = 'content';
+      app.appendChild(content);
+
+      void (async () => {
+        try {
+          await init_wasm(content);
+          if (page.value !== 'lobby') {
+            return;
+          }
+          const lobby_el = untracked(() => create_lobby_screen()) as CleanableElement;
+          active_lobby = lobby_el;
+          content.innerHTML = '';
+          content.appendChild(lobby_el);
+        } catch {
+          // `init_wasm` already renders error state into `content`.
+        }
+      })();
       break;
     }
     case 'spectator': {

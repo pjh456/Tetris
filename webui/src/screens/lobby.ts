@@ -34,6 +34,7 @@ export function create_lobby_screen(): HTMLElement {
   let peers: MultiplayerPlayer[] = [];
   let my_name = `Guest-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
   let is_ready = false;
+  let last_room_sync_count: number | null = null;
 
   const layout = document.createElement('div');
   layout.className = 'lobby-layout';
@@ -94,7 +95,10 @@ export function create_lobby_screen(): HTMLElement {
           peers.find((player) => player.player_id === last_event.player_id)?.name ?? 'Player';
         append_chat(speaker, last_event.message);
       } else if (last_event.kind === 'room_snapshot') {
-        append_system(`Room synced: ${peers.length} player(s)`);
+        if (last_room_sync_count !== peers.length) {
+          append_system(`Room synced: ${peers.length} player(s)`);
+          last_room_sync_count = peers.length;
+        }
       } else if (last_event.kind === 'countdown' && typeof last_event.countdown === 'number') {
         countdown_el.textContent = `STARTING IN ${last_event.countdown}`;
       } else if (last_event.kind === 'game_start' && typeof last_event.random_seed === 'number') {
@@ -114,6 +118,7 @@ export function create_lobby_screen(): HTMLElement {
     if (code_display) code_display.textContent = code;
     peers.length = 0;
     is_ready = false;
+    last_room_sync_count = null;
     set_ready_btn(false);
     update_players([]);
     current_ws = new WsClient(`${RELAY_URL}/room/${code}`, wasm);

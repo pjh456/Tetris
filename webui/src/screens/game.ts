@@ -1,4 +1,12 @@
-import { init_wasm, reset_wasm, get_grid_view, type WebTetris } from '../core/wasm';
+import {
+  init_wasm,
+  reset_wasm,
+  get_grid_view,
+  get_multiplayer_snapshot,
+  get_opponent_player_grid,
+  make_state_sync_packet,
+  type WebTetris,
+} from '../core/wasm';
 import { is_hud_data, is_hard_drop_info } from '../types/predicates';
 import { page, score, level, combo, b2b_count, lines, settings, is_multiplayer } from '../state';
 import { createBoardRenderer, create_mini_board_renderer } from '../render/board';
@@ -41,8 +49,10 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
     return;
   }
 
-  const seed = Date.now() >>> 0;
-  wasm.reset(seed);
+  if (!is_multiplayer.value) {
+    const seed = Date.now() >>> 0;
+    wasm.reset(seed);
+  }
   await audio_manager.init();
   audio_manager.set_sfx_volume(settings.value.sfx_volume);
   audio_manager.set_bgm_volume(settings.value.bgm_volume);
@@ -113,6 +123,7 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
 
   const mp_ws = is_multiplayer.value ? get_multiplayer_ws() : null;
   const opponent_grids: Map<number, Uint8Array> = new Map();
+  const opponent_labels: HTMLElement[] = [];
 
   if (mp_ws) {
     const opp_label = document.createElement('div');
@@ -127,6 +138,7 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
       const name_el = document.createElement('div');
       name_el.className = 'opponent-name';
       name_el.textContent = `P${i + 2}`;
+      opponent_labels.push(name_el);
       const canvas = document.createElement('canvas');
       canvas.style.display = 'none';
       const r = create_mini_board_renderer(canvas, 6);
@@ -155,10 +167,19 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
   let raf_id = 0;
   let last_tick = performance.now();
   let last_fx = performance.now();
+  let last_state_sync = 0;
   let cleanup_keyboard: (() => void) | null = null;
   let popup_el: HTMLElement | null = null;
   let edge_active = false;
   let edge_dir = 0;
+
+  function send_state_sync(force = false) {
+    if (!mp_ws) return;
+    const now = performance.now();
+    if (!force && now - last_state_sync < 75) return;
+    mp_ws.send(make_state_sync_packet());
+    last_state_sync = now;
+  }
 
   function edge_bump(dir: -1 | 1) {
     if (edge_active) return;
@@ -195,7 +216,25 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
     hold_renderer.render(wasm.get_hold());
     next_renderer.render(Array.from(wasm.get_next()));
 
-    // Render opponent grids
+    if (mp_ws) {
+      const snapshot = get_multiplayer_snapshot();
+      const remote_players = snapshot?.opponents ?? [];
+      opponent_grids.clear();
+      for (let i = 0; i < opponent_renderers.length; i++) {
+        const player = remote_players[i];
+        const renderer = opponent_renderers[i];
+        const label = opponent_labels[i];
+        if (!player || label === undefined) {
+          renderer.canvas.style.display = 'none';
+          continue;
+        }
+        label.textContent = `${player.name}${player.away ? ' (AWAY)' : player.alive ? '' : ' (KO)'}`;
+        const grid = get_opponent_player_grid(player.player_id);
+        opponent_grids.set(i, grid);
+        renderer.canvas.style.display = '';
+      }
+    }
+
     for (const [idx, grid] of opponent_grids) {
       if (idx < opponent_renderers.length) {
         opponent_renderers[idx].render(grid, colors);
@@ -248,6 +287,7 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
         const prev_level = level.value;
         const prev_lines = lines.value;
         wasm.tick(delta_ms);
+        send_state_sync();
         last_tick = time;
 
         const hud_after: unknown = wasm.get_hud_data();
@@ -381,6 +421,7 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
 
         const prev_lines = lines.value;
         wasm.handle_action(action);
+        send_state_sync(true);
 
         if (action === Actions.HardDrop) {
           check_harddrop_fx();
@@ -413,12 +454,14 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
   const touch_overlay = create_touch_overlay(root, (action_val) => {
     if (!wasm.is_game_over && !paused) {
       wasm.handle_action(action_val);
+      send_state_sync(true);
     }
   });
 
   last_tick = performance.now();
   last_fx = performance.now();
   render_all();
+  send_state_sync(true);
   raf_id = requestAnimationFrame(game_loop);
 }
 

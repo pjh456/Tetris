@@ -134,6 +134,11 @@ export function get_opponent_info(index: number): Record<string, unknown> | null
   return result as Record<string, unknown>;
 }
 
+export function get_opponent_player_grid(player_id: number): Uint8Array {
+  if (!instance) throw new Error('WASM not initialized');
+  return instance.get_opponent_grid(player_id);
+}
+
 export type MultiplayerPlayer = {
   player_id: number;
   name: string;
@@ -148,6 +153,7 @@ export type MultiplayerSnapshot = {
   room_code: string | null;
   countdown: number | null;
   players: MultiplayerPlayer[];
+  opponents: MultiplayerPlayer[];
 };
 
 export type MultiplayerEvent = {
@@ -184,4 +190,9 @@ export function make_player_ready_packet(ready: boolean): Uint8Array {
 export function make_chat_message_packet(message: string): Uint8Array {
   if (!instance) throw new Error('WASM not initialized');
   return instance.make_chat_message_packet(message, new Date().toISOString());
+}
+
+export function make_state_sync_packet(): Uint8Array {
+  if (!instance) throw new Error('WASM not initialized');
+  return instance.make_state_sync_packet();
 }
