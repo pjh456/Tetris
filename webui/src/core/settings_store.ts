@@ -102,14 +102,16 @@ export type LeaderboardEntry = {
 };
 
 const LEADERBOARD_KEY = 'tetris-leaderboard';
+let _leaderboard_cache: LeaderboardEntry[] | null = null;
 
 export function get_leaderboard(): LeaderboardEntry[] {
+  if (_leaderboard_cache) return _leaderboard_cache;
   try {
     const raw = localStorage.getItem(LEADERBOARD_KEY);
-    if (!raw) return [];
+    if (!raw) { _leaderboard_cache = []; return []; }
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
+    if (!Array.isArray(parsed)) { _leaderboard_cache = []; return []; }
+    _leaderboard_cache = parsed
       .filter(
         (e: unknown) =>
           e &&
@@ -121,6 +123,7 @@ export function get_leaderboard(): LeaderboardEntry[] {
       )
       .sort((a: LeaderboardEntry, b: LeaderboardEntry) => b.score - a.score)
       .slice(0, 10);
+    return _leaderboard_cache;
   } catch {
     return [];
   }
@@ -137,11 +140,13 @@ export function save_score_to_leaderboard(score: number, level: number, lines: n
   entries.push(entry);
   entries.sort((a, b) => b.score - a.score);
   const top10 = entries.slice(0, 10);
+  _leaderboard_cache = null;
   localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(top10));
   const rank = top10.findIndex((e) => e === entry);
   return rank >= 0 ? rank + 1 : 0;
 }
 
 export function clear_leaderboard(): void {
+  _leaderboard_cache = null;
   localStorage.removeItem(LEADERBOARD_KEY);
 }
