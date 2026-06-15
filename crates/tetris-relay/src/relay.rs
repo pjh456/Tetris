@@ -90,7 +90,7 @@ impl RoomManager {
         let peer = peers
             .iter_mut()
             .find(|peer| peer.id == id)
-            .ok_or_else(|| RelayError::PeerNotFound)?;
+            .ok_or(RelayError::PeerNotFound)?;
         peer.name = name;
         Ok(peers.clone())
     }
@@ -109,7 +109,7 @@ impl RoomManager {
         let peer = peers
             .iter_mut()
             .find(|peer| peer.id == id)
-            .ok_or_else(|| RelayError::PeerNotFound)?;
+            .ok_or(RelayError::PeerNotFound)?;
         peer.ready = ready;
         Ok(peers.clone())
     }
@@ -191,7 +191,7 @@ impl RoomManager {
             .iter()
             .find(|peer| peer.id == id)
             .cloned()
-            .ok_or_else(|| RelayError::PeerNotFound)
+            .ok_or(RelayError::PeerNotFound)
     }
 
     pub async fn countdown_active(&self, code: &str) -> Result<bool, RelayError> {

@@ -10,15 +10,21 @@ use tetris_protocol::protocol::{
     PROTOCOL_VERSION, PacketHeader, PacketType, PktChatMessage, PktGameStart, PktJoinRoom,
     PktPlayerReady, PktReplay, PktServerAccept, PktStartCountdown, InputEvent,
 };
+use tokio::sync::Mutex;
 use tokio::time::interval;
 use tracing::{info, warn};
 
 use crate::relay::RoomManager;
-use crate::RoomActor;
+use crate::room_actor::RoomActor;
 use tetris_protocol::newtypes::Seed;
+
+use std::collections::HashMap;
+
+type PlayerChannel = (u8, tokio::sync::mpsc::Receiver<InputEvent>, tokio::sync::mpsc::Sender<Vec<u8>>);
 
 pub struct AppState {
     pub room_manager: Arc<RoomManager>,
+    pub pending_inputs: Arc<Mutex<HashMap<String, Vec<PlayerChannel>>>>,
 }
 
 #[allow(clippy::unused_async)]
@@ -60,10 +66,19 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
     let room_code_send = room_code.clone();
 
     // Per-client bounded input + outbound channels for RoomActor (D-18)
-    let (input_tx, _input_rx) = tokio::sync::mpsc::channel::<InputEvent>(64);
-    let (_outbound_tx, outbound_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
+    let (input_tx, input_rx) = tokio::sync::mpsc::channel::<InputEvent>(64);
+    let (outbound_tx, outbound_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
 
     if let Ok(peer) = state.room_manager.peer_by_id(&room_code, peer_id).await {
+        // Store input_rx + outbound_tx for RoomActor when game starts
+        {
+            let mut pending = state.pending_inputs.lock().await;
+            pending
+                .entry(room_code.clone())
+                .or_default()
+                .push((peer.player_id, input_rx, outbound_tx));
+        }
+
         let accept = PktServerAccept {
             header: PacketHeader {
                 version: PROTOCOL_VERSION,
@@ -202,10 +217,31 @@ async fn handle_binary_message(
                         if let Ok(data) = serialize(&game_start) {
                             let _ = state.room_manager.broadcast(&room_code_owned, data).await;
                         }
-                        // Spawn RoomActor for authoritative game loop (D-19)
-                        let _room_actor = RoomActor::new(room_code_owned.clone(), Seed(random_seed as i32));
-                        // RoomActor::run() will be spawned in a later plan when outbound channels exist.
-                        // For now, the actor is created to establish the code path.
+                        // Retrieve pending channels and spawn RoomActor
+                        let player_channels: Vec<PlayerChannel> = {
+                            let mut pending = state.pending_inputs.lock().await;
+                            pending.remove(&room_code_owned).unwrap_or_default()
+                        };
+                        if !player_channels.is_empty() {
+                            let mut actor = RoomActor::new(
+                                room_code_owned.clone(),
+                                Seed(random_seed as i32),
+                            );
+                            for (player_id, input_rx, outbound_tx) in player_channels {
+                                use crate::player_conn::PlayerConnection;
+                                use crate::player_conn::Online;
+                                use tetris_protocol::newtypes::PlayerSlot;
+                                let (conn_tx, _) = tokio::sync::mpsc::channel::<InputEvent>(64);
+                                let conn = PlayerConnection::<Online>::new(
+                                    PlayerSlot(player_id),
+                                    conn_tx,
+                                    format!("Player {}", player_id + 1),
+                                );
+                                actor.add_player(PlayerSlot(player_id), input_rx, conn, outbound_tx);
+                            }
+                            let (_cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
+                            tokio::spawn(actor.run(cancel_rx));
+                        }
 
                         if let Ok(reset_peers) =
                             state.room_manager.reset_ready_states(&room_code_owned).await

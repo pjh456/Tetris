@@ -1,7 +1,9 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::{Router, routing::get};
 use tokio::net::TcpListener;
+use tokio::sync::Mutex;
 use tracing::info;
 
 use tetris_relay::relay::RoomManager;
@@ -14,6 +16,7 @@ async fn main() {
     let port = parse_port();
     let state = Arc::new(AppState {
         room_manager: Arc::new(RoomManager::new(100)),
+        pending_inputs: Arc::new(Mutex::new(HashMap::new())),
     });
 
     let app = Router::new()
