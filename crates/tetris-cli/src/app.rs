@@ -190,11 +190,12 @@ fn step(state: AppState, msg: Message) -> (AppState, bool) {
                 }
                 Message::Key(KeyCode::Char(' ')) => {
                     let prev_score = engine.scorer.score;
+                    let prev_clear = engine.state.last_clear_count;
                     engine.handle_action(Action::HardDrop);
                     if engine.scorer.score != prev_score {
                         score_flash_timer = 10;
                     }
-                    if engine.state.last_clear_count > 0 {
+                    if engine.state.last_clear_count > prev_clear {
                         clear_flash_timer = 8;
                     }
                 }
@@ -207,11 +208,12 @@ fn step(state: AppState, msg: Message) -> (AppState, bool) {
                 Message::Tick => {
                     engine.scorer.tick_time(20);
                     let prev_score = engine.scorer.score;
+                    let prev_clear = engine.state.last_clear_count;
                     engine.tick(20);
                     if engine.scorer.score != prev_score {
                         score_flash_timer = 10;
                     }
-                    if engine.state.last_clear_count > 0 {
+                    if engine.state.last_clear_count > prev_clear {
                         clear_flash_timer = 8;
                     }
                 }
