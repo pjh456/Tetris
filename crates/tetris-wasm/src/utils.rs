@@ -13,7 +13,7 @@ pub struct HardDropInfo {
 #[derive(Serialize)]
 #[allow(dead_code)]
 pub struct HudData {
-    pub score: u32,
+    pub score: u64,
     pub level: u32,
     pub lines: u32,
     pub combo: u32,
@@ -25,7 +25,7 @@ pub struct HudData {
 #[derive(Serialize)]
 #[allow(dead_code)]
 pub struct GameStats {
-    pub score: u32,
+    pub score: u64,
     pub lines: u32,
     pub level: u32,
     pub game_time_ms: u64,

@@ -82,7 +82,7 @@ pub struct Engine<const W: usize, const H: usize> {
     soft_drop_cells: u8,
     hard_drop_cells: u8,
     gravity_accumulator: u32,
-    garbage_hole_x: u8,
+    pub garbage_hole_x: u8,
 }
 
 impl<const W: usize, const H: usize> Default for Engine<W, H> {
