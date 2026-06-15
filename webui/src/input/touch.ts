@@ -156,7 +156,7 @@ export function create_touch_overlay(
   das_timer = window.setInterval(() => {
     const now = performance.now();
     const das = settings.value.das_ms;
-    const arr = settings.value.arr_ms;
+    const arr = Math.max(settings.value.arr_ms, 1);
     for (const [, btn] of active_touches) {
       const held = now - btn.held_start;
       if (held >= das) {
