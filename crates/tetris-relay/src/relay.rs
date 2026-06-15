@@ -252,8 +252,12 @@ impl RoomManager {
         let should_remove = {
             let rooms = self.rooms.read().await;
             if let Some(room) = rooms.get(code) {
-                let prev = room.player_count.fetch_sub(1, Ordering::SeqCst);
-                prev <= 1
+                let prev = room.player_count.fetch_update(
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                    |p| if p > 0 { Some(p - 1) } else { Some(0) },
+                );
+                prev.map_or(true, |p| p <= 1)
             } else {
                 false
             }
