@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-#[allow(dead_code)]
+#[allow(dead_code)] // Reserved for CLI error propagation (render/input/config failures)
 pub enum CliError {
     #[error("config error: {0}")]
     Config(String),
