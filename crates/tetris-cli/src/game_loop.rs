@@ -34,7 +34,7 @@ pub fn run_game_loop<F, G>(
 
         let now = Instant::now();
 
-        if now - last_tick >= tick_interval {
+        while now - last_tick >= tick_interval {
             if on_update(&mut state, Message::Tick) {
                 return;
             }
