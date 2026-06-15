@@ -95,7 +95,7 @@ export function bindKeyboard(
   function process_repeats(now: number) {
     held.forEach((state, action) => {
       if (now - state.pressedAt < config.das_ms) return;
-      const interval = config.arr_ms || 10;
+      const interval = config.arr_ms ?? 10;
       if (now - state.lastFire >= interval) {
         state.lastFire = now;
         fire(action);
