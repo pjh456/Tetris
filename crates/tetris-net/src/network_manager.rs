@@ -65,7 +65,7 @@ impl NetworkManager {
             local_player_id: 0,
             max_players: 2,
             connected_clients: HashMap::new(),
-            next_client_id: 0,
+            next_client_id: 1,
         }
     }
 
