@@ -33,7 +33,10 @@ impl InputHandler {
         if !event::poll(Duration::from_millis(1)).unwrap_or(false) {
             return None;
         }
-        let ev = event::read().ok()?;
+        let ev = match event::read() {
+            Ok(ev) => ev,
+            Err(_) => return None,
+        };
         match ev {
             Event::Key(key) if key.kind == KeyEventKind::Press => {
                 let code = key.code;
