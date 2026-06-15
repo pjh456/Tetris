@@ -2,6 +2,8 @@ use crate::attack::AttackResult;
 use crate::board::ClearResult;
 use crate::engine::Action;
 
+/// Board abstraction for const-generic-independent algorithm reuse.
+/// Implemented by Board<W, H>; reserved for future AI/Observer adapters.
 pub trait TetrisBoard {
     const FULL: u64;
 
@@ -14,6 +16,8 @@ pub trait TetrisBoard {
     fn insert_garbage(&mut self, lines: u8, hole_x: u8);
 }
 
+/// Engine abstraction for transport-agnostic game logic reuse.
+/// Implemented by Engine<W, H>; reserved for net/wasm driver polymorphism.
 pub trait GameEngine {
     fn new() -> Self;
     fn reset(&mut self, seed: u32);
