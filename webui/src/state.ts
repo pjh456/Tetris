@@ -13,9 +13,16 @@ export type Page =
 export const page = signal<Page>('home');
 export const is_multiplayer = signal(false);
 export const room_code = signal<string | null>(null);
-export const connection_status = signal<'offline' | 'connecting' | 'connected' | 'disconnected'>(
-  'offline',
-);
+export type ConnectionState =
+  | 'offline'
+  | 'connecting'
+  | 'online'
+  | 'slow'
+  | 'reconnecting'
+  | 'disconnected'
+  | 'resyncing';
+
+export const connection_status = signal<ConnectionState>('offline');
 
 export const score = signal(0);
 export const level = signal(1);

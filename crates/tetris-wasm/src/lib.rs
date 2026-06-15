@@ -8,6 +8,7 @@ use tetris_protocol::protocol::*;
 use wasm_bindgen::prelude::*;
 
 mod error;
+mod input_buffer;
 mod utils;
 
 #[cfg(target_arch = "wasm32")]
@@ -57,6 +58,8 @@ pub struct WebTetris {
     local_player_id: u8,
     countdown: Option<u8>,
     last_event: Option<MultiplayerEvent>,
+    input_buf: input_buffer::ClientInputBuffer,
+    last_state_hash: Option<(tetris_protocol::newtypes::TickNumber, u32)>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -79,6 +82,8 @@ impl WebTetris {
             local_player_id: 0,
             countdown: None,
             last_event: None,
+            input_buf: input_buffer::ClientInputBuffer::new(),
+            last_state_hash: None,
         }
     }
 
@@ -456,6 +461,84 @@ impl WebTetris {
                 });
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
+            PacketType::StateHash => {
+                let pkt: PktStateHash = match deserialize(data) {
+                    Ok(p) => p,
+                    Err(_) => return JsValue::NULL,
+                };
+                self.last_state_hash = Some((pkt.tick, pkt.hash));
+                JsValue::NULL
+            }
+            PacketType::StateSnapshot => {
+                let pkt: PktStateSnapshot = match deserialize(data) {
+                    Ok(p) => p,
+                    Err(_) => return JsValue::NULL,
+                };
+                self.apply_state_snapshot(header.player_id, &pkt);
+                self.last_event = Some(MultiplayerEvent {
+                    kind: "state_snapshot".into(),
+                    room_code: self.room_code.clone(),
+                    player_id: Some(header.player_id),
+                    countdown: self.countdown,
+                    random_seed: None,
+                    message: None,
+                });
+                serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
+            }
+            PacketType::ServerReplay => {
+                let pkt: PktServerReplay = match deserialize(data) {
+                    Ok(p) => p,
+                    Err(_) => return JsValue::NULL,
+                };
+                let player_id = pkt.source_player.0;
+                let Some(idx) = self.ensure_opponent_slot(player_id) else {
+                    return JsValue::NULL;
+                };
+                for event in &pkt.events {
+                    let action = Action::from_u8(event.key as u8);
+                    if event.pressed {
+                        self.opponent_engines[idx].handle_action(action);
+                    }
+                }
+                if pkt.ige_garbage_lines > 0 {
+                    self.opponent_engines[idx]
+                        .state
+                        .pending_garbage = self.opponent_engines[idx]
+                        .state
+                        .pending_garbage
+                        .saturating_add(pkt.ige_garbage_lines);
+                }
+                self.refresh_opponent_grid(idx);
+                JsValue::NULL
+            }
+            PacketType::ReconnectAck => {
+                let pkt: PktReconnectAck = match deserialize(data) {
+                    Ok(p) => p,
+                    Err(_) => return JsValue::NULL,
+                };
+                for replay in &pkt.replay_events {
+                    let player_id = replay.source_player.0;
+                    let Some(idx) = self.ensure_opponent_slot(player_id) else {
+                        continue;
+                    };
+                    for event in &replay.events {
+                        let action = Action::from_u8(event.key as u8);
+                        if event.pressed {
+                            self.opponent_engines[idx].handle_action(action);
+                        }
+                    }
+                    self.refresh_opponent_grid(idx);
+                }
+                self.last_event = Some(MultiplayerEvent {
+                    kind: "reconnect_ack".into(),
+                    room_code: self.room_code.clone(),
+                    player_id: None,
+                    countdown: self.countdown,
+                    random_seed: None,
+                    message: None,
+                });
+                serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
+            }
             _ => JsValue::NULL,
         }
     }
@@ -566,6 +649,67 @@ impl WebTetris {
         }
         serde_wasm_bindgen::to_value(&self.opponent_infos[idx]).unwrap_or(JsValue::NULL)
     }
+
+    fn apply_state_snapshot(&mut self, player_id: u8, pkt: &PktStateSnapshot) {
+        let Some(idx) = self.ensure_opponent_slot(player_id) else {
+            return;
+        };
+        let engine = &mut self.opponent_engines[idx];
+        for (row_idx, row_val) in pkt.board_rows.iter().enumerate().take(20) {
+            engine.state.board.rows[row_idx] = *row_val;
+        }
+        engine.state.piece = pkt.piece;
+        engine.state.rot = pkt.rot;
+        engine.state.x = pkt.x;
+        engine.state.y = pkt.y;
+        engine.state.hold = pkt.hold;
+        engine.state.hold_used = pkt.hold_used;
+        engine.state.next = pkt.next;
+        engine.state.rng = pkt.rng_state;
+        engine.state.combo = pkt.combo;
+        engine.state.b2b = pkt.b2b;
+        engine.state.pending_garbage = pkt.pending_garbage;
+        engine.game_over = false;
+        self.refresh_opponent_grid(idx);
+    }
+
+    pub fn push_input_event(&mut self, key: u8, pressed: bool, subframe: f32) {
+        let action = tetris_protocol::newtypes::KeyAction::from_u8(key);
+        self.input_buf.push(action, pressed, subframe);
+    }
+
+    pub fn flush_input_buffer(&mut self) -> JsValue {
+        let events = self.input_buf.flush();
+        serde_wasm_bindgen::to_value(&events).unwrap_or(JsValue::NULL)
+    }
+
+    pub fn advance_client_tick(&mut self) {
+        self.input_buf.advance_tick();
+    }
+
+    pub fn should_flush_input(&self) -> bool {
+        self.input_buf.should_flush()
+    }
+
+    pub fn get_state_hash(&self) -> u32 {
+        self.engine.state_hash()
+    }
+
+    pub fn make_replay_packet(&self, events_js: JsValue) -> js_sys::Uint8Array {
+        let Ok(events) = serde_wasm_bindgen::from_value::<Vec<InputEvent>>(events_js) else {
+            return js_sys::Uint8Array::new_with_length(0);
+        };
+        let pkt = PktReplay {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::Replay,
+                player_id: self.local_player_id,
+            },
+            events,
+            start_tick: self.input_buf.current_tick(),
+        };
+        packet_to_uint8_array(&pkt)
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -596,6 +740,8 @@ pub struct WebTetris {
     local_player_id: u8,
     countdown: Option<u8>,
     last_event: Option<MultiplayerEvent>,
+    input_buf: input_buffer::ClientInputBuffer,
+    last_state_hash: Option<(tetris_protocol::newtypes::TickNumber, u32)>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -614,6 +760,8 @@ impl WebTetris {
             local_player_id: 0,
             countdown: None,
             last_event: None,
+            input_buf: input_buffer::ClientInputBuffer::new(),
+            last_state_hash: None,
         }
     }
 }
