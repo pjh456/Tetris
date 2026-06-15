@@ -8,13 +8,15 @@ use bincode::{deserialize, serialize};
 use futures_util::{SinkExt, StreamExt};
 use tetris_protocol::protocol::{
     PROTOCOL_VERSION, PacketHeader, PacketType, PktChatMessage, PktGameStart, PktJoinRoom,
-    PktPlayerReady, PktServerAccept, PktStartCountdown,
+    PktPlayerReady, PktServerAccept, PktStartCountdown, InputEvent,
 };
 use tokio::sync::broadcast;
 use tokio::time::interval;
 use tracing::{info, warn};
 
 use crate::relay::RoomManager;
+use crate::RoomActor;
+use tetris_protocol::newtypes::Seed;
 
 pub struct AppState {
     pub room_manager: Arc<RoomManager>,
@@ -58,6 +60,9 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
     let (mut sender, mut receiver) = socket.split();
     let room_code_send = room_code.clone();
 
+    // Per-client bounded input channel for RoomActor (D-18)
+    let (input_tx, _input_rx) = tokio::sync::mpsc::channel::<InputEvent>(64);
+
     if let Ok(peer) = state.room_manager.peer_by_id(&room_code, peer_id).await {
         let accept = PktServerAccept {
             header: PacketHeader {
@@ -92,7 +97,7 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
 
         match msg {
             Message::Binary(data) => {
-                handle_binary_message(&state, &room_code, peer_id, data.to_vec()).await;
+                handle_binary_message(&state, &room_code, peer_id, &input_tx, data.to_vec()).await;
             }
             Message::Close(_) => break,
             _ => {}
@@ -117,6 +122,7 @@ async fn handle_binary_message(
     state: &Arc<AppState>,
     room_code: &str,
     peer_id: u64,
+    input_tx: &tokio::sync::mpsc::Sender<InputEvent>,
     data: Vec<u8>,
 ) {
     let header = match deserialize::<PacketHeader>(&data) {
@@ -168,7 +174,7 @@ async fn handle_binary_message(
                         .set_countdown_active(room_code, true)
                         .await;
                     let state = Arc::clone(state);
-                    let room_code = room_code.to_string();
+                    let room_code_owned = room_code.to_string();
                     tokio::spawn(async move {
                         for remaining_secs in [3_u8, 2, 1, 0] {
                             let countdown = PktStartCountdown {
@@ -180,7 +186,7 @@ async fn handle_binary_message(
                                 remaining_secs,
                             };
                             if let Ok(data) = serialize(&countdown) {
-                                let _ = state.room_manager.broadcast(&room_code, data).await;
+                                let _ = state.room_manager.broadcast(&room_code_owned, data).await;
                             }
                             tokio::time::sleep(Duration::from_secs(1)).await;
                         }
@@ -194,18 +200,23 @@ async fn handle_binary_message(
                             random_seed,
                         };
                         if let Ok(data) = serialize(&game_start) {
-                            let _ = state.room_manager.broadcast(&room_code, data).await;
+                            let _ = state.room_manager.broadcast(&room_code_owned, data).await;
                         }
+                        // Spawn RoomActor for authoritative game loop (D-19)
+                        let _room_actor = RoomActor::new(room_code_owned.clone(), Seed(random_seed as i32));
+                        // RoomActor::run() will be spawned in a later plan when outbound channels exist.
+                        // For now, the actor is created to establish the code path.
+
                         if let Ok(reset_peers) =
-                            state.room_manager.reset_ready_states(&room_code).await
+                            state.room_manager.reset_ready_states(&room_code_owned).await
                         {
                             let _ = state
                                 .room_manager
-                                .set_countdown_active(&room_code, false)
+                                .set_countdown_active(&room_code_owned, false)
                                 .await;
                             state
                                 .room_manager
-                                .broadcast_snapshot(&room_code, &reset_peers)
+                                .broadcast_snapshot(&room_code_owned, &reset_peers)
                                 .await;
                         }
                     });
@@ -231,6 +242,14 @@ async fn handle_binary_message(
                 pkt
             };
             if let Ok(data) = serialize(&chat_pkt) {
+                let _ = state.room_manager.broadcast(room_code, data).await;
+            }
+        }
+        // New protocol types (Replay, etc.) — forward to input_tx if RoomActor is active
+        PacketType::Replay | PacketType::PlayerAction => {
+            if let Ok(ev) = deserialize::<InputEvent>(&data) {
+                let _ = input_tx.try_send(ev);
+            } else {
                 let _ = state.room_manager.broadcast(room_code, data).await;
             }
         }
