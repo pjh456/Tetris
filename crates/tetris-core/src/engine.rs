@@ -57,6 +57,7 @@ pub struct TickResult {
     pub attack: Option<AttackResult>,
     pub cleared: bool,
     pub game_over: bool,
+    pub garbage_inserted: bool,
 }
 
 pub fn gravity_interval_ms(level: u32) -> u32 {
@@ -477,6 +478,7 @@ impl<const W: usize, const H: usize> Engine<W, H> {
                         attack: Some(attack_res),
                         cleared: true,
                         game_over: self.game_over,
+                        garbage_inserted: false,
                     };
                 }
             }
@@ -492,6 +494,7 @@ impl<const W: usize, const H: usize> Engine<W, H> {
         self.gravity_accumulator += FIXED_TICK_MS;
         let interval = gravity_interval_ms(self.scorer.level);
         let mut attack_result = None;
+        let mut garbage_detected = false;
 
         while self.gravity_accumulator >= interval {
             self.gravity_accumulator -= interval;
@@ -505,11 +508,15 @@ impl<const W: usize, const H: usize> Engine<W, H> {
                 self.lock_delay_accumulated_ticks += 1;
                 if self.lock_delay_accumulated_ticks >= crate::lockdelay::LOCK_DELAY_TICKS
                 {
+                    let garbage_before = self.state.pending_garbage;
                     let res = self.lock_and_spawn();
+                    let garbage_inserted = garbage_before > 0 && self.state.pending_garbage == 0
+                        && res.damage == 0;
                     attack_result = Some(res);
                     self.lock_delay_active = false;
                     self.lock_delay_accumulated_ticks = 0;
                     self.lock_delay_move_resets = 0;
+                    garbage_detected = garbage_inserted;
                     break;
                 }
             }
@@ -520,6 +527,7 @@ impl<const W: usize, const H: usize> Engine<W, H> {
             attack: attack_result,
             cleared,
             game_over: self.game_over,
+            garbage_inserted: garbage_detected,
         }
     }
 }
