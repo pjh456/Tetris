@@ -8,6 +8,8 @@ pub enum RelayError {
     RoomFull(String),
     #[error("WebSocket error: {0}")]
     WsError(String),
+    #[error("Peer not found")]
+    PeerNotFound,
     #[error("Deserialize error: {0}")]
     Decode(String),
 }
