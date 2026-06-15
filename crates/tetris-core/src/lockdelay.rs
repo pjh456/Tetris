@@ -58,7 +58,7 @@ impl LockDelay {
             return 0;
         }
         let elapsed = self.lock_deadline.saturating_duration_since(Instant::now());
-        elapsed.as_millis() as i32
+        (elapsed.as_millis().min(i32::MAX as u128)) as i32
     }
 }
 
