@@ -81,8 +81,9 @@ pub fn calculate_attack<const W: usize, const H: usize>(
     }
 
     let max_combo_idx = COMBO_DMG.len() - 1;
-    let combo_idx = if (st.combo as usize) < max_combo_idx {
-        st.combo as usize
+    let combo_val = st.combo.max(0) as usize;
+    let combo_idx = if combo_val < max_combo_idx {
+        combo_val
     } else {
         max_combo_idx
     };
