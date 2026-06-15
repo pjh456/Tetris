@@ -59,12 +59,13 @@ export class HardDropFx {
   }
 
   render() {
+    const prev_alpha = this.ctx.globalAlpha;
     for (const p of this.particles) {
       const alpha = p.life / p.max_life;
       this.ctx.globalAlpha = alpha;
       this.ctx.fillStyle = p.color;
       this.ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
     }
-    this.ctx.globalAlpha = 1;
+    this.ctx.globalAlpha = prev_alpha;
   }
 }
