@@ -68,7 +68,7 @@ export function createPreviewRenderer(
     render(pieceId: number) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      const w = parseFloat(canvas.style.width) || canvas.width;
+      const w = parseFloat(canvas.style.width) || canvas.clientWidth || canvas.width;
       const cell = w / 4;
       if (showGrid) {
         for (let y = 0; y < 4; y++) {
@@ -104,8 +104,8 @@ export function createNextStackRenderer(canvas: HTMLCanvasElement): NextStackRen
     render(pieces: number[]) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      const w = parseFloat(canvas.style.width) || canvas.width;
-      const h = parseFloat(canvas.style.height) || canvas.height;
+      const w = parseFloat(canvas.style.width) || canvas.clientWidth || canvas.width;
+      const h = parseFloat(canvas.style.height) || canvas.clientHeight || canvas.height;
       const baseCell = w / 4;
       const pieceHeight = baseCell * 3.2;
       const gap = baseCell * 0.35;
