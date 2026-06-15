@@ -181,6 +181,10 @@ export class AudioManager {
       gain.connect(this.sfx_gain!);
       osc.start();
       osc.stop(this.ctx.currentTime + def.duration);
+      osc.onended = () => {
+        osc.disconnect();
+        gain.disconnect();
+      };
 
       if (this.bgm_gain && this.bgm_source) {
         this.bgm_gain.gain.linearRampToValueAtTime(
