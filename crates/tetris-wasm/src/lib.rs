@@ -636,7 +636,7 @@ impl WebTetris {
     pub fn get_opponent_grid(&self, player_id: u8) -> js_sys::Uint8Array {
         let idx = player_id as usize;
         if idx >= self.opponent_grid_bufs.len() {
-            return js_sys::Uint8Array::new(&js_sys::Uint8Array::new_with_length(200));
+            return js_sys::Uint8Array::new_with_length(200);
         }
         let buf = &self.opponent_grid_bufs[idx];
         js_sys::Uint8Array::from(buf.as_slice())
