@@ -1,7 +1,9 @@
+use serde::{Deserialize, Serialize};
+
 use crate::board::Board;
 use crate::types::{Piece, Rot};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct State<const W: usize, const H: usize> {
     pub board: Board<W, H>,
     pub piece: Piece,

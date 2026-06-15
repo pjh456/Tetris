@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use slotmap::{SlotMap, new_key_type};
 use tetris_core::engine::{Action, Engine};
@@ -112,10 +111,10 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
     }
 
     pub fn tick_all(&mut self, delta_ms: u32) {
-        let mut engines: Vec<&mut Engine<W, H>> = self.engines.values_mut().collect();
-        engines.par_iter_mut().for_each(|engine| {
+        // Sequential tick — required for deterministic engine state (D-01).
+        for engine in self.engines.values_mut() {
             engine.tick(delta_ms);
-        });
+        }
     }
 
     pub fn create_room(&mut self, settings: RoomSettings, host_name: &str, host_uuid: &str) {
@@ -687,7 +686,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tick_all_parallel() {
+    fn test_tick_all_deterministic() {
         let mut driver = NetGameDriver::<10, 20>::new(Engine::new());
         for i in 0..7 {
             let mut engine = Engine::<10, 20>::new();
@@ -695,9 +694,30 @@ mod tests {
             driver.add_player(engine);
         }
         assert_eq!(driver.engines.len(), 8);
+
+        let mut driver2 = NetGameDriver::<10, 20>::new(Engine::new());
+        for i in 0..7 {
+            let mut engine = Engine::<10, 20>::new();
+            engine.reset((42 + i * 100) as u32);
+            driver2.add_player(engine);
+        }
+
         driver.tick_all(16);
         driver.tick_all(16);
         driver.tick_all(16);
+        driver2.tick_all(16);
+        driver2.tick_all(16);
+        driver2.tick_all(16);
+
+        let all_keys: Vec<_> = driver.engines.keys().collect();
+        for key in all_keys {
+            assert_eq!(
+                driver.engines[key].state_hash(),
+                driver2.engines[key].state_hash(),
+                "engine state hash mismatch for player {:?}",
+                key
+            );
+        }
     }
 
     #[test]

@@ -1,6 +1,39 @@
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
 #[derive(Debug, Clone)]
 pub struct Board<const W: usize, const H: usize> {
     pub rows: [u64; H],
+}
+
+impl<const W: usize, const H: usize> Serialize for Board<W, H> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeTuple;
+        let mut tup = serializer.serialize_tuple(H)?;
+        for row in &self.rows {
+            tup.serialize_element(row)?;
+        }
+        tup.end()
+    }
+}
+
+impl<'de, const W: usize, const H: usize> Deserialize<'de> for Board<W, H> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct BoardVisitor<const W: usize, const H: usize>;
+        impl<'de, const W: usize, const H: usize> serde::de::Visitor<'de> for BoardVisitor<W, H> {
+            type Value = Board<W, H>;
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str(&format!("a tuple of {H} u64s"))
+            }
+            fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+                let mut rows = [0u64; H];
+                for (i, row) in rows.iter_mut().enumerate() {
+                    *row = seq.next_element()?.ok_or_else(|| serde::de::Error::invalid_length(i, &self))?;
+                }
+                Ok(Board { rows })
+            }
+        }
+        deserializer.deserialize_tuple(H, BoardVisitor::<W, H>)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

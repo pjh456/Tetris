@@ -1,3 +1,4 @@
+use crc::{Crc, CRC_32_ISO_HDLC};
 use serde::{Deserialize, Serialize};
 
 use crate::attack::{AttackResult, calculate_attack};
@@ -36,18 +37,21 @@ impl Action {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Lcg(pub u32);
+static CRC32: Crc<u32> = Crc::<u32>::new(&CRC_32_ISO_HDLC);
+pub const FIXED_TICK_MS: u32 = 17;
 
-impl Lcg {
-    pub fn new(seed: u32) -> Self {
-        Lcg(seed)
-    }
+/// Placeholder input event — will be replaced by 04-02 protocol types.
+#[derive(Debug, Clone, Copy)]
+pub struct InputEvent {
+    pub key: u8,
+    pub pressed: bool,
+}
 
-    pub fn next_u32(&mut self) -> u32 {
-        self.0 = self.0.wrapping_mul(1664525).wrapping_add(1013904223);
-        self.0
-    }
+#[derive(Debug, Clone, Default)]
+pub struct TickResult {
+    pub attack: Option<AttackResult>,
+    pub cleared: bool,
+    pub game_over: bool,
 }
 
 pub fn gravity_interval_ms(level: u32) -> u32 {
@@ -63,7 +67,10 @@ pub struct Engine<const W: usize, const H: usize> {
     pub game_over: bool,
     pub has_hold: bool,
     pub scorer: ScoreTracker,
-    lock_delay: LockDelay,
+    lock_delay_wall: LockDelay,
+    lock_delay_active: bool,
+    lock_delay_accumulated_ticks: u8,
+    lock_delay_move_resets: u8,
     bag: [Piece; 7],
     bag_idx: usize,
     soft_drop_cells: u8,
@@ -105,7 +112,10 @@ impl<const W: usize, const H: usize> Engine<W, H> {
             game_over: true,
             has_hold: false,
             scorer: ScoreTracker::default(),
-            lock_delay: LockDelay::new(),
+            lock_delay_wall: LockDelay::new(),
+            lock_delay_active: false,
+            lock_delay_accumulated_ticks: 0,
+            lock_delay_move_resets: 0,
             bag: [Piece::I; 7],
             bag_idx: 7,
             soft_drop_cells: 0,
@@ -205,8 +215,13 @@ impl<const W: usize, const H: usize> Engine<W, H> {
     fn try_move_wrapped(&mut self, dx: i8, dy: i8) -> bool {
         if try_move(&mut self.state, dx, dy) {
             self.state.last_move_was_rotation = false;
-            if self.lock_delay.move_reset_count < crate::lockdelay::MAX_MOVE_RESETS {
-                self.lock_delay.reset();
+            if self.lock_delay_wall.move_reset_count < crate::lockdelay::MAX_MOVE_RESETS {
+                self.lock_delay_wall.reset();
+            }
+            if self.lock_delay_move_resets < crate::lockdelay::MAX_MOVE_RESETS as u8 {
+                self.lock_delay_move_resets += 1;
+                self.lock_delay_accumulated_ticks = 0;
+                self.lock_delay_active = true;
             }
             return true;
         }
@@ -216,8 +231,13 @@ impl<const W: usize, const H: usize> Engine<W, H> {
     fn try_rotate_wrapped(&mut self, to: Rot) -> bool {
         if try_rotate(&mut self.state, to) {
             self.state.last_move_was_rotation = true;
-            if self.lock_delay.move_reset_count < crate::lockdelay::MAX_MOVE_RESETS {
-                self.lock_delay.reset();
+            if self.lock_delay_wall.move_reset_count < crate::lockdelay::MAX_MOVE_RESETS {
+                self.lock_delay_wall.reset();
+            }
+            if self.lock_delay_move_resets < crate::lockdelay::MAX_MOVE_RESETS as u8 {
+                self.lock_delay_move_resets += 1;
+                self.lock_delay_accumulated_ticks = 0;
+                self.lock_delay_active = true;
             }
             return true;
         }
@@ -256,7 +276,10 @@ impl<const W: usize, const H: usize> Engine<W, H> {
         self.scorer = ScoreTracker::default();
         self.scorer.level = start_level.clamp(1, 15);
         self.bag_idx = 7;
-        self.lock_delay.cancel();
+        self.lock_delay_wall.cancel();
+        self.lock_delay_active = false;
+        self.lock_delay_accumulated_ticks = 0;
+        self.lock_delay_move_resets = 0;
         self.soft_drop_cells = 0;
         self.hard_drop_cells = 0;
         self.gravity_accumulator = 0;
@@ -279,7 +302,7 @@ impl<const W: usize, const H: usize> Engine<W, H> {
         self.state.x = (W / 2) as i8 - 2;
         self.state.y = 0;
         self.state.hold_used = false;
-        self.lock_delay.cancel();
+        self.lock_delay_wall.cancel();
 
         if !can_place(&self.state, self.state.x, self.state.y, self.state.rot) {
             self.game_over = true;
@@ -312,7 +335,7 @@ impl<const W: usize, const H: usize> Engine<W, H> {
                 let end_y = self.state.y;
                 self.record_harddrop(start_y, end_y);
                 self.hard_drop_cells = (end_y - start_y).max(0) as u8;
-                self.lock_delay.cancel();
+                self.lock_delay_wall.cancel();
                 self.lock_and_spawn()
             }
             Action::RotateCW => {
@@ -339,7 +362,7 @@ impl<const W: usize, const H: usize> Engine<W, H> {
             }
             Action::Hold => {
                 if !self.state.hold_used {
-                    self.lock_delay.cancel();
+                    self.lock_delay_wall.cancel();
                     if self.has_hold {
                         std::mem::swap(&mut self.state.hold, &mut self.state.piece);
                         self.state.rot = Rot::R0;
@@ -373,10 +396,10 @@ impl<const W: usize, const H: usize> Engine<W, H> {
             self.gravity_accumulator -= interval;
 
             if try_move(&mut self.state, 0, 1) {
-                self.lock_delay.cancel();
+                self.lock_delay_wall.cancel();
             } else {
-                self.lock_delay.start();
-                if self.lock_delay.update() {
+                self.lock_delay_wall.start();
+                if self.lock_delay_wall.update() {
                     result = self.lock_and_spawn();
                 }
             }
@@ -386,7 +409,111 @@ impl<const W: usize, const H: usize> Engine<W, H> {
     }
 
     pub fn get_lock_timer(&self) -> i32 {
-        self.lock_delay.remaining_ms()
+        self.lock_delay_wall.remaining_ms()
+    }
+
+    pub fn state_hash(&self) -> u32 {
+        let mut digest = CRC32.digest();
+
+        for row in &self.state.board.rows {
+            digest.update(&row.to_le_bytes());
+        }
+
+        digest.update(&[self.state.piece as u8]);
+        digest.update(&[self.state.rot as u8]);
+        digest.update(&self.state.x.to_le_bytes());
+        digest.update(&self.state.y.to_le_bytes());
+        digest.update(&(self.state.hold as u8).to_le_bytes());
+        digest.update(&[self.state.hold_used as u8]);
+        for piece in &self.state.next {
+            digest.update(&(*piece as u8).to_le_bytes());
+        }
+        digest.update(&self.state.rng.to_le_bytes());
+        digest.update(&self.state.pending_garbage.to_le_bytes());
+        digest.update(&self.state.combo.to_le_bytes());
+        digest.update(&[self.state.b2b as u8]);
+        digest.update(&[self.state.last_move_was_rotation as u8]);
+
+        for piece in &self.bag {
+            digest.update(&(*piece as u8).to_le_bytes());
+        }
+        digest.update(&self.bag_idx.to_le_bytes());
+        digest.update(&[self.lock_delay_active as u8]);
+        digest.update(&self.lock_delay_accumulated_ticks.to_le_bytes());
+        digest.update(&self.lock_delay_move_resets.to_le_bytes());
+
+        digest.finalize()
+    }
+
+    pub fn fixed_tick(&mut self, inputs: &[InputEvent]) -> TickResult {
+        if self.game_over {
+            return TickResult {
+                game_over: true,
+                ..TickResult::default()
+            };
+        }
+
+        for input in inputs {
+            if input.pressed {
+                let action = Action::from_u8(input.key);
+                let attack_res = self.handle_action(action);
+                let locked = matches!(action, Action::HardDrop | Action::Hold);
+                if attack_res.damage != 0
+                    || attack_res.is_tspin
+                    || attack_res.is_b2b
+                    || attack_res.perfect_clear
+                    || locked
+                    || self.game_over
+                {
+                    return TickResult {
+                        attack: Some(attack_res),
+                        cleared: true,
+                        game_over: self.game_over,
+                    };
+                }
+            }
+        }
+
+        if self.game_over {
+            return TickResult {
+                game_over: true,
+                ..TickResult::default()
+            };
+        }
+
+        self.gravity_accumulator += FIXED_TICK_MS;
+        let interval = gravity_interval_ms(self.scorer.level);
+        let mut attack_result = None;
+
+        while self.gravity_accumulator >= interval {
+            self.gravity_accumulator -= interval;
+
+            if try_move(&mut self.state, 0, 1) {
+                self.lock_delay_active = false;
+                self.lock_delay_accumulated_ticks = 0;
+                self.lock_delay_move_resets = 0;
+            } else {
+                self.lock_delay_active = true;
+                self.lock_delay_accumulated_ticks += 1;
+                if self.lock_delay_move_resets < crate::lockdelay::MAX_MOVE_RESETS as u8
+                    && self.lock_delay_accumulated_ticks >= crate::lockdelay::LOCK_DELAY_TICKS
+                {
+                    let res = self.lock_and_spawn();
+                    attack_result = Some(res);
+                    self.lock_delay_active = false;
+                    self.lock_delay_accumulated_ticks = 0;
+                    self.lock_delay_move_resets = 0;
+                    break;
+                }
+            }
+        }
+
+        let cleared = attack_result.is_some();
+        TickResult {
+            attack: attack_result,
+            cleared,
+            game_over: self.game_over,
+        }
     }
 }
 
@@ -568,5 +695,72 @@ mod tests {
         assert_eq!(a.state.piece, b.state.piece);
         assert_eq!(a.state.rng, b.state.rng);
         assert_eq!(a.game_over, b.game_over);
+    }
+
+    #[test]
+    fn test_state_hash_same_engine_equal() {
+        let mut a = Engine::<10, 20>::new();
+        let mut b = Engine::<10, 20>::new();
+        a.reset(42);
+        b.reset(42);
+        assert_eq!(a.state_hash(), b.state_hash());
+    }
+
+    #[test]
+    fn test_state_hash_different_engine_unequal() {
+        let mut a = Engine::<10, 20>::new();
+        let mut b = Engine::<10, 20>::new();
+        a.reset(42);
+        b.reset(99);
+        assert_ne!(a.state_hash(), b.state_hash());
+    }
+
+    #[test]
+    fn test_state_hash_changes_after_action() {
+        let mut a = Engine::<10, 20>::new();
+        a.reset(42);
+        let h0 = a.state_hash();
+        a.handle_action(Action::MoveLeft);
+        let h1 = a.state_hash();
+        assert_ne!(h0, h1);
+    }
+
+    #[test]
+    fn test_fixed_tick_advances_gravity() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset(12345);
+        let start_y = engine.state.y;
+        for _ in 0..50 {
+            engine.fixed_tick(&[]);
+        }
+        assert!(engine.state.y > start_y || engine.game_over);
+    }
+
+    #[test]
+    fn test_fixed_tick_with_input() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset(42);
+        let piece_before = engine.state.piece;
+        let result = engine.fixed_tick(&[InputEvent {
+            key: Action::HardDrop as u8,
+            pressed: true,
+        }]);
+        assert!(result.cleared);
+        assert_ne!(engine.state.piece, piece_before);
+    }
+
+    #[test]
+    fn test_state_hash_matches_after_same_actions() {
+        let mut a = Engine::<10, 20>::new();
+        let mut b = Engine::<10, 20>::new();
+        a.reset(42);
+        b.reset(42);
+
+        for _ in 0..5 {
+            a.handle_action(Action::HardDrop);
+            b.handle_action(Action::HardDrop);
+        }
+
+        assert_eq!(a.state_hash(), b.state_hash());
     }
 }

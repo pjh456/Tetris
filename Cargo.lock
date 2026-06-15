@@ -331,6 +331,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "crc"
+version = "3.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5eb8a2a1cd12ab0d987a5d5e825195d372001a4094a0376319d5a0ad71c1ba0d"
+dependencies = [
+ "crc-catalog",
+]
+
+[[package]]
+name = "crc-catalog"
+version = "2.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "217698eaf96b4a3f0bc4f3662aaa55bdf913cd54d7204591faa790070c6d0853"
+
+[[package]]
 name = "criterion"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2310,6 +2325,7 @@ name = "tetris-core"
 version = "0.1.0"
 dependencies = [
  "bincode",
+ "crc",
  "criterion",
  "instant",
  "proptest",
@@ -2324,7 +2340,6 @@ version = "0.1.0"
 dependencies = [
  "bincode",
  "mdns-sd",
- "rayon",
  "renet",
  "rstest",
  "serde",

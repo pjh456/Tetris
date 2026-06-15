@@ -7,6 +7,7 @@ edition.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 instant = "0.1"
+crc = "3.4.0"
 
 [lints]
 workspace = true
