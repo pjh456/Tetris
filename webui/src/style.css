@@ -1158,7 +1158,7 @@ html {
   border-color: var(--color-accent);
   color: var(--color-accent);
   opacity: 0.7;
-  cursor: not-allowed;
+  cursor: pointer;
 }
 
 /* Chat system message */

@@ -278,12 +278,10 @@ function build_ready_button(): {
 
   function set_ready(r: boolean) {
     if (r) {
-      btn.textContent = 'WAITING...';
-      btn.disabled = true;
+      btn.textContent = 'CANCEL READY';
       btn.classList.add('ready-btn-active');
     } else {
       btn.textContent = 'READY';
-      btn.disabled = false;
       btn.classList.remove('ready-btn-active');
     }
   }
