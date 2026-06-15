@@ -204,7 +204,7 @@ impl<const W: usize, const H: usize> Engine<W, H> {
                 if xx < 0 || xx >= W as i8 {
                     continue;
                 }
-                mask |= 1u16 << xx;
+                mask |= 1u16 << (xx.min(15));
             }
         }
         self.state.last_harddrop_cols = mask;
