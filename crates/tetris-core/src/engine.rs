@@ -32,7 +32,10 @@ impl Action {
             4 => Action::RotateCW,
             5 => Action::RotateCCW,
             6 => Action::Hold,
-            _ => Action::MoveLeft,
+            _ => {
+                debug_assert!(false, "invalid Action u8: {v}");
+                Action::MoveLeft
+            }
         }
     }
 }
