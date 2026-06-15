@@ -40,7 +40,9 @@ impl Action {
 static CRC32: Crc<u32> = Crc::<u32>::new(&CRC_32_ISO_HDLC);
 pub const FIXED_TICK_MS: u32 = 17;
 
-/// Placeholder input event — will be replaced by 04-02 protocol types.
+/// Engine-local input event. Maps 1:1 to protocol `InputEvent`.
+/// `key` uses `Action::from_u8()` for conversion.
+/// Conversion from wire format happens in the net layer.
 #[derive(Debug, Clone, Copy)]
 pub struct InputEvent {
     pub key: u8,

@@ -2,7 +2,9 @@ use serde::{Deserialize, Serialize};
 use tetris_core::engine::Action;
 use tetris_core::types::{Piece, Rot};
 
-pub const PROTOCOL_VERSION: u8 = 0x10;
+use crate::newtypes::{KeyAction, PlayerSlot, Seed, TickNumber};
+
+pub const PROTOCOL_VERSION: u8 = 0x11;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
@@ -29,6 +31,14 @@ pub enum PacketType {
     PlayerAway = 20,
     SpectateSwitch = 21,
     RoomSnapshot = 22,
+    Replay = 23,
+    ServerReplay = 24,
+    StateHash = 25,
+    StateSnapshot = 26,
+    Reconnect = 27,
+    ReconnectAck = 28,
+    Resume = 29,
+    Ige = 30,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -207,6 +217,91 @@ pub struct PktRoomSnapshot {
     pub players: Vec<RoomPlayerSnapshot>,
 }
 
+// ── 0x11 protocol types (per D-02, D-05, D-06, D-10, D-12) ──
+
+/// Client-to-server raw key event. Per D-02.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InputEvent {
+    pub key: KeyAction,
+    pub pressed: bool,
+    pub tick: TickNumber,
+    pub subframe: f32,
+}
+
+/// Client-to-server batched input events. Per D-05.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PktReplay {
+    pub header: PacketHeader,
+    pub events: Vec<InputEvent>,
+    pub start_tick: TickNumber,
+}
+
+/// Server-to-client opponent replay events with optional ige garbage.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PktServerReplay {
+    pub header: PacketHeader,
+    pub source_player: PlayerSlot,
+    pub events: Vec<InputEvent>,
+    pub ige_garbage_lines: u8,
+    pub ige_hole_x: u8,
+}
+
+/// Server broadcast of state hash for fast divergence detection. Per D-06.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PktStateHash {
+    pub header: PacketHeader,
+    pub tick: TickNumber,
+    pub hash: u32,
+}
+
+/// Full state snapshot for catch-up or deep resync. Per D-12.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PktStateSnapshot {
+    pub header: PacketHeader,
+    pub tick: TickNumber,
+    pub board_rows: Vec<u64>,
+    pub piece: Piece,
+    pub rot: Rot,
+    pub x: i8,
+    pub y: i8,
+    pub hold: Piece,
+    pub hold_used: bool,
+    pub next: [Piece; 5],
+    pub rng_state: u32,
+    pub combo: i32,
+    pub b2b: bool,
+    pub pending_garbage: u8,
+    pub seed: Seed,
+}
+
+/// Client-to-server reconnect request with hash ladder. Per D-10, D-11.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PktReconnect {
+    pub header: PacketHeader,
+    pub last_good_tick: TickNumber,
+    pub client_hashes: Vec<(TickNumber, u32)>,
+}
+
+/// Server response to reconnect: divergence point + catch-up events.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PktReconnectAck {
+    pub header: PacketHeader,
+    pub divergence_tick: TickNumber,
+    pub replay_events: Vec<PktServerReplay>,
+}
+
+/// Resume connection with stored session state. Per D-10.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PktResume {
+    pub header: PacketHeader,
+    pub socket_id: String,
+    pub resume_token: String,
+}
+
+// ── Deprecated (retained for backward-compat reference) ──
+// Note: PktPlayerAction is superseded by PktReplay with InputEvent (0x11).
+// PktStateSync is superseded by PktStateSnapshot (full) / PktServerReplay (incremental).
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -308,7 +403,7 @@ mod tests {
 
     #[test]
     fn test_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 0x10);
+        assert_eq!(PROTOCOL_VERSION, 0x11);
     }
 
     #[test]
@@ -529,5 +624,176 @@ mod tests {
             }],
         };
         bincode_round_trip(&pkt);
+    }
+
+    // ── 0x11 protocol type tests ──
+
+    #[test]
+    fn test_input_event_round_trip() {
+        let ev = InputEvent {
+            key: KeyAction::KeyLeft,
+            pressed: true,
+            tick: TickNumber(5),
+            subframe: 0.5,
+        };
+        bincode_round_trip(&ev);
+    }
+
+    #[test]
+    fn test_input_event_key_release_round_trip() {
+        let ev = InputEvent {
+            key: KeyAction::KeyHardDrop,
+            pressed: false,
+            tick: TickNumber(0),
+            subframe: 0.0,
+        };
+        bincode_round_trip(&ev);
+    }
+
+    #[test]
+    fn test_pkt_replay_round_trip() {
+        let pkt = PktReplay {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::Replay,
+                player_id: 0,
+            },
+            events: vec![
+                InputEvent {
+                    key: KeyAction::KeyLeft,
+                    pressed: true,
+                    tick: TickNumber(1),
+                    subframe: 0.1,
+                },
+                InputEvent {
+                    key: KeyAction::KeyHardDrop,
+                    pressed: true,
+                    tick: TickNumber(2),
+                    subframe: 0.5,
+                },
+            ],
+            start_tick: TickNumber(1),
+        };
+        bincode_round_trip(&pkt);
+    }
+
+    #[test]
+    fn test_pkt_server_replay_round_trip() {
+        let pkt = PktServerReplay {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::ServerReplay,
+                player_id: 0,
+            },
+            source_player: PlayerSlot(1),
+            events: vec![InputEvent {
+                key: KeyAction::KeyRotateCW,
+                pressed: true,
+                tick: TickNumber(3),
+                subframe: 0.2,
+            }],
+            ige_garbage_lines: 2,
+            ige_hole_x: 5,
+        };
+        bincode_round_trip(&pkt);
+    }
+
+    #[test]
+    fn test_pkt_state_hash_round_trip() {
+        let pkt = PktStateHash {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::StateHash,
+                player_id: 0,
+            },
+            tick: TickNumber(100),
+            hash: 0xDEAD_BEEF,
+        };
+        bincode_round_trip(&pkt);
+    }
+
+    #[test]
+    fn test_pkt_state_snapshot_round_trip() {
+        let pkt = PktStateSnapshot {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::StateSnapshot,
+                player_id: 0,
+            },
+            tick: TickNumber(50),
+            board_rows: vec![0; 20],
+            piece: Piece::T,
+            rot: Rot::R0,
+            x: 3,
+            y: 0,
+            hold: Piece::I,
+            hold_used: false,
+            next: [Piece::T, Piece::S, Piece::Z, Piece::L, Piece::J],
+            rng_state: 12345,
+            combo: 0,
+            b2b: false,
+            pending_garbage: 0,
+            seed: Seed(42),
+        };
+        bincode_round_trip(&pkt);
+    }
+
+    #[test]
+    fn test_pkt_reconnect_round_trip() {
+        let pkt = PktReconnect {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::Reconnect,
+                player_id: 1,
+            },
+            last_good_tick: TickNumber(99),
+            client_hashes: vec![(TickNumber(0), 0xAAAA), (TickNumber(100), 0xBBBB)],
+        };
+        bincode_round_trip(&pkt);
+    }
+
+    #[test]
+    fn test_pkt_reconnect_ack_round_trip() {
+        let pkt = PktReconnectAck {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::ReconnectAck,
+                player_id: 0,
+            },
+            divergence_tick: TickNumber(99),
+            replay_events: vec![],
+        };
+        bincode_round_trip(&pkt);
+    }
+
+    #[test]
+    fn test_pkt_resume_round_trip() {
+        let pkt = PktResume {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::Resume,
+                player_id: 1,
+            },
+            socket_id: "abc".into(),
+            resume_token: "xyz".into(),
+        };
+        bincode_round_trip(&pkt);
+    }
+
+    #[test]
+    fn test_protocol_version_0x11() {
+        assert_eq!(PROTOCOL_VERSION, 0x11);
+    }
+
+    #[test]
+    fn test_new_packet_types() {
+        assert_eq!(PacketType::Replay as u8, 23);
+        assert_eq!(PacketType::ServerReplay as u8, 24);
+        assert_eq!(PacketType::StateHash as u8, 25);
+        assert_eq!(PacketType::StateSnapshot as u8, 26);
+        assert_eq!(PacketType::Reconnect as u8, 27);
+        assert_eq!(PacketType::ReconnectAck as u8, 28);
+        assert_eq!(PacketType::Resume as u8, 29);
+        assert_eq!(PacketType::Ige as u8, 30);
     }
 }
