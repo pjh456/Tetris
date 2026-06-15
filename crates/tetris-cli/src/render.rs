@@ -543,27 +543,16 @@ fn render_multi(
     opponent_names: &[String],
     clear_flash_timer: u8,
     score_flash_timer: u8,
-    prev_grid: &[[crate::app::CellType; 10]; 20],
-    prev_flash_mask: &u32,
-    prev_half: &bool,
+    prev_grid: &mut [[crate::app::CellType; 10]; 20],
+    prev_flash_mask: &mut u32,
+    prev_half: &mut bool,
     _spectating: Option<usize>,
 ) {
     let area = frame.area();
     let chunks =
         Layout::horizontal([Constraint::Percentage(70), Constraint::Percentage(30)]).split(area);
-    let mut local_prev_grid = *prev_grid;
-    let mut local_prev_flash_mask = *prev_flash_mask;
-    let mut local_prev_half = *prev_half;
 
-    render_playing(
-        frame,
-        engine,
-        clear_flash_timer,
-        score_flash_timer,
-        &mut local_prev_grid,
-        &mut local_prev_flash_mask,
-        &mut local_prev_half,
-    );
+    render_playing(frame, engine, clear_flash_timer, score_flash_timer, prev_grid, prev_flash_mask, prev_half);
 
     let right = Layout::vertical([
         Constraint::Length(1),
