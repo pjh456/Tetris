@@ -56,11 +56,14 @@ function mount_back_button(container: HTMLElement) {
 
 type CleanableElement = HTMLElement & { _cleanup?: () => void };
 let active_lobby: CleanableElement | null = null;
+let active_game: CleanableElement | null = null;
 
 effect(() => {
   const current = page.value;
   active_lobby?._cleanup?.();
   active_lobby = null;
+  active_game?._cleanup?.();
+  active_game = null;
   app.innerHTML = '';
 
   // Reset multiplayer state when leaving multiplayer screens
@@ -88,10 +91,13 @@ effect(() => {
       break;
     }
     case 'game': {
-      const content = document.createElement('div');
+      const content = document.createElement('div') as CleanableElement;
       content.className = 'content';
       app.appendChild(content);
-      create_game_screen(content);
+      create_game_screen(content).then((destroy) => {
+        content._cleanup = destroy;
+      });
+      active_game = content;
       mount_back_button(app);
       break;
     }

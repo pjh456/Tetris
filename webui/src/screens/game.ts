@@ -38,7 +38,7 @@ function setup_hidpi(
   return ctx;
 }
 
-export async function create_game_screen(root: HTMLElement): Promise<void> {
+export async function create_game_screen(root: HTMLElement): Promise<() => void> {
   root.innerHTML = '';
   root.className = 'content';
 
@@ -46,7 +46,7 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
   try {
     wasm = await init_wasm(root);
   } catch {
-    return;
+    return () => {};
   }
 
   if (!is_multiplayer.value) {
@@ -417,6 +417,10 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
     // Prevents BGM restart when tab returns after manual pause.
   }
 
+  let _destroy: () => void = () => {};
+
+  // ... later replaced by the real destroy ...
+
   function destroy() {
     cleanup_runtime();
     touch_overlay.destroy();
@@ -425,6 +429,7 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
     renderer.destroy();
     for (const r of opponent_renderers) r.destroy();
   }
+  _destroy = destroy;
 
   const kbd_config: KeyboardConfig = {
     das_ms: settings.value.das_ms,
@@ -505,6 +510,8 @@ export async function create_game_screen(root: HTMLElement): Promise<void> {
     }, 50);
   }
   raf_id = requestAnimationFrame(game_loop);
+
+  return _destroy;
 }
 
 function run_countdown(container: HTMLElement): Promise<void> {
