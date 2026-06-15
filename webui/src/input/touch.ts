@@ -172,13 +172,15 @@ export function create_touch_overlay(
 
   layout_buttons();
   window.addEventListener('resize', layout_buttons);
-  window.addEventListener('orientationchange', () => {
+  const orientation_handler = () => {
     setTimeout(layout_buttons, 100);
-  });
+  };
+  window.addEventListener('orientationchange', orientation_handler);
 
   return {
     destroy() {
       window.removeEventListener('resize', layout_buttons);
+      window.removeEventListener('orientationchange', orientation_handler);
       if (das_timer) clearInterval(das_timer);
       overlay.remove();
     },
