@@ -20,7 +20,7 @@ export class LineFx {
   }
 
   private get css_w(): number {
-    return parseFloat(this.canvas.style.width) || this.canvas.width;
+    return parseFloat(this.canvas.style.width) || this.canvas.clientWidth || this.canvas.width;
   }
 
   resize(width: number, height: number) {
