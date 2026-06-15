@@ -532,6 +532,14 @@ impl WebTetris {
                         }
                     }
                     self.refresh_opponent_grid(idx);
+                    if replay.ige_garbage_lines > 0 {
+                        self.opponent_engines[idx]
+                            .state
+                            .pending_garbage = self.opponent_engines[idx]
+                            .state
+                            .pending_garbage
+                            .saturating_add(replay.ige_garbage_lines);
+                    }
                 }
                 self.last_event = Some(MultiplayerEvent {
                     kind: "reconnect_ack".into(),
