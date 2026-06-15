@@ -8,7 +8,7 @@ use bincode::{deserialize, serialize};
 use futures_util::{SinkExt, StreamExt};
 use tetris_protocol::protocol::{
     PROTOCOL_VERSION, PacketHeader, PacketType, PktChatMessage, PktGameStart, PktJoinRoom,
-    PktPlayerReady, PktServerAccept, PktStartCountdown, InputEvent,
+    PktPlayerReady, PktReplay, PktServerAccept, PktStartCountdown, InputEvent,
 };
 use tokio::time::interval;
 use tracing::{info, warn};
@@ -247,8 +247,10 @@ async fn handle_binary_message(
         }
         // New protocol types (Replay, etc.) — forward to input_tx if RoomActor is active
         PacketType::Replay | PacketType::PlayerAction => {
-            if let Ok(ev) = deserialize::<InputEvent>(&data) {
-                let _ = input_tx.try_send(ev);
+            if let Ok(pkt) = deserialize::<PktReplay>(&data) {
+                for ev in &pkt.events {
+                    let _ = input_tx.try_send(ev.clone());
+                }
             } else {
                 let _ = state.room_manager.broadcast(room_code, data).await;
             }
