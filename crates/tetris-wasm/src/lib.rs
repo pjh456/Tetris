@@ -505,12 +505,12 @@ impl WebTetris {
                     }
                 }
                 if pkt.ige_garbage_lines > 0 {
-                    self.opponent_engines[idx]
-                        .state
-                        .pending_garbage = self.opponent_engines[idx]
+                    let engine = &mut self.opponent_engines[idx];
+                    engine.state.pending_garbage = engine
                         .state
                         .pending_garbage
                         .saturating_add(pkt.ige_garbage_lines);
+                    engine.garbage_hole_x = pkt.ige_hole_x;
                 }
                 self.refresh_opponent_grid(idx);
                 JsValue::NULL
@@ -533,12 +533,12 @@ impl WebTetris {
                     }
                     self.refresh_opponent_grid(idx);
                     if replay.ige_garbage_lines > 0 {
-                        self.opponent_engines[idx]
-                            .state
-                            .pending_garbage = self.opponent_engines[idx]
+                        let engine = &mut self.opponent_engines[idx];
+                        engine.state.pending_garbage = engine
                             .state
                             .pending_garbage
                             .saturating_add(replay.ige_garbage_lines);
+                        engine.garbage_hole_x = replay.ige_hole_x;
                     }
                 }
                 self.last_event = Some(MultiplayerEvent {

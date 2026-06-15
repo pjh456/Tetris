@@ -82,6 +82,7 @@ pub struct Engine<const W: usize, const H: usize> {
     soft_drop_cells: u8,
     hard_drop_cells: u8,
     gravity_accumulator: u32,
+    garbage_hole_x: u8,
 }
 
 impl<const W: usize, const H: usize> Default for Engine<W, H> {
@@ -127,6 +128,7 @@ impl<const W: usize, const H: usize> Engine<W, H> {
             soft_drop_cells: 0,
             hard_drop_cells: 0,
             gravity_accumulator: 0,
+            garbage_hole_x: 0,
         }
     }
 
@@ -185,11 +187,12 @@ impl<const W: usize, const H: usize> Engine<W, H> {
                 attack_res.damage = 0;
             }
         } else if lines_cleared == 0 && self.state.pending_garbage > 0 {
-            let hole_x = (self.next_rand() % W as u32) as u8;
+            let hole_x = self.garbage_hole_x;
             self.state
                 .board
                 .insert_garbage(self.state.pending_garbage, hole_x);
             self.state.pending_garbage = 0;
+            self.garbage_hole_x = 0;
         }
 
         self.spawn();
@@ -289,6 +292,7 @@ impl<const W: usize, const H: usize> Engine<W, H> {
         self.soft_drop_cells = 0;
         self.hard_drop_cells = 0;
         self.gravity_accumulator = 0;
+        self.garbage_hole_x = 0;
 
         for i in 0..5 {
             self.state.next[i] = self.pop_next_piece();
