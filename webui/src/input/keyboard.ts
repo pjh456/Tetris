@@ -153,11 +153,16 @@ export function bindKeyboard(
 
   window.addEventListener('keydown', on_key_down);
   window.addEventListener('keyup', on_key_up);
+  const on_blur = () => { held.clear(); one_shot_active.clear(); };
+  window.addEventListener('blur', on_blur);
+  window.addEventListener('visibilitychange', on_blur);
   if (raf_id === null) raf_id = window.requestAnimationFrame(loop);
 
   return () => {
     window.removeEventListener('keydown', on_key_down);
     window.removeEventListener('keyup', on_key_up);
+    window.removeEventListener('blur', on_blur);
+    window.removeEventListener('visibilitychange', on_blur);
     if (raf_id !== null) {
       window.cancelAnimationFrame(raf_id);
       raf_id = null;
