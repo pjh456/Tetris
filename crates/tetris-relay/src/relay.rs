@@ -61,9 +61,19 @@ impl RoomManager {
             .get(code)
             .ok_or_else(|| RelayError::RoomNotFound(code.into()))?;
         let mut peers = room.peers.lock().await;
-        let player_id = u8::try_from(peers.len())
-            .map_err(|_| RelayError::RoomFull("too many players".into()))?;
-        let name = format!("Player {}", peers.len() + 1);
+        if peers.len() >= MAX_PLAYERS_PER_ROOM {
+            return Err(RelayError::RoomFull("too many players".into()));
+        }
+        // Pick lowest unused player_id instead of peers.len() — avoids collision on leave+join
+        let mut used = [false; MAX_PLAYERS_PER_ROOM];
+        for p in peers.iter() {
+            if (p.player_id as usize) < MAX_PLAYERS_PER_ROOM {
+                used[p.player_id as usize] = true;
+            }
+        }
+        let player_id = used.iter().position(|u| !u).map(|i| i as u8)
+            .unwrap_or(MAX_PLAYERS_PER_ROOM as u8 - 1);
+        let name = format!("Player {}", player_id + 1);
         peers.push(PeerInfo {
             id,
             player_id,
