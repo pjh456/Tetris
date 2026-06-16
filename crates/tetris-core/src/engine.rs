@@ -69,10 +69,10 @@ pub struct PendingGarbageEntry {
 }
 
 pub fn gravity_interval_ms(level: u32) -> u32 {
-    let level = level.clamp(1, 15);
-    let lvl_minus_1 = (level - 1) as f64;
-    let seconds = (0.8 - lvl_minus_1 * 0.007).powf(level as f64);
-    (seconds * 1000.0).max(1.0) as u32
+    // Pre-computed integer table: floor((0.8 - (n-1)*0.007)^n * 1000), n=1..15.
+    // powf not bit-identical across x86/WASM — table guarantees determinism.
+    const TABLE: [u32; 16] = [0, 800, 628, 485, 368, 274, 200, 143, 101, 69, 47, 31, 20, 12, 8, 4];
+    TABLE[level.clamp(1, 15) as usize]
 }
 
 #[derive(Debug, Clone)]
