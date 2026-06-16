@@ -253,8 +253,8 @@ impl<const W: usize, const H: usize> Engine<W, H> {
                 .board
                 .insert_garbage(self.state.pending_garbage, hole_x);
             self.state.pending_garbage = 0;
-        self.garbage_hole_x = 0;
-        self.pending_garbage_queue.clear();
+            self.garbage_hole_x = 0;
+            self.pending_garbage_queue.clear();
         }
 
         if lines_cleared > 0 && !self.pending_garbage_queue.is_empty() {

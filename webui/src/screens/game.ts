@@ -342,6 +342,7 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
 
     if (!mp_ws) {
       advance_game(time);
+      if (is_tearing_down) return;
     } else if (wasm.is_game_over) {
       finish_game();
       return;
