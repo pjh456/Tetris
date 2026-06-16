@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use bincode::Options;
 use serde::{Deserialize, Serialize};
 use slotmap::{SlotMap, new_key_type};
 use tetris_core::engine::{Action, Engine};
@@ -7,6 +8,16 @@ use tetris_core::engine::{Action, Engine};
 use crate::error::NetError;
 use crate::network_manager::NetworkManager;
 use crate::protocol::*;
+
+const MAX_PACKET_BYTES: u64 = 65536;
+
+fn deser<'de, T: serde::Deserialize<'de>>(data: &'de [u8]) -> Result<T, bincode::Error> {
+    bincode::DefaultOptions::new()
+        .with_fixint_encoding()
+        .allow_trailing_bytes()
+        .with_limit(MAX_PACKET_BYTES)
+        .deserialize::<T>(data)
+}
 
 new_key_type! { pub struct PlayerKey; }
 
@@ -356,19 +367,19 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
 
     pub fn handle_packet(&mut self, data: &[u8]) -> Result<(), NetError> {
         let header: PacketHeader =
-            bincode::deserialize(data).map_err(|e| NetError::Decode(e.to_string()))?;
+            deser(data).map_err(|e| NetError::Decode(e.to_string()))?;
 
         match header.packet_type {
             PacketType::GameStart => {
                 let pkt: PktGameStart =
-                    bincode::deserialize(data).map_err(|e| NetError::Decode(e.to_string()))?;
+                    deser(data).map_err(|e| NetError::Decode(e.to_string()))?;
                 if let Some(cb) = self.on_game_start.take() {
                     cb(pkt.random_seed);
                 }
             }
             PacketType::PlayerAction => {
                 let pkt: PktPlayerAction =
-                    bincode::deserialize(data).map_err(|e| NetError::Decode(e.to_string()))?;
+                    deser(data).map_err(|e| NetError::Decode(e.to_string()))?;
                 if let Some(key) = self.player_key_from_id(header.player_id)
                     && let Some(engine) = self.engines.get_mut(key)
                 {
@@ -377,7 +388,7 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
             }
             PacketType::PlayerAttack => {
                 let pkt: PktPlayerAttack =
-                    bincode::deserialize(data).map_err(|e| NetError::Decode(e.to_string()))?;
+                    deser(data).map_err(|e| NetError::Decode(e.to_string()))?;
                 if let Some(key) = self.player_key_from_id(header.player_id)
                     && let Some(engine) = self.engines.get_mut(key)
                 {
@@ -386,7 +397,7 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
             }
             PacketType::StateSync => {
                 let pkt: PktStateSync =
-                    bincode::deserialize(data).map_err(|e| NetError::Decode(e.to_string()))?;
+                    deser(data).map_err(|e| NetError::Decode(e.to_string()))?;
                 if let Some(key) = self.player_key_from_id(header.player_id) {
                     if let Some(engine) = self.engines.get_mut(key) {
                         for (i, &val) in pkt.board_rows.iter().enumerate() {
@@ -417,7 +428,7 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
             }
             PacketType::DeltaSync => {
                 let pkt: PktDeltaSync =
-                    bincode::deserialize(data).map_err(|e| NetError::Decode(e.to_string()))?;
+                    deser(data).map_err(|e| NetError::Decode(e.to_string()))?;
                 let expected_seq = self.last_remote_seq + 1;
                 if self.last_remote_seq == 0 && pkt.seq == 0 {
                 } else if pkt.seq != expected_seq {
@@ -450,7 +461,7 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
             PacketType::ResyncRequest => {}
             PacketType::PlayerStateSync => {
                 let pkt: PktPlayerStateSync =
-                    bincode::deserialize(data).map_err(|e| NetError::Decode(e.to_string()))?;
+                    deser(data).map_err(|e| NetError::Decode(e.to_string()))?;
                 if let Some(info) = self
                     .player_infos
                     .iter_mut()
@@ -462,7 +473,7 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
             }
             PacketType::GameOver => {
                 let pkt: PktGameOver =
-                    bincode::deserialize(data).map_err(|e| NetError::Decode(e.to_string()))?;
+                    deser(data).map_err(|e| NetError::Decode(e.to_string()))?;
                 self.room_mode = RoomMode::GameOver;
                 self.player_infos.iter_mut().for_each(|p| {
                     if p.player_id != pkt.winner_player_id {

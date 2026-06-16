@@ -5,7 +5,6 @@ use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, State};
 use axum::response::IntoResponse;
 use bincode::serialize;
-use bincode::options;
 use bincode::Options;
 use futures_util::{SinkExt, StreamExt};
 use tetris_protocol::protocol::{
@@ -25,7 +24,11 @@ use std::collections::HashMap;
 const MAX_PACKET_BYTES: u64 = 65536;
 
 fn deser<'de, T: serde::Deserialize<'de>>(data: &'de [u8]) -> Result<T, bincode::Error> {
-    options().with_limit(MAX_PACKET_BYTES).deserialize::<T>(data)
+    bincode::DefaultOptions::new()
+        .with_fixint_encoding()
+        .allow_trailing_bytes()
+        .with_limit(MAX_PACKET_BYTES)
+        .deserialize::<T>(data)
 }
 
 type PlayerChannel = (u8, tokio::sync::mpsc::Receiver<InputEvent>, tokio::sync::mpsc::Sender<Vec<u8>>);
