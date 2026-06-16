@@ -94,9 +94,16 @@ effect(() => {
       const content = document.createElement('div') as CleanableElement;
       content.className = 'content';
       app.appendChild(content);
+      let cancelled = false;
       create_game_screen(content).then((destroy) => {
         content._cleanup = destroy;
+        if (cancelled) {
+          destroy();
+        }
       });
+      content._cleanup = () => {
+        cancelled = true;
+      };
       active_game = content;
       mount_back_button(app);
       break;
