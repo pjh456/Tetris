@@ -112,9 +112,12 @@ impl NetworkManager {
                 use renet::ServerEvent;
                 match event {
                     ServerEvent::ClientConnected { client_id } => {
-                        let player_id = self.next_client_id as u8;
+                        if self.connected_clients.len() >= 8 {
+                            continue;
+                        }
+                        let player_id = (self.next_client_id % 256) as u8;
                         self.connected_clients.insert(client_id, player_id);
-                        self.next_client_id += 1;
+                        self.next_client_id = self.next_client_id.wrapping_add(1);
                     }
                     ServerEvent::ClientDisconnected { client_id, .. } => {
                         self.connected_clients.remove(&client_id);
