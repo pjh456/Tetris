@@ -91,8 +91,10 @@ impl RoomManager {
         &self,
         code: &str,
         id: u64,
-        name: String,
+        mut name: String,
     ) -> Result<Vec<PeerInfo>, RelayError> {
+        const MAX_NAME_LEN: usize = 32;
+        name.truncate(MAX_NAME_LEN);
         let rooms = self.rooms.read().await;
         let room = rooms
             .get(code)

@@ -277,9 +277,11 @@ async fn handle_binary_message(
             }
         }
         PacketType::ChatMessage => {
-            let Ok(pkt) = deser::<PktChatMessage>(&data) else {
+            let Ok(mut pkt) = deser::<PktChatMessage>(&data) else {
                 return;
             };
+            const MAX_CHAT_LEN: usize = 256;
+            pkt.message.truncate(MAX_CHAT_LEN);
             let chat_pkt = if let Ok(peer) = state.room_manager.peer_by_id(room_code, peer_id).await
             {
                 PktChatMessage {
