@@ -18,6 +18,9 @@ mod utils;
 const OPPONENT_GRID_LEN: usize = 200;
 
 #[cfg(target_arch = "wasm32")]
+const MAX_OPPONENTS: u8 = 8;
+
+#[cfg(target_arch = "wasm32")]
 const MAX_PACKET_BYTES: u64 = 65536;
 
 #[cfg(target_arch = "wasm32")]
@@ -132,6 +135,9 @@ impl WebTetris {
     }
 
     fn ensure_opponent_slot(&mut self, player_id: u8) -> Option<usize> {
+        if player_id >= MAX_OPPONENTS {
+            return None;
+        }
         let idx = player_id as usize;
         if idx == self.local_player_id as usize {
             return None;
