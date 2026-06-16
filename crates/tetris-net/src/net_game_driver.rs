@@ -392,7 +392,7 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
                 if let Some(key) = self.player_key_from_id(header.player_id)
                     && let Some(engine) = self.engines.get_mut(key)
                 {
-                    engine.state.pending_garbage += pkt.lines;
+                    engine.state.pending_garbage = engine.state.pending_garbage.saturating_add(pkt.lines);
                 }
             }
             PacketType::StateSync => {
