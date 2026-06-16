@@ -5,6 +5,7 @@ interface LoadingElement extends HTMLElement {
 }
 
 let instance: WebTetris | null = null;
+let init_promise: Promise<WebTetris> | null = null;
 let grid_view: Uint8Array | null = null;
 
 function create_grid_view(wasm: WebTetris): Uint8Array {
@@ -74,32 +75,39 @@ export function wasm_error_screen(msg: string): HTMLElement {
 
 export async function init_wasm(container?: HTMLElement): Promise<WebTetris> {
   if (instance) return instance;
+  if (init_promise) return init_promise;
 
-  const target = container || document.getElementById('app');
-  if (!target) throw new Error('No container element');
+  const do_init = async (): Promise<WebTetris> => {
+    const target = container || document.getElementById('app');
+    if (!target) throw new Error('No container element');
 
-  const loading = wasm_loading_screen();
-  target.innerHTML = '';
-  target.appendChild(loading);
+    const loading = wasm_loading_screen();
+    target.innerHTML = '';
+    target.appendChild(loading);
 
-  const cleanup_timer = () => {
-    (loading as LoadingElement)._cleanup?.();
+    const cleanup_timer = () => {
+      (loading as LoadingElement)._cleanup?.();
+    };
+
+    try {
+      await init();
+      const seed = Date.now() >>> 0;
+      instance = new WebTetris(seed);
+      grid_view = create_grid_view(instance);
+      cleanup_timer();
+      return instance;
+    } catch (err) {
+      cleanup_timer();
+      target.innerHTML = '';
+      target.appendChild(wasm_error_screen(err instanceof Error ? err.message : 'Unknown error'));
+      throw err;
+    } finally {
+      init_promise = null;
+    }
   };
 
-  try {
-    await init();
-    const seed = Date.now() >>> 0;
-    instance = new WebTetris(seed);
-    grid_view = create_grid_view(instance);
-    cleanup_timer();
-    target.innerHTML = '';
-    return instance;
-  } catch (err) {
-    cleanup_timer();
-    target.innerHTML = '';
-    target.appendChild(wasm_error_screen(err instanceof Error ? err.message : 'Unknown error'));
-    throw err;
-  }
+  init_promise = do_init();
+  return init_promise;
 }
 
 export function get_wasm(): WebTetris {
