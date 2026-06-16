@@ -57,6 +57,7 @@ export class WsClient {
     };
 
     this.socket.onmessage = (event: MessageEvent<ArrayBuffer>) => {
+      this.last_pong_time = Date.now();
       const data = new Uint8Array(event.data);
       if (this.wasm) {
         const parsed = this.wasm.parse_packet(data) as MultiplayerEvent | null;
@@ -83,7 +84,6 @@ export class WsClient {
     this.heartbeat_timer = setInterval(() => {
       if (this.socket?.readyState === WebSocket.OPEN) {
         this.socket.send(new Uint8Array(0));
-        this.last_pong_time = Date.now();
       }
       const elapsed = Date.now() - this.last_pong_time;
       if (elapsed > 500) {
