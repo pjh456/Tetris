@@ -25,6 +25,7 @@ pub struct RoomState {
     pub host_peer_id: RwLock<Option<u64>>,
     pub peers: Mutex<Vec<PeerInfo>>,
     pub countdown_active: AtomicUsize,
+    pub cancel_tx: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
 }
 
 #[derive(Clone)]
@@ -226,6 +227,7 @@ impl RoomManager {
             host_peer_id: RwLock::new(None),
             peers: Mutex::new(vec![]),
             countdown_active: AtomicUsize::new(0),
+            cancel_tx: Mutex::new(None),
         });
         rooms.insert(code.clone(), state);
         Ok(code)
@@ -304,9 +306,23 @@ impl RoomManager {
             host_peer_id: RwLock::new(None),
             peers: Mutex::new(vec![]),
             countdown_active: AtomicUsize::new(0),
+            cancel_tx: Mutex::new(None),
         });
         rooms.insert(code.to_string(), state);
         Ok(code.to_string())
+    }
+
+    pub async fn store_cancel_tx(
+        &self,
+        code: &str,
+        tx: tokio::sync::oneshot::Sender<()>,
+    ) -> Result<(), RelayError> {
+        let rooms = self.rooms.read().await;
+        let room = rooms
+            .get(code)
+            .ok_or_else(|| RelayError::RoomNotFound(code.into()))?;
+        *room.cancel_tx.lock().await = Some(tx);
+        Ok(())
     }
 }
 

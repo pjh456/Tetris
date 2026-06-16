@@ -239,8 +239,12 @@ async fn handle_binary_message(
                                 );
                                 actor.add_player(PlayerSlot(player_id), input_rx, conn, outbound_tx);
                             }
-                            let (_cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
+                            let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
                             tokio::spawn(actor.run(cancel_rx));
+                            let _ = state
+                                .room_manager
+                                .store_cancel_tx(&room_code_owned, cancel_tx)
+                                .await;
                         }
 
                         if let Ok(reset_peers) =
