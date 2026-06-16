@@ -9,6 +9,15 @@ members = [
     "crates/tetris-relay",
     "crates/tetris-tauri",
 ]
+default-members = [
+    "crates/tetris-core",
+    "crates/tetris-net",
+    "crates/tetris-cli",
+    "crates/tetris-wasm",
+    "crates/tetris-ai",
+    "crates/tetris-protocol",
+    "crates/tetris-relay",
+]
 resolver = "2"
 
 [workspace.package]

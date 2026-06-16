@@ -26,7 +26,6 @@ export async function runCapture(cmd, args = [], opts = {}) {
         const child = spawn(cmd, args, {
             cwd: ROOT,
             stdio: ['pipe', 'pipe', 'pipe'],
-            shell: true,
             ...opts,
         });
 

@@ -18,8 +18,21 @@ export async function cargoBuildAll(release = true) {
 }
 
 export async function wasmPackBuild() {
-    const r = await run('wasm-pack', ['build', '--target', 'web', '--no-opt'], { cwd: WASM_CRATE });
+    const r = await run('cargo', [
+        'build', '-p', 'tetris-wasm',
+        '--target', 'wasm32-unknown-unknown',
+        '--release',
+    ], { cwd: ROOT });
     if (!r.ok) process.exit(r.code);
+
+    const r2 = await run('wasm-bindgen', [
+        '--out-dir', PKG,
+        '--out-name', 'tetris_wasm',
+        '--target', 'web',
+        '--no-typescript',
+        join(ROOT, 'target', 'wasm32-unknown-unknown', 'release', 'tetris_wasm.wasm'),
+    ], { cwd: ROOT });
+    if (!r2.ok) process.exit(r2.code);
 
     await cp(PKG, WASM_OUT, { recursive: true, force: true });
 
@@ -31,6 +44,6 @@ export async function wasmPackBuild() {
 }
 
 export async function npmInstallWebui() {
-    const r = await run('npm', ['install'], { cwd: WEBUI });
+    const r = await run('npm.cmd', ['install'], { cwd: WEBUI });
     if (!r.ok) process.exit(r.code);
 }

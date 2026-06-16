@@ -4,4 +4,4 @@ import { run, step } from './lib/exec.js';
 
 await step('wasm-pack build', wasmPackBuild);
 await step('npm install webui', npmInstallWebui);
-await step('vite dev server', () => run('npm', ['run', 'dev'], { cwd: WEBUI }));
+await step('vite dev server', () => run('npm.cmd', ['run', 'dev'], { cwd: WEBUI }));
