@@ -85,7 +85,11 @@ export function load_settings(): Settings {
 }
 
 export function save_settings(s: Settings): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+  } catch {
+    // quota exceeded or privacy mode — silently ignore
+  }
 }
 
 export function reset_settings(): Settings {
