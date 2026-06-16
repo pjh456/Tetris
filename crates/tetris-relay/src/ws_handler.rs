@@ -49,6 +49,9 @@ pub async fn ws_handler(
 }
 
 async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState>) {
+    if room_code.len() != 4 || !room_code.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return;
+    }
     if let Err(e) = state.room_manager.get_or_create_room(&room_code).await {
         warn!("get_or_create_room failed: {e}");
         return;
