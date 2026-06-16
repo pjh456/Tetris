@@ -43,7 +43,7 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
         return;
     }
 
-    let _broadcast_rx = match state.room_manager.join_room(&room_code).await {
+    let broadcast_rx = match state.room_manager.join_room(&room_code).await {
         Ok(rx) => rx,
         Err(e) => {
             warn!("join_room failed: {e}");
@@ -99,7 +99,7 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
         .broadcast_snapshot(&room_code, &peers)
         .await;
 
-    let send_task = tokio::spawn(send_loop(sender, outbound_rx));
+    let send_task = tokio::spawn(send_loop(sender, outbound_rx, broadcast_rx));
 
     while let Some(msg_result) = receiver.next().await {
         let msg = match msg_result {
@@ -299,13 +299,14 @@ async fn handle_binary_message(
 
 async fn send_loop(
     mut sender: futures_util::stream::SplitSink<WebSocket, Message>,
-    mut rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
+    mut outbound_rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
+    mut broadcast_rx: tokio::sync::broadcast::Receiver<Vec<u8>>,
 ) {
     let mut ping_interval = interval(Duration::from_secs(3));
 
     loop {
         tokio::select! {
-            result = rx.recv() => {
+            result = outbound_rx.recv() => {
                 match result {
                     Some(data) => {
                         if sender.send(Message::Binary(data.into())).await.is_err() {
@@ -313,6 +314,17 @@ async fn send_loop(
                         }
                     }
                     None => break,
+                }
+            }
+            result = broadcast_rx.recv() => {
+                match result {
+                    Ok(data) => {
+                        if sender.send(Message::Binary(data.into())).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                 }
             }
             _ = ping_interval.tick() => {
