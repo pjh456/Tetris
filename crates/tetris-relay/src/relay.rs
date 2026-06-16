@@ -84,6 +84,8 @@ impl RoomManager {
         if room.host_peer_id.read().await.is_none() {
             *room.host_peer_id.write().await = Some(id);
         }
+        room.player_count
+            .store(peers.len(), Ordering::SeqCst);
         Ok(peers.clone())
     }
 
@@ -149,6 +151,8 @@ impl RoomManager {
             if host_peer_id.as_ref().is_some_and(|host_id| *host_id == id) {
                 *host_peer_id = peers.first().map(|peer| peer.id);
             }
+            room.player_count
+                .store(peers.len(), Ordering::SeqCst);
             peers.clone()
         } else {
             vec![]
