@@ -12,6 +12,7 @@ export class WsClient {
   private wasm: WebTetris | null;
   private heartbeat_timer: ReturnType<typeof setInterval> | null = null;
   private reconnect_timeout: ReturnType<typeof setTimeout> | null = null;
+  private reconnect_timer: ReturnType<typeof setTimeout> | null = null;
   private last_pong_time = 0;
   private reconnect_attempt = 0;
   private _resume_token: string | null = null;
@@ -105,7 +106,7 @@ export class WsClient {
 
   private attempt_reconnect() {
     const delay = Math.min(1000 * Math.pow(2, this.reconnect_attempt), 4000);
-    setTimeout(() => {
+    this.reconnect_timer = setTimeout(() => {
       this.reconnect_attempt += 1;
       this.create_socket();
     }, delay);
@@ -140,6 +141,9 @@ export class WsClient {
     this.stop_heartbeat();
     if (this.reconnect_timeout) {
       clearTimeout(this.reconnect_timeout);
+    }
+    if (this.reconnect_timer) {
+      clearTimeout(this.reconnect_timer);
     }
     this.socket?.close();
     connection_status.value = 'offline';
