@@ -161,10 +161,7 @@ async fn handle_binary_message(
 ) {
     let header = match deser::<PacketHeader>(&data) {
         Ok(header) if header.version == PROTOCOL_VERSION => header,
-        _ => {
-            let _ = state.room_manager.broadcast(room_code, data).await;
-            return;
-        }
+        _ => return,
     };
 
     match header.packet_type {
@@ -307,13 +304,9 @@ async fn handle_binary_message(
                 for ev in &pkt.events {
                     let _ = input_tx.try_send(ev.clone());
                 }
-            } else {
-                let _ = state.room_manager.broadcast(room_code, data).await;
             }
         }
-        _ => {
-            let _ = state.room_manager.broadcast(room_code, data).await;
-        }
+        _ => {}
     }
 }
 
