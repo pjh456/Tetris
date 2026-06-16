@@ -7,12 +7,27 @@ use tetris_protocol::protocol::*;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
+#[cfg(target_arch = "wasm32")]
+use bincode::Options;
+
 mod error;
 mod input_buffer;
 mod utils;
 
 #[cfg(target_arch = "wasm32")]
 const OPPONENT_GRID_LEN: usize = 200;
+
+#[cfg(target_arch = "wasm32")]
+const MAX_PACKET_BYTES: u64 = 65536;
+
+#[cfg(target_arch = "wasm32")]
+fn deser<'de, T: serde::Deserialize<'de>>(data: &'de [u8]) -> Result<T, bincode::Error> {
+    bincode::DefaultOptions::new()
+        .with_fixint_encoding()
+        .allow_trailing_bytes()
+        .with_limit(MAX_PACKET_BYTES)
+        .deserialize::<T>(data)
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpponentInfo {
@@ -330,8 +345,7 @@ impl WebTetris {
     }
 
     pub fn parse_packet(&mut self, data: &[u8]) -> JsValue {
-        use bincode::deserialize;
-        let header: PacketHeader = match deserialize(data) {
+        let header: PacketHeader = match deser(data) {
             Ok(h) => h,
             Err(_) => return JsValue::NULL,
         };
@@ -340,7 +354,7 @@ impl WebTetris {
         }
         match header.packet_type {
             PacketType::ServerAccept => {
-                let pkt: PktServerAccept = match deserialize(data) {
+                let pkt: PktServerAccept = match deser(data) {
                     Ok(p) => p,
                     Err(_) => return JsValue::NULL,
                 };
@@ -358,7 +372,7 @@ impl WebTetris {
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
             PacketType::RoomSnapshot => {
-                let pkt: PktRoomSnapshot = match deserialize(data) {
+                let pkt: PktRoomSnapshot = match deser(data) {
                     Ok(p) => p,
                     Err(_) => return JsValue::NULL,
                 };
@@ -395,7 +409,7 @@ impl WebTetris {
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
             PacketType::GameStart => {
-                let pkt: PktGameStart = match deserialize(data) {
+                let pkt: PktGameStart = match deser(data) {
                     Ok(p) => p,
                     Err(_) => return JsValue::NULL,
                 };
@@ -413,7 +427,7 @@ impl WebTetris {
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
             PacketType::StateSync => {
-                let pkt: PktStateSync = match deserialize(data) {
+                let pkt: PktStateSync = match deser(data) {
                     Ok(p) => p,
                     Err(_) => return JsValue::NULL,
                 };
@@ -431,7 +445,7 @@ impl WebTetris {
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
             PacketType::DeltaSync => {
-                let pkt: PktDeltaSync = match deserialize(data) {
+                let pkt: PktDeltaSync = match deser(data) {
                     Ok(p) => p,
                     Err(_) => return JsValue::NULL,
                 };
@@ -449,7 +463,7 @@ impl WebTetris {
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
             PacketType::ChatMessage => {
-                let pkt: PktChatMessage = match deserialize(data) {
+                let pkt: PktChatMessage = match deser(data) {
                     Ok(p) => p,
                     Err(_) => return JsValue::NULL,
                 };
@@ -466,7 +480,7 @@ impl WebTetris {
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
             PacketType::StartCountdown => {
-                let pkt: PktStartCountdown = match deserialize(data) {
+                let pkt: PktStartCountdown = match deser(data) {
                     Ok(p) => p,
                     Err(_) => return JsValue::NULL,
                 };
@@ -484,7 +498,7 @@ impl WebTetris {
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
             PacketType::StateHash => {
-                let pkt: PktStateHash = match deserialize(data) {
+                let pkt: PktStateHash = match deser(data) {
                     Ok(p) => p,
                     Err(_) => return JsValue::NULL,
                 };
@@ -492,7 +506,7 @@ impl WebTetris {
                 JsValue::NULL
             }
             PacketType::StateSnapshot => {
-                let pkt: PktStateSnapshot = match deserialize(data) {
+                let pkt: PktStateSnapshot = match deser(data) {
                     Ok(p) => p,
                     Err(_) => return JsValue::NULL,
                 };
@@ -510,7 +524,7 @@ impl WebTetris {
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
             PacketType::ServerReplay => {
-                let pkt: PktServerReplay = match deserialize(data) {
+                let pkt: PktServerReplay = match deser(data) {
                     Ok(p) => p,
                     Err(_) => return JsValue::NULL,
                 };
@@ -536,7 +550,7 @@ impl WebTetris {
                 JsValue::NULL
             }
             PacketType::ReconnectAck => {
-                let pkt: PktReconnectAck = match deserialize(data) {
+                let pkt: PktReconnectAck = match deser(data) {
                     Ok(p) => p,
                     Err(_) => return JsValue::NULL,
                 };
@@ -574,7 +588,7 @@ impl WebTetris {
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
             PacketType::IncomingGarbage => {
-                let pkt: PktIncomingGarbage = match deserialize(data) {
+                let pkt: PktIncomingGarbage = match deser(data) {
                     Ok(p) => p,
                     Err(_) => return JsValue::NULL,
                 };
@@ -591,7 +605,7 @@ impl WebTetris {
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
             PacketType::PlayerStateSync => {
-                let pkt: PktPlayerStateSync = match deserialize(data) {
+                let pkt: PktPlayerStateSync = match deser(data) {
                     Ok(p) => p,
                     Err(_) => return JsValue::NULL,
                 };
@@ -615,7 +629,7 @@ impl WebTetris {
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
             PacketType::GameOver => {
-                let pkt: PktGameOver = match deserialize(data) {
+                let pkt: PktGameOver = match deser(data) {
                     Ok(p) => p,
                     Err(_) => return JsValue::NULL,
                 };
