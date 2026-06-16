@@ -13,6 +13,8 @@
     "check":      "node scripts/check.js",
     "check:rust": "node scripts/check-rust.js",
     "check:web":  "node scripts/check-web.js",
-    "clean":   "node scripts/clean.js"
+    "clean":   "node scripts/clean.js",
+    "build:desktop": "node scripts/build-desktop.js",
+    "dev:desktop": "cd crates/tetris-tauri && cargo tauri dev"
   }
 }

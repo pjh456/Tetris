@@ -6,6 +6,9 @@ target/
 crates/tetris-wasm/pkg/
 webui/wasm/
 
+# Tauri
+crates/tetris-tauri/gen/
+
 # Production Build
 dist/
 
