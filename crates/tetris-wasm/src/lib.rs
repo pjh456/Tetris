@@ -171,13 +171,9 @@ impl WebTetris {
         engine.state.y = pkt.y;
         engine.state.hold = pkt.hold;
         engine.state.hold_used = pkt.hold_used;
-        engine.state.next = [
-            pkt.next[0],
-            pkt.next[1],
-            pkt.next[2],
-            pkt.next[0],
-            pkt.next[1],
-        ];
+        engine.state.next[0] = pkt.next[0];
+        engine.state.next[1] = pkt.next[1];
+        engine.state.next[2] = pkt.next[2];
         engine.state.pending_garbage = pkt.pending_garbage;
         engine.state.rng = pkt.rng_state;
         engine.game_over = false;
@@ -201,13 +197,9 @@ impl WebTetris {
         engine.state.y = pkt.y;
         engine.state.hold = pkt.hold;
         engine.state.hold_used = pkt.hold_used;
-        engine.state.next = [
-            pkt.next[0],
-            pkt.next[1],
-            pkt.next[2],
-            pkt.next[0],
-            pkt.next[1],
-        ];
+        engine.state.next[0] = pkt.next[0];
+        engine.state.next[1] = pkt.next[1];
+        engine.state.next[2] = pkt.next[2];
         engine.game_over = false;
         self.refresh_opponent_grid(idx);
     }
