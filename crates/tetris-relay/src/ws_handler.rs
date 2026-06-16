@@ -132,6 +132,14 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
 
     send_task.abort();
 
+    // Remove pending_inputs entry for this peer to avoid ghost player in RoomActor
+    if let Ok(peer) = state.room_manager.peer_by_id(&room_code, peer_id).await {
+        let mut pending = state.pending_inputs.lock().await;
+        if let Some(entries) = pending.get_mut(&room_code) {
+            entries.retain(|(pid, _, _)| *pid != peer.player_id);
+        }
+    }
+
     let remaining = state.room_manager.remove_peer(&room_code, peer_id).await;
     state.room_manager.leave_room(&room_code).await;
     info!("client {peer_id} left room {room_code_send}");
