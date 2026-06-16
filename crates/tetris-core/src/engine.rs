@@ -291,10 +291,13 @@ impl<const W: usize, const H: usize> Engine<W, H> {
     fn try_move_wrapped(&mut self, dx: i8, dy: i8) -> bool {
         if try_move(&mut self.state, dx, dy) {
             self.state.last_move_was_rotation = false;
-            if self.lock_delay_wall.move_reset_count < crate::lockdelay::MAX_MOVE_RESETS {
+            let grounded = !crate::rules::can_place(
+                &self.state, self.state.x, self.state.y + 1, self.state.rot,
+            );
+            if grounded && self.lock_delay_wall.move_reset_count < crate::lockdelay::MAX_MOVE_RESETS {
                 self.lock_delay_wall.reset();
             }
-            if self.lock_delay_move_resets < crate::lockdelay::MAX_MOVE_RESETS as u8 {
+            if grounded && self.lock_delay_move_resets < crate::lockdelay::MAX_MOVE_RESETS as u8 {
                 self.lock_delay_move_resets += 1;
                 self.lock_delay_accumulated_ticks = 0;
                 self.lock_delay_active = true;
@@ -307,10 +310,13 @@ impl<const W: usize, const H: usize> Engine<W, H> {
     fn try_rotate_wrapped(&mut self, to: Rot) -> bool {
         if try_rotate(&mut self.state, to) {
             self.state.last_move_was_rotation = true;
-            if self.lock_delay_wall.move_reset_count < crate::lockdelay::MAX_MOVE_RESETS {
+            let grounded = !crate::rules::can_place(
+                &self.state, self.state.x, self.state.y + 1, self.state.rot,
+            );
+            if grounded && self.lock_delay_wall.move_reset_count < crate::lockdelay::MAX_MOVE_RESETS {
                 self.lock_delay_wall.reset();
             }
-            if self.lock_delay_move_resets < crate::lockdelay::MAX_MOVE_RESETS as u8 {
+            if grounded && self.lock_delay_move_resets < crate::lockdelay::MAX_MOVE_RESETS as u8 {
                 self.lock_delay_move_resets += 1;
                 self.lock_delay_accumulated_ticks = 0;
                 self.lock_delay_active = true;
