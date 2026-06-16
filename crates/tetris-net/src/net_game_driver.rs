@@ -65,7 +65,7 @@ pub struct PlayerInfo {
 pub struct NetGameDriver<const W: usize, const H: usize> {
     pub engines: SlotMap<PlayerKey, Engine<W, H>>,
     pub local_key: PlayerKey,
-    key_by_player_id: Vec<PlayerKey>,
+    key_by_player_id: HashMap<u8, PlayerKey>,
     on_game_start: Option<Box<dyn FnOnce(u32)>>,
     prev_board_rows: HashMap<PlayerKey, Vec<u64>>,
     pub seq: u32,
@@ -82,7 +82,8 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
     pub fn new(local_engine: Engine<W, H>) -> Self {
         let mut engines = SlotMap::with_key();
         let local_key = engines.insert(local_engine);
-        let key_by_player_id = vec![local_key];
+        let mut key_by_player_id = HashMap::new();
+        key_by_player_id.insert(0, local_key);
         let mut prev_board_rows = HashMap::new();
         prev_board_rows.insert(local_key, vec![0u64; H]);
         NetGameDriver {
@@ -108,7 +109,8 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
 
     pub fn add_player(&mut self, engine: Engine<W, H>) -> PlayerKey {
         let key = self.engines.insert(engine);
-        self.key_by_player_id.push(key);
+        let player_id = self.key_by_player_id.len() as u8;
+        self.key_by_player_id.insert(player_id, key);
         self.prev_board_rows.insert(key, vec![0u64; H]);
         key
     }
@@ -116,14 +118,11 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
     pub fn remove_player(&mut self, key: PlayerKey) {
         self.engines.remove(key);
         self.prev_board_rows.remove(&key);
-        // Clean up player_id mapping to prevent stale slot references
-        if let Some(pos) = self.key_by_player_id.iter().position(|&k| k == key) {
-            self.key_by_player_id.remove(pos);
-        }
+        self.key_by_player_id.retain(|_, &mut v| v != key);
     }
 
     pub fn player_key_from_id(&self, player_id: u8) -> Option<PlayerKey> {
-        self.key_by_player_id.get(player_id as usize).copied()
+        self.key_by_player_id.get(&player_id).copied()
     }
 
     pub fn tick_all(&mut self, delta_ms: u32) {
