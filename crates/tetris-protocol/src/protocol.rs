@@ -41,6 +41,7 @@ pub enum PacketType {
     Ige = 30,
     IncomingGarbage = 31,
     PlayerStateSync = 32,
+    Batch = 33,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -125,6 +126,7 @@ pub struct PktStateSync {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PktBatch {
+    pub header: PacketHeader,
     pub packets: Vec<Vec<u8>>,
 }
 
@@ -506,6 +508,11 @@ mod tests {
         })
         .unwrap();
         let batch = PktBatch {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::Batch,
+                player_id: 0,
+            },
             packets: vec![inner1, inner2],
         };
         bincode_round_trip(&batch);

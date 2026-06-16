@@ -351,6 +351,16 @@ impl WebTetris {
             return JsValue::NULL;
         }
         match header.packet_type {
+            PacketType::Batch => {
+                let batch: PktBatch = match deser(data) {
+                    Ok(b) => b,
+                    Err(_) => return JsValue::NULL,
+                };
+                for inner in &batch.packets {
+                    self.parse_packet(inner);
+                }
+                JsValue::NULL
+            }
             PacketType::ServerAccept => {
                 let pkt: PktServerAccept = match deser(data) {
                     Ok(p) => p,

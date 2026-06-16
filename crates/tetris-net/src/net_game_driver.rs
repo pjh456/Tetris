@@ -283,6 +283,11 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
             return Ok(());
         }
         let batch = PktBatch {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::Batch,
+                player_id: 0,
+            },
             packets: std::mem::take(&mut self.pending_packets),
         };
         net.send_packet(&batch, channel)
@@ -376,6 +381,13 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
         }
 
         match header.packet_type {
+            PacketType::Batch => {
+                let batch: PktBatch =
+                    deser(data).map_err(|e| NetError::Decode(e.to_string()))?;
+                for inner in &batch.packets {
+                    self.handle_packet(inner)?;
+                }
+            }
             PacketType::GameStart => {
                 let pkt: PktGameStart =
                     deser(data).map_err(|e| NetError::Decode(e.to_string()))?;
@@ -768,6 +780,11 @@ mod tests {
         assert_eq!(driver.pending_packets.len(), 2);
 
         let batch = PktBatch {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::Batch,
+                player_id: 0,
+            },
             packets: std::mem::take(&mut driver.pending_packets),
         };
         assert_eq!(batch.packets.len(), 2);
