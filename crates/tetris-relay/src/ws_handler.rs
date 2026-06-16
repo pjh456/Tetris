@@ -197,16 +197,13 @@ async fn handle_binary_message(
                     .broadcast_snapshot(room_code, &peers)
                     .await;
                 let all_ready = peers.len() >= 2 && peers.iter().all(|peer| peer.ready);
-                let countdown_active = state
-                    .room_manager
-                    .countdown_active(room_code)
-                    .await
-                    .unwrap_or(false);
-                if all_ready && !countdown_active {
-                    let _ = state
+                if all_ready
+                    && state
                         .room_manager
-                        .set_countdown_active(room_code, true)
-                        .await;
+                        .try_start_countdown(room_code)
+                        .await
+                        .unwrap_or(false)
+                {
                     let state = Arc::clone(state);
                     let room_code_owned = room_code.to_string();
                     tokio::spawn(async move {

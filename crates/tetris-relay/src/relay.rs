@@ -213,6 +213,19 @@ impl RoomManager {
         Ok(room.countdown_active.load(Ordering::SeqCst) != 0)
     }
 
+    /// Atomically try to start the countdown. Returns Ok(true) if countdown was started,
+    /// Ok(false) if it was already active (caller should not start a duplicate).
+    pub async fn try_start_countdown(&self, code: &str) -> Result<bool, RelayError> {
+        let rooms = self.rooms.read().await;
+        let room = rooms
+            .get(code)
+            .ok_or_else(|| RelayError::RoomNotFound(code.into()))?;
+        Ok(room
+            .countdown_active
+            .compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok())
+    }
+
     pub async fn set_countdown_active(&self, code: &str, active: bool) -> Result<(), RelayError> {
         let rooms = self.rooms.read().await;
         let room = rooms
