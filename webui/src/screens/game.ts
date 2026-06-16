@@ -164,6 +164,9 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   const cell = 720 / 20;
 
   let paused = false;
+  let prev_combo = 0;
+  let prev_tspin = 0;
+  let prev_all_clear = 0;
   let raf_id = 0;
   let logic_timer_id: number | null = null;
   let last_tick = performance.now();
@@ -328,9 +331,12 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
       combo.value = hud_raw.combo;
       b2b_count.value = hud_raw.b2b;
 
-      if (hud_raw.combo > 1) show_popup(`COMBO x${hud_raw.combo}`);
-      if (hud_raw.tspin > 0) show_popup('T-SPIN');
-      if (hud_raw.all_clear > 0) show_popup('ALL CLEAR!');
+      if (hud_raw.combo > 1 && hud_raw.combo !== prev_combo) show_popup(`COMBO x${hud_raw.combo}`);
+      if (hud_raw.tspin > 0 && hud_raw.tspin !== prev_tspin) show_popup('T-SPIN');
+      if (hud_raw.all_clear > 0 && hud_raw.all_clear !== prev_all_clear) show_popup('ALL CLEAR!');
+      prev_combo = hud_raw.combo;
+      prev_tspin = hud_raw.tspin;
+      prev_all_clear = hud_raw.all_clear;
     }
   }
 
