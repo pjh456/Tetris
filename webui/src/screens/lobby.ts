@@ -255,9 +255,23 @@ function build_player_list(): {
         const status_class = player.ready ? 'player-status player-ready' : 'player-status';
         const status_text = player.ready ? '✓ READY' : player.away ? 'AWAY' : 'Not Ready';
         const host_tag = player.is_host ? ' (HOST)' : '';
-        card.innerHTML = `<span class="player-name">${player.name}${host_tag}</span><span class="${status_class}">${status_text}</span>`;
+        const name_span = document.createElement('span');
+        name_span.className = 'player-name';
+        name_span.textContent = player.name + host_tag;
+        card.appendChild(name_span);
+        const status_span = document.createElement('span');
+        status_span.className = status_class;
+        status_span.textContent = status_text;
+        card.appendChild(status_span);
       } else {
-        card.innerHTML = `<span class="player-name">—</span><span class="player-status">Waiting...</span>`;
+        const name_span = document.createElement('span');
+        name_span.className = 'player-name';
+        name_span.textContent = '\u2014';
+        card.appendChild(name_span);
+        const status_span = document.createElement('span');
+        status_span.className = 'player-status';
+        status_span.textContent = 'Waiting...';
+        card.appendChild(status_span);
       }
       cards_container.appendChild(card);
     }
