@@ -33,6 +33,13 @@ export class WsClient {
   }
 
   private create_socket() {
+    if (this.socket) {
+      this.socket.onopen = null;
+      this.socket.onmessage = null;
+      this.socket.onclose = null;
+      this.socket.onerror = null;
+      this.socket.close();
+    }
     this.socket = new WebSocket(this.url);
     this.socket.binaryType = 'arraybuffer';
 
