@@ -115,7 +115,21 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
 
     let send_task = tokio::spawn(send_loop(sender, outbound_rx, broadcast_rx));
 
+    const MAX_MSG_PER_SEC: u32 = 60;
+    let mut msg_count: u32 = 0;
+    let mut msg_window_start = tokio::time::Instant::now();
+
     while let Some(msg_result) = receiver.next().await {
+        let now = tokio::time::Instant::now();
+        if now - msg_window_start > Duration::from_secs(1) {
+            msg_count = 0;
+            msg_window_start = now;
+        }
+        msg_count += 1;
+        if msg_count > MAX_MSG_PER_SEC {
+            continue;
+        }
+
         let msg = match msg_result {
             Ok(m) => m,
             Err(e) => {
