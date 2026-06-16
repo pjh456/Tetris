@@ -53,6 +53,30 @@ const I_0R: [Kick; 5] = [
     Kick { dx: 1, dy: 2 },
 ];
 
+const I_1R: [Kick; 5] = [
+    Kick { dx: 0, dy: 0 },
+    Kick { dx: -1, dy: 0 },
+    Kick { dx: 2, dy: 0 },
+    Kick { dx: -1, dy: 2 },
+    Kick { dx: 2, dy: -1 },
+];
+
+const I_2R: [Kick; 5] = [
+    Kick { dx: 0, dy: 0 },
+    Kick { dx: 2, dy: 0 },
+    Kick { dx: -1, dy: 0 },
+    Kick { dx: 2, dy: 1 },
+    Kick { dx: -1, dy: -2 },
+];
+
+const I_3R: [Kick; 5] = [
+    Kick { dx: 0, dy: 0 },
+    Kick { dx: 1, dy: 0 },
+    Kick { dx: -2, dy: 0 },
+    Kick { dx: 1, dy: -2 },
+    Kick { dx: -2, dy: 1 },
+];
+
 const fn fill_pair(out: &mut [[[Kick; 5]; 4]; 4], a: usize, b: usize, base: &[Kick; 5]) {
     let mut i = 0;
     while i < 5 {
@@ -71,9 +95,9 @@ const fn fill_jlstz(out: &mut [[[Kick; 5]; 4]; 4]) {
 
 const fn fill_i(out: &mut [[[Kick; 5]; 4]; 4]) {
     fill_pair(out, 0, 1, &I_0R);
-    fill_pair(out, 1, 2, &I_0R);
-    fill_pair(out, 2, 3, &I_0R);
-    fill_pair(out, 3, 0, &I_0R);
+    fill_pair(out, 1, 2, &I_1R);
+    fill_pair(out, 2, 3, &I_2R);
+    fill_pair(out, 3, 0, &I_3R);
 }
 
 const fn fill_o(out: &mut [[[Kick; 5]; 4]; 4]) {
