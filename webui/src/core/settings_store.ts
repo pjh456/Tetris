@@ -145,7 +145,11 @@ export function save_score_to_leaderboard(score: number, level: number, lines: n
   entries.sort((a, b) => b.score - a.score);
   const top10 = entries.slice(0, 10);
   _leaderboard_cache = null;
-  localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(top10));
+  try {
+    localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(top10));
+  } catch {
+    // quota exceeded or privacy mode — silently ignore
+  }
   const rank = top10.findIndex((e) => e === entry);
   return rank >= 0 ? rank + 1 : 0;
 }
