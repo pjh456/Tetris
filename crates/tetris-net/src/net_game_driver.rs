@@ -369,6 +369,13 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
         let header: PacketHeader =
             deser(data).map_err(|e| NetError::Decode(e.to_string()))?;
 
+        if header.version != PROTOCOL_VERSION {
+            return Err(NetError::Protocol(format!(
+                "protocol version mismatch: got {}, expected {}",
+                header.version, PROTOCOL_VERSION
+            )));
+        }
+
         match header.packet_type {
             PacketType::GameStart => {
                 let pkt: PktGameStart =
