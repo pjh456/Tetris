@@ -557,7 +557,7 @@ impl RoomActor {
         loop {
             tokio::select! {
                 _ = tick_timer.tick() => {
-                    if !self.active {
+                    if self.engine_count() == 0 {
                         break;
                     }
                     self.run_one_tick();
