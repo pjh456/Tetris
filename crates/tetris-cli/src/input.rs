@@ -61,6 +61,10 @@ impl InputHandler {
 
     pub fn process_repeats(&mut self) -> Vec<Message> {
         let now = Instant::now();
+        // Timeout stale held keys when no Release events (non-enhanced terminals)
+        const HELD_TIMEOUT_MS: u64 = 30000;
+        self.held_keys
+            .retain(|_, state| ((now - state.pressed_at).as_millis() as u64) < HELD_TIMEOUT_MS);
         let mut msgs = Vec::new();
         for (key, state) in &mut self.held_keys {
             let elapsed = (now - state.pressed_at).as_millis() as u64;
