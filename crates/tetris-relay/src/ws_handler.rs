@@ -297,7 +297,7 @@ async fn handle_binary_message(
                     timestamp: pkt.timestamp,
                 }
             } else {
-                pkt
+                return;
             };
             if let Ok(data) = serialize(&chat_pkt) {
                 let _ = state.room_manager.broadcast(room_code, data).await;
