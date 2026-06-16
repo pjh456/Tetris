@@ -60,8 +60,12 @@ export class WsClient {
       this.last_pong_time = Date.now();
       const data = new Uint8Array(event.data);
       if (this.wasm) {
-        const parsed = this.wasm.parse_packet(data) as MultiplayerEvent | null;
-        this.onpacket?.(parsed);
+        try {
+          const parsed = this.wasm.parse_packet(data) as MultiplayerEvent | null;
+          this.onpacket?.(parsed);
+        } catch {
+          // skip corrupt packet
+        }
       }
     };
 
