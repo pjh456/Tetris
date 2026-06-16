@@ -38,7 +38,7 @@ pub fn run_game_loop<F, G>(
             if on_update(&mut state, Message::Tick) {
                 return;
             }
-            last_tick = now;
+            last_tick += tick_interval;
         }
 
         if now - last_frame >= frame_interval {

@@ -22,7 +22,7 @@ pub enum AppState {
         clear_flash_timer: u8,
         score_flash_timer: u8,
         prev_grid: [[CellType; 10]; 20],
-        prev_flash_mask: u32,
+        prev_flash_mask: u64,
         prev_half: bool,
     },
     Pause {
@@ -52,7 +52,7 @@ pub enum AppState {
         clear_flash_timer: u8,
         score_flash_timer: u8,
         prev_grid: [[CellType; 10]; 20],
-        prev_flash_mask: u32,
+        prev_flash_mask: u64,
         prev_half: bool,
         spectating: Option<usize>,
     },

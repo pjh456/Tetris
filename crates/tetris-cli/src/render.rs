@@ -177,7 +177,7 @@ fn render_playing(
     clear_flash: u8,
     score_flash: u8,
     prev_grid: &mut [[CellType; 10]; 20],
-    prev_flash_mask: &mut u32,
+    prev_flash_mask: &mut u64,
     prev_half: &mut bool,
 ) {
     let area = frame.area();
@@ -241,7 +241,7 @@ fn render_board(
     use_half: bool,
     clear_flash: u8,
     prev_grid: &mut [[CellType; 10]; 20],
-    prev_flash_mask: &mut u32,
+    prev_flash_mask: &mut u64,
     prev_half: &mut bool,
 ) {
     let block = Block::default().borders(Borders::ALL);
@@ -525,7 +525,7 @@ fn render_multi(
     clear_flash_timer: u8,
     score_flash_timer: u8,
     prev_grid: &mut [[crate::app::CellType; 10]; 20],
-    prev_flash_mask: &mut u32,
+    prev_flash_mask: &mut u64,
     prev_half: &mut bool,
     _spectating: Option<usize>,
 ) {
