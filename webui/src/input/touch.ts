@@ -155,6 +155,18 @@ export function create_touch_overlay(
     }
   });
 
+  overlay.addEventListener('touchcancel', (e) => {
+    e.preventDefault();
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const touch = e.changedTouches[i];
+      const btn = active_touches.get(touch.identifier);
+      if (btn) {
+        btn.el.classList.remove('active');
+        active_touches.delete(touch.identifier);
+      }
+    }
+  });
+
   das_timer = window.setInterval(() => {
     const now = performance.now();
     const das = settings.value.das_ms;
