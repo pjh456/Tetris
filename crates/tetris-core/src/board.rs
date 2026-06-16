@@ -38,7 +38,7 @@ impl<'de, const W: usize, const H: usize> Deserialize<'de> for Board<W, H> {
 
 #[derive(Debug, Clone, Copy)]
 pub struct ClearResult {
-    pub mask: u32,
+    pub mask: u64,
     pub count: u8,
 }
 
@@ -71,12 +71,12 @@ impl<const W: usize, const H: usize> Board<W, H> {
     pub fn clear_lines(&mut self) -> ClearResult {
         let mut write = H;
         let mut cleared: u8 = 0;
-        let mut mask: u32 = 0;
+        let mut mask: u64 = 0;
 
         for read in (0..H).rev() {
             if self.rows[read] == Self::FULL {
                 cleared += 1;
-                mask |= 1u32 << read;
+                mask |= 1u64 << read;
             } else {
                 write = write.wrapping_sub(1);
                 self.rows[write] = self.rows[read];
@@ -156,7 +156,7 @@ mod tests {
         board.rows[19] = Board::<10, 20>::FULL;
         let result = board.clear_lines();
         assert_eq!(result.count, 1);
-        assert_eq!(result.mask, 1u32 << 19);
+        assert_eq!(result.mask, 1u64 << 19);
         assert_eq!(board.rows[19], 0);
     }
 

@@ -18,7 +18,7 @@ pub struct State<const W: usize, const H: usize> {
     pub b2b: bool,
     pub pending_garbage: u8,
     pub last_move_was_rotation: bool,
-    pub last_clear_mask: u32,
+    pub last_clear_mask: u64,
     pub last_clear_count: u8,
     pub last_harddrop_cols: u16,
     pub last_harddrop_start_y: i8,
