@@ -22,6 +22,8 @@ const BUTTON_DEFS = [
   { action: 6, symbol: '\u{23CF}', key: 'Hold' },
 ];
 
+const DAS_REPEAT_ACTIONS = new Set([0, 1, 2]);
+
 function place_btn(btn: TouchButton, x: number, y: number, size: number) {
   btn.x = x;
   btn.y = y;
@@ -162,10 +164,12 @@ export function create_touch_overlay(
       if (held >= das) {
         const arr_elapsed = held - das;
         const tick_count = Math.floor(arr_elapsed / arr);
-        if (tick_count > 0) {
-          btn.held_start = now - (arr_elapsed % arr);
-          on_action(btn.action);
-        }
+          if (tick_count > 0) {
+            btn.held_start = now - (arr_elapsed % arr);
+            if (DAS_REPEAT_ACTIONS.has(btn.action)) {
+              on_action(btn.action);
+            }
+          }
       }
     }
   }, 16);
