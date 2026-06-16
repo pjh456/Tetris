@@ -7,6 +7,7 @@ use crate::types::Piece;
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AttackResult {
     pub damage: i32,
+    pub hole_x: u8,
     pub is_tspin: bool,
     pub is_mini: bool,
     pub is_b2b: bool,

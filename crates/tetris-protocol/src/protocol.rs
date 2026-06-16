@@ -39,6 +39,7 @@ pub enum PacketType {
     ReconnectAck = 28,
     Resume = 29,
     Ige = 30,
+    IncomingGarbage = 31,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -83,6 +84,12 @@ pub struct PktPlayerAttack {
     pub header: PacketHeader,
     pub lines: u8,
     pub hole_x: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PktIncomingGarbage {
+    pub header: PacketHeader,
+    pub incoming_lines: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

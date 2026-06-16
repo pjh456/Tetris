@@ -41,6 +41,7 @@ pub struct MultiplayerEvent {
     pub countdown: Option<u8>,
     pub random_seed: Option<u32>,
     pub message: Option<String>,
+    pub incoming_garbage_lines: Option<u8>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -349,6 +350,7 @@ impl WebTetris {
                     countdown: None,
                     random_seed: None,
                     message: None,
+                    incoming_garbage_lines: None,
                 });
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
@@ -383,6 +385,7 @@ impl WebTetris {
                     countdown: self.countdown,
                     random_seed: None,
                     message: None,
+                    incoming_garbage_lines: None,
                 });
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
@@ -399,6 +402,7 @@ impl WebTetris {
                     countdown: None,
                     random_seed: Some(pkt.random_seed),
                     message: None,
+                    incoming_garbage_lines: None,
                 });
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
@@ -415,6 +419,7 @@ impl WebTetris {
                     countdown: self.countdown,
                     random_seed: None,
                     message: None,
+                    incoming_garbage_lines: None,
                 });
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
@@ -431,6 +436,7 @@ impl WebTetris {
                     countdown: self.countdown,
                     random_seed: None,
                     message: None,
+                    incoming_garbage_lines: None,
                 });
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
@@ -446,6 +452,7 @@ impl WebTetris {
                     countdown: self.countdown,
                     random_seed: None,
                     message: Some(pkt.message.clone()),
+                    incoming_garbage_lines: None,
                 });
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
@@ -462,6 +469,7 @@ impl WebTetris {
                     countdown: Some(pkt.remaining_secs),
                     random_seed: None,
                     message: None,
+                    incoming_garbage_lines: None,
                 });
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
@@ -486,6 +494,7 @@ impl WebTetris {
                     countdown: self.countdown,
                     random_seed: None,
                     message: None,
+                    incoming_garbage_lines: None,
                 });
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
@@ -548,6 +557,23 @@ impl WebTetris {
                     countdown: self.countdown,
                     random_seed: None,
                     message: None,
+                    incoming_garbage_lines: None,
+                });
+                serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
+            }
+            PacketType::IncomingGarbage => {
+                let pkt: PktIncomingGarbage = match deserialize(data) {
+                    Ok(p) => p,
+                    Err(_) => return JsValue::NULL,
+                };
+                self.last_event = Some(MultiplayerEvent {
+                    kind: "incoming_garbage".into(),
+                    room_code: self.room_code.clone(),
+                    player_id: None,
+                    countdown: self.countdown,
+                    random_seed: None,
+                    message: None,
+                    incoming_garbage_lines: Some(pkt.incoming_lines),
                 });
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }

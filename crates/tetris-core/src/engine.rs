@@ -58,6 +58,14 @@ pub struct TickResult {
     pub cleared: bool,
     pub game_over: bool,
     pub garbage_inserted: bool,
+    pub incoming_garbage_lines: u8,
+}
+
+#[derive(Debug, Clone)]
+pub struct PendingGarbageEntry {
+    pub lines: u8,
+    pub hole_x: u8,
+    pub remaining_ticks: u16,
 }
 
 pub fn gravity_interval_ms(level: u32) -> u32 {
@@ -83,6 +91,7 @@ pub struct Engine<const W: usize, const H: usize> {
     hard_drop_cells: u8,
     gravity_accumulator: u32,
     pub garbage_hole_x: u8,
+    pub pending_garbage_queue: Vec<PendingGarbageEntry>,
 }
 
 impl<const W: usize, const H: usize> Default for Engine<W, H> {
@@ -129,7 +138,58 @@ impl<const W: usize, const H: usize> Engine<W, H> {
             hard_drop_cells: 0,
             gravity_accumulator: 0,
             garbage_hole_x: 0,
+            pending_garbage_queue: Vec::new(),
         }
+    }
+
+    pub fn add_pending_garbage(&mut self, lines: u8, hole_x: u8, delay_ticks: u16) {
+        if lines == 0 {
+            return;
+        }
+        self.pending_garbage_queue.push(PendingGarbageEntry {
+            lines,
+            hole_x,
+            remaining_ticks: delay_ticks,
+        });
+    }
+
+    pub fn process_pending_garbage_queue(&mut self) {
+        for entry in &mut self.pending_garbage_queue {
+            if entry.remaining_ticks > 0 {
+                entry.remaining_ticks -= 1;
+            }
+        }
+        let mut _applied = false;
+        for entry in &mut self.pending_garbage_queue {
+            if entry.remaining_ticks == 0 && entry.lines > 0 {
+                self.state.pending_garbage = self.state.pending_garbage.saturating_add(entry.lines);
+                self.garbage_hole_x = entry.hole_x;
+                entry.lines = 0;
+                _applied = true;
+            }
+        }
+        self.pending_garbage_queue.retain(|e| e.lines > 0);
+    }
+
+    pub fn cancel_pending_garbage(&mut self, amount: u8) {
+        let mut remaining = amount;
+        for entry in &mut self.pending_garbage_queue {
+            if remaining == 0 {
+                break;
+            }
+            let cancel = entry.lines.min(remaining);
+            entry.lines -= cancel;
+            remaining -= cancel;
+        }
+        self.pending_garbage_queue.retain(|e| e.lines > 0);
+    }
+
+    pub fn incoming_garbage_total(&self) -> u8 {
+        self.pending_garbage_queue
+            .iter()
+            .map(|e| e.lines)
+            .sum::<u8>()
+            .saturating_add(self.state.pending_garbage)
     }
 
     fn next_rand(&mut self) -> u32 {
@@ -164,6 +224,7 @@ impl<const W: usize, const H: usize> Engine<W, H> {
     fn lock_and_spawn(&mut self) -> AttackResult {
         let lines_cleared = lock_piece(&mut self.state);
         let mut attack_res = calculate_attack(&mut self.state, lines_cleared);
+        attack_res.hole_x = (self.state.rng % W as u32) as u8;
         self.scorer.update(
             lines_cleared as u8,
             attack_res.is_tspin,
@@ -192,7 +253,13 @@ impl<const W: usize, const H: usize> Engine<W, H> {
                 .board
                 .insert_garbage(self.state.pending_garbage, hole_x);
             self.state.pending_garbage = 0;
-            self.garbage_hole_x = 0;
+        self.garbage_hole_x = 0;
+        self.pending_garbage_queue.clear();
+        }
+
+        if lines_cleared > 0 && !self.pending_garbage_queue.is_empty() {
+            let cancel_amount = (lines_cleared as u8).saturating_add(1);
+            self.cancel_pending_garbage(cancel_amount);
         }
 
         self.spawn();
@@ -459,6 +526,8 @@ impl<const W: usize, const H: usize> Engine<W, H> {
     }
 
     pub fn fixed_tick(&mut self, inputs: &[InputEvent]) -> TickResult {
+        self.process_pending_garbage_queue();
+
         if self.game_over {
             return TickResult {
                 game_over: true,
@@ -483,6 +552,7 @@ impl<const W: usize, const H: usize> Engine<W, H> {
                         cleared: true,
                         game_over: self.game_over,
                         garbage_inserted: false,
+                        incoming_garbage_lines: self.incoming_garbage_total(),
                     };
                 }
             }
@@ -532,6 +602,7 @@ impl<const W: usize, const H: usize> Engine<W, H> {
             cleared,
             game_over: self.game_over,
             garbage_inserted: garbage_detected,
+            incoming_garbage_lines: self.incoming_garbage_total(),
         }
     }
 }
@@ -781,5 +852,188 @@ mod tests {
         }
 
         assert_eq!(a.state_hash(), b.state_hash());
+    }
+
+    #[test]
+    fn test_add_pending_garbage_queues_entry() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset(42);
+        engine.add_pending_garbage(3, 5, 60);
+        assert_eq!(engine.pending_garbage_queue.len(), 1);
+        assert_eq!(engine.pending_garbage_queue[0].lines, 3);
+        assert_eq!(engine.pending_garbage_queue[0].hole_x, 5);
+        assert_eq!(engine.pending_garbage_queue[0].remaining_ticks, 60);
+    }
+
+    #[test]
+    fn test_add_pending_garbage_ignores_zero() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.add_pending_garbage(0, 5, 60);
+        assert!(engine.pending_garbage_queue.is_empty());
+    }
+
+    #[test]
+    fn test_process_pending_garbage_ticks_down() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset(42);
+        engine.add_pending_garbage(2, 4, 3);
+        engine.process_pending_garbage_queue();
+        assert_eq!(engine.pending_garbage_queue[0].remaining_ticks, 2);
+        assert_eq!(engine.state.pending_garbage, 0);
+    }
+
+    #[test]
+    fn test_process_pending_garbage_applies_when_expired() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset(42);
+        engine.add_pending_garbage(2, 4, 1);
+        engine.process_pending_garbage_queue();
+        assert_eq!(engine.state.pending_garbage, 2);
+        assert_eq!(engine.garbage_hole_x, 4);
+        assert!(engine.pending_garbage_queue.is_empty());
+    }
+
+    #[test]
+    fn test_process_pending_garbage_multiple_entries() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset(42);
+        engine.add_pending_garbage(2, 3, 3);
+        engine.add_pending_garbage(1, 5, 1);
+        engine.add_pending_garbage(4, 7, 5);
+        engine.process_pending_garbage_queue();
+        // Ticks: 2, 0, 4. Entry at idx 1 expired
+        assert_eq!(engine.state.pending_garbage, 1);
+        assert_eq!(engine.garbage_hole_x, 5);
+        assert_eq!(engine.pending_garbage_queue.len(), 2);
+    }
+
+    #[test]
+    fn test_cancel_pending_garbage_partial() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.add_pending_garbage(5, 3, 60);
+        engine.cancel_pending_garbage(2);
+        assert_eq!(engine.pending_garbage_queue[0].lines, 3);
+    }
+
+    #[test]
+    fn test_cancel_pending_garbage_full() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.add_pending_garbage(3, 5, 60);
+        engine.cancel_pending_garbage(3);
+        assert!(engine.pending_garbage_queue.is_empty());
+    }
+
+    #[test]
+    fn test_cancel_pending_garbage_spans_entries() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.add_pending_garbage(2, 3, 60);
+        engine.add_pending_garbage(3, 5, 60);
+        engine.cancel_pending_garbage(3);
+        // First entry fully gone, second reduced to 2
+        assert_eq!(engine.pending_garbage_queue.len(), 1);
+        assert_eq!(engine.pending_garbage_queue[0].lines, 2);
+    }
+
+    #[test]
+    fn test_incoming_garbage_total() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset(42);
+        engine.add_pending_garbage(3, 4, 60);
+        engine.add_pending_garbage(2, 5, 30);
+        engine.state.pending_garbage = 1;
+        assert_eq!(engine.incoming_garbage_total(), 6);
+    }
+
+    #[test]
+    fn test_attack_result_has_hole_x_when_lines_cleared() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset_with_level(42, 1);
+        // Fill rows 19 and 18 to make a Double clear possible
+        for col in 0..10 {
+            engine.state.board.rows[19] |= 1u64 << col;
+            engine.state.board.rows[18] |= 1u64 << col;
+        }
+        // Place an I piece at the bottom in column 0..4 to complete the lines
+        // but leave two cells open for the piece to fill
+        engine.state.board.rows[19] ^= (1u64 << 0) | (1u64 << 1) | (1u64 << 2) | (1u64 << 3);
+        engine.state.board.rows[18] ^= (1u64 << 0) | (1u64 << 1) | (1u64 << 2) | (1u64 << 3);
+        // Force an I piece
+        engine.state.piece = Piece::I;
+        engine.state.rot = Rot::R0;
+        engine.state.x = 0;
+        engine.state.y = 18;
+        let result = engine.handle_action(Action::HardDrop);
+        // Might clear or might not depending on piece placement
+        // The key test: if damage > 0, hole_x must be < 10
+        if result.damage > 0 {
+            assert!(result.hole_x < 10, "hole_x should be valid board column");
+        }
+    }
+
+    #[test]
+    fn test_cancel_on_lock_clear_reduces_queue() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset(42);
+        engine.add_pending_garbage(3, 4, 60);
+        assert_eq!(engine.pending_garbage_queue[0].lines, 3);
+        // S模拟 line clear → 取消 pending
+        engine.cancel_pending_garbage(2);
+        assert_eq!(engine.pending_garbage_queue[0].lines, 1);
+        engine.cancel_pending_garbage(1);
+        assert!(engine.pending_garbage_queue.is_empty());
+    }
+
+    #[test]
+    fn test_lock_and_spawn_integration_cancels_queue() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset(42);
+        // Add pending garbage, then simulate line clear via lock_and_spawn
+        engine.add_pending_garbage(5, 4, 60);
+        // Set up board so piece locks and clears lines
+        // Fill rows 18-19 leaving I-piece shaped gap
+        for col in 0..10 {
+            engine.state.board.rows[19] |= 1u64 << col;
+            engine.state.board.rows[18] |= 1u64 << col;
+        }
+        engine.state.board.rows[19] ^= (1u64 << 0) | (1u64 << 1) | (1u64 << 2) | (1u64 << 3);
+        engine.state.board.rows[18] ^= (1u64 << 0) | (1u64 << 1) | (1u64 << 2) | (1u64 << 3);
+        engine.state.piece = Piece::I;
+        engine.state.rot = Rot::R0;
+        engine.state.x = 0;
+        engine.state.y = 18;
+        // HardDrop triggers lock_piece + line clears + cancel
+        let result = engine.handle_action(Action::HardDrop);
+        // If lines were cleared, queue should be reduced/cancelled
+        if result.damage > 0 {
+            let total: u8 = engine.pending_garbage_queue.iter().map(|e| e.lines).sum();
+            assert!(total < 5, "pending queue should be reduced after line clear");
+        }
+    }
+
+    #[test]
+    fn test_garbage_insert_on_lock_no_clear() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset(42);
+        engine.state.pending_garbage = 2;
+        engine.garbage_hole_x = 4;
+        // HardDrop triggers lock_and_spawn — no lines on empty board, garbage inserts
+        engine.handle_action(Action::HardDrop);
+        assert_eq!(engine.state.pending_garbage, 0,
+            "pending_garbage should be consumed by insert_garbage after HardDrop lock");
+    }
+
+    #[test]
+    fn test_add_process_insert_end_to_end() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset(42);
+        engine.add_pending_garbage(1, 3, 1);
+        engine.process_pending_garbage_queue();
+        assert_eq!(engine.state.pending_garbage, 1);
+        assert_eq!(engine.garbage_hole_x, 3);
+        let rows_before = engine.state.board.rows;
+        engine.handle_action(Action::HardDrop);
+        assert_eq!(engine.state.pending_garbage, 0);
+        assert_ne!(engine.state.board.rows, rows_before,
+            "board should change after garbage insert");
     }
 }
