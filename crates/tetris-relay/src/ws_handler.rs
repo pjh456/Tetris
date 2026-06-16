@@ -4,7 +4,9 @@ use std::time::Duration;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, State};
 use axum::response::IntoResponse;
-use bincode::{deserialize, serialize};
+use bincode::serialize;
+use bincode::options;
+use bincode::Options;
 use futures_util::{SinkExt, StreamExt};
 use tetris_protocol::protocol::{
     PROTOCOL_VERSION, PacketHeader, PacketType, PktChatMessage, PktGameStart, PktJoinRoom,
@@ -19,6 +21,12 @@ use crate::room_actor::RoomActor;
 use tetris_protocol::newtypes::Seed;
 
 use std::collections::HashMap;
+
+const MAX_PACKET_BYTES: u64 = 65536;
+
+fn deser<'de, T: serde::Deserialize<'de>>(data: &'de [u8]) -> Result<T, bincode::Error> {
+    options().with_limit(MAX_PACKET_BYTES).deserialize::<T>(data)
+}
 
 type PlayerChannel = (u8, tokio::sync::mpsc::Receiver<InputEvent>, tokio::sync::mpsc::Sender<Vec<u8>>);
 
@@ -140,7 +148,7 @@ async fn handle_binary_message(
     input_tx: &tokio::sync::mpsc::Sender<InputEvent>,
     data: Vec<u8>,
 ) {
-    let header = match deserialize::<PacketHeader>(&data) {
+    let header = match deser::<PacketHeader>(&data) {
         Ok(header) if header.version == PROTOCOL_VERSION => header,
         _ => {
             let _ = state.room_manager.broadcast(room_code, data).await;
@@ -150,7 +158,7 @@ async fn handle_binary_message(
 
     match header.packet_type {
         PacketType::JoinRoom => {
-            let Ok(pkt) = deserialize::<PktJoinRoom>(&data) else {
+            let Ok(pkt) = deser::<PktJoinRoom>(&data) else {
                 return;
             };
             if let Ok(peers) = state
@@ -165,7 +173,7 @@ async fn handle_binary_message(
             }
         }
         PacketType::PlayerReady => {
-            let Ok(pkt) = deserialize::<PktPlayerReady>(&data) else {
+            let Ok(pkt) = deser::<PktPlayerReady>(&data) else {
                 return;
             };
             if let Ok(peers) = state
@@ -264,7 +272,7 @@ async fn handle_binary_message(
             }
         }
         PacketType::ChatMessage => {
-            let Ok(pkt) = deserialize::<PktChatMessage>(&data) else {
+            let Ok(pkt) = deser::<PktChatMessage>(&data) else {
                 return;
             };
             let chat_pkt = if let Ok(peer) = state.room_manager.peer_by_id(room_code, peer_id).await
@@ -287,7 +295,7 @@ async fn handle_binary_message(
         }
         // New protocol types (Replay, etc.) — forward to input_tx if RoomActor is active
         PacketType::Replay | PacketType::PlayerAction => {
-            if let Ok(pkt) = deserialize::<PktReplay>(&data) {
+            if let Ok(pkt) = deser::<PktReplay>(&data) {
                 for ev in &pkt.events {
                     let _ = input_tx.try_send(ev.clone());
                 }
