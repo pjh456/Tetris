@@ -1,10 +1,12 @@
 use std::collections::HashMap;
 
+use serde::{Deserialize, Serialize};
 use tetris_core::engine::Engine;
 use tetris_protocol::newtypes::{PlayerSlot, Seed, TickNumber};
 use tetris_protocol::protocol::{
-    InputEvent, PacketHeader, PacketType, PktIncomingGarbage, PktReconnectAck, PktServerReplay,
-    PktStateHash, PktStateSnapshot, PROTOCOL_VERSION,
+    InputEvent, PacketHeader, PacketType, PktGameOver, PktIncomingGarbage, PktPlayerStateSync,
+    PktReconnectAck, PktRoomSnapshot, PktServerReplay, PktStateHash,
+    PktStateSnapshot, RoomPlayerSnapshot, PROTOCOL_VERSION,
 };
 use tokio::sync::mpsc;
 use tokio::time::{Duration, interval};
@@ -15,6 +17,15 @@ use crate::player_conn::PlayerConnection;
 use crate::replay_buffer::{HashLadder, ReplayBuffer};
 
 pub const STATE_HASH_INTERVAL: u64 = 100;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum RoomMode {
+    #[default]
+    Lobby,
+    Countdown,
+    Playing,
+    GameOver,
+}
 
 /// Commands sent to a `RoomActor` from `ws_handler`.
 pub enum RoomCommand {
@@ -55,6 +66,10 @@ pub struct RoomActor {
     outbound_txs: Vec<Option<mpsc::Sender<Vec<u8>>>>,
     pending_inputs: Vec<(PlayerSlot, InputEvent)>,
     pub active: bool,
+    player_alive: Vec<bool>,
+    player_spectating: Vec<Option<PlayerSlot>>,
+    pub room_mode: RoomMode,
+    game_over_countdown: u8,
 }
 
 impl RoomActor {
@@ -71,6 +86,10 @@ impl RoomActor {
             outbound_txs: Vec::new(),
             pending_inputs: Vec::new(),
             active: true,
+            player_alive: Vec::new(),
+            player_spectating: Vec::new(),
+            room_mode: RoomMode::Lobby,
+            game_over_countdown: 0,
         }
     }
 
@@ -88,6 +107,8 @@ impl RoomActor {
             self.input_rxs.resize_with(idx + 1, || None);
             self.connections.resize_with(idx + 1, || None);
             self.outbound_txs.resize_with(idx + 1, || None);
+            self.player_alive.resize_with(idx + 1, || true);
+            self.player_spectating.resize_with(idx + 1, || None);
         }
 
         let mut engine = Engine::<10, 20>::new();
@@ -108,12 +129,106 @@ impl RoomActor {
             self.input_rxs[idx] = None;
             self.connections[idx] = None;
             self.outbound_txs[idx] = None;
+            self.player_alive[idx] = false;
+            self.player_spectating[idx] = None;
         }
         self.replay_buffers.remove(&slot);
     }
 
     pub fn engine_count(&self) -> usize {
         self.engines.iter().filter(|e| e.is_some()).count()
+    }
+
+    fn broadcast_player_state(&self, slot: PlayerSlot) {
+        let idx = slot.0 as usize;
+        let pkt = PktPlayerStateSync {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::PlayerStateSync,
+                player_id: 0,
+            },
+            target_player_id: slot.0,
+            alive: self.player_alive.get(idx).copied().unwrap_or(false),
+            spectating: self.player_spectating.get(idx).is_some(),
+            spectating_target: self.player_spectating.get(idx).and_then(|s| s.map(|t| t.0)),
+        };
+        if let Ok(data) = bincode::serialize(&pkt) {
+            for tx_opt in &self.outbound_txs {
+                if let Some(tx) = tx_opt {
+                    let _ = tx.try_send(data.clone());
+                }
+            }
+        }
+    }
+
+    fn broadcast_game_over(&self, winner_id: u8) {
+        let pkt = PktGameOver {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::GameOver,
+                player_id: 0,
+            },
+            winner_player_id: winner_id,
+        };
+        if let Ok(data) = bincode::serialize(&pkt) {
+            for tx_opt in &self.outbound_txs {
+                if let Some(tx) = tx_opt {
+                    let _ = tx.try_send(data.clone());
+                }
+            }
+        }
+    }
+
+    fn reset_to_lobby(&mut self) {
+        for engine_opt in &mut self.engines {
+            if let Some(engine) = engine_opt {
+                engine.reset(self.seed.0 as u32);
+            }
+        }
+        for alive in &mut self.player_alive {
+            *alive = true;
+        }
+        for spec in &mut self.player_spectating {
+            *spec = None;
+        }
+        self.broadcast_lobby_reset();
+    }
+
+    fn broadcast_lobby_reset(&self) {
+        let snapshot = PktRoomSnapshot {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::RoomSnapshot,
+                player_id: 0,
+            },
+            room_code: self.room_code.clone(),
+            players: self.build_player_snapshots(),
+        };
+        if let Ok(data) = bincode::serialize(&snapshot) {
+            for tx_opt in &self.outbound_txs {
+                if let Some(tx) = tx_opt {
+                    let _ = tx.try_send(data.clone());
+                }
+            }
+        }
+    }
+
+    fn build_player_snapshots(&self) -> Vec<RoomPlayerSnapshot> {
+        self.player_alive
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &alive)| {
+                let conn = self.connections.get(i)?.as_ref()?;
+                Some(RoomPlayerSnapshot {
+                    player_id: i as u8,
+                    name: conn.peer_name.clone(),
+                    ready: false,
+                    alive,
+                    away: false,
+                    is_host: i == 0,
+                })
+            })
+            .collect()
     }
 
     fn route_attack_target(&self, source: PlayerSlot) -> Option<PlayerSlot> {
@@ -218,6 +333,57 @@ impl RoomActor {
                 for ev in per_replay.get(&idx).into_iter().flatten() {
                     rb.push(slot, self.tick, ev.clone());
                 }
+            }
+        }
+
+        // Lifecycle: detect deaths and match end
+        if self.room_mode == RoomMode::Playing {
+            let mut newly_dead: Vec<PlayerSlot> = Vec::new();
+            for (idx, engine_opt) in self.engines.iter().enumerate() {
+                if let Some(engine) = engine_opt {
+                    if engine.game_over && self.player_alive.get(idx).copied().unwrap_or(true) {
+                        newly_dead.push(PlayerSlot(idx as u8));
+                    }
+                }
+            }
+
+            for slot in &newly_dead {
+                let idx = slot.0 as usize;
+                self.player_alive[idx] = false;
+                let spec_target = self
+                    .engines
+                    .iter()
+                    .enumerate()
+                    .find(|(i, e)| {
+                        e.as_ref().map_or(false, |eng| !eng.game_over) && *i != idx
+                    })
+                    .map(|(i, _)| PlayerSlot(i as u8));
+                self.player_spectating[idx] = spec_target;
+                self.broadcast_player_state(*slot);
+            }
+
+            let alive_count = self.player_alive.iter().filter(|&&a| a).count();
+            if alive_count <= 1 && !newly_dead.is_empty() {
+                let winner_id = self
+                    .player_alive
+                    .iter()
+                    .enumerate()
+                    .find(|(_, a)| **a)
+                    .map(|(i, _)| i as u8)
+                    .unwrap_or(0);
+                self.room_mode = RoomMode::GameOver;
+                self.game_over_countdown = 180;
+                self.broadcast_game_over(winner_id);
+            }
+        }
+
+        if self.room_mode == RoomMode::GameOver {
+            if self.game_over_countdown > 0 {
+                self.game_over_countdown -= 1;
+            }
+            if self.game_over_countdown == 0 {
+                self.room_mode = RoomMode::Lobby;
+                self.reset_to_lobby();
             }
         }
 

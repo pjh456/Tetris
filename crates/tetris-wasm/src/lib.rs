@@ -22,6 +22,7 @@ pub struct OpponentInfo {
     pub alive: bool,
     pub away: bool,
     pub is_host: bool,
+    pub spectating: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,6 +43,7 @@ pub struct MultiplayerEvent {
     pub random_seed: Option<u32>,
     pub message: Option<String>,
     pub incoming_garbage_lines: Option<u8>,
+    pub winner_player_id: Option<u8>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -351,6 +353,7 @@ impl WebTetris {
                     random_seed: None,
                     message: None,
                     incoming_garbage_lines: None,
+                    winner_player_id: None,
                 });
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
@@ -370,6 +373,7 @@ impl WebTetris {
                         alive: player.alive,
                         away: player.away,
                         is_host: player.is_host,
+                        spectating: false,
                     })
                     .collect();
                 self.opponent_infos = self
@@ -386,6 +390,7 @@ impl WebTetris {
                     random_seed: None,
                     message: None,
                     incoming_garbage_lines: None,
+                    winner_player_id: None,
                 });
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
@@ -403,6 +408,7 @@ impl WebTetris {
                     random_seed: Some(pkt.random_seed),
                     message: None,
                     incoming_garbage_lines: None,
+                    winner_player_id: None,
                 });
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
@@ -420,6 +426,7 @@ impl WebTetris {
                     random_seed: None,
                     message: None,
                     incoming_garbage_lines: None,
+                    winner_player_id: None,
                 });
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
@@ -437,6 +444,7 @@ impl WebTetris {
                     random_seed: None,
                     message: None,
                     incoming_garbage_lines: None,
+                    winner_player_id: None,
                 });
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
@@ -453,6 +461,7 @@ impl WebTetris {
                     random_seed: None,
                     message: Some(pkt.message.clone()),
                     incoming_garbage_lines: None,
+                    winner_player_id: None,
                 });
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
@@ -470,6 +479,7 @@ impl WebTetris {
                     random_seed: None,
                     message: None,
                     incoming_garbage_lines: None,
+                    winner_player_id: None,
                 });
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
@@ -495,6 +505,7 @@ impl WebTetris {
                     random_seed: None,
                     message: None,
                     incoming_garbage_lines: None,
+                    winner_player_id: None,
                 });
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
@@ -558,6 +569,7 @@ impl WebTetris {
                     random_seed: None,
                     message: None,
                     incoming_garbage_lines: None,
+                    winner_player_id: None,
                 });
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }
@@ -574,6 +586,48 @@ impl WebTetris {
                     random_seed: None,
                     message: None,
                     incoming_garbage_lines: Some(pkt.incoming_lines),
+                    winner_player_id: None,
+                });
+                serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
+            }
+            PacketType::PlayerStateSync => {
+                let pkt: PktPlayerStateSync = match deserialize(data) {
+                    Ok(p) => p,
+                    Err(_) => return JsValue::NULL,
+                };
+                if let Some(info) = self.opponent_infos
+                    .iter_mut()
+                    .find(|p| p.player_id == pkt.target_player_id)
+                {
+                    info.alive = pkt.alive;
+                    info.spectating = pkt.spectating;
+                }
+                self.last_event = Some(MultiplayerEvent {
+                    kind: "player_state".into(),
+                    room_code: self.room_code.clone(),
+                    player_id: Some(pkt.target_player_id),
+                    countdown: self.countdown,
+                    random_seed: None,
+                    message: None,
+                    incoming_garbage_lines: None,
+                    winner_player_id: None,
+                });
+                serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
+            }
+            PacketType::GameOver => {
+                let pkt: PktGameOver = match deserialize(data) {
+                    Ok(p) => p,
+                    Err(_) => return JsValue::NULL,
+                };
+                self.last_event = Some(MultiplayerEvent {
+                    kind: "game_over".into(),
+                    room_code: self.room_code.clone(),
+                    player_id: None,
+                    countdown: self.countdown,
+                    random_seed: None,
+                    message: None,
+                    incoming_garbage_lines: None,
+                    winner_player_id: Some(pkt.winner_player_id),
                 });
                 serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
             }

@@ -40,6 +40,7 @@ pub enum PacketType {
     Resume = 29,
     Ige = 30,
     IncomingGarbage = 31,
+    PlayerStateSync = 32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -95,6 +96,16 @@ pub struct PktIncomingGarbage {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PktGameOver {
     pub header: PacketHeader,
+    pub winner_player_id: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PktPlayerStateSync {
+    pub header: PacketHeader,
+    pub target_player_id: u8,
+    pub alive: bool,
+    pub spectating: bool,
+    pub spectating_target: Option<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

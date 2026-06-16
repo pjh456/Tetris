@@ -48,6 +48,7 @@ pub struct PlayerInfo {
     pub ready: bool,
     pub alive: bool,
     pub away: bool,
+    pub spectating_target: Option<u8>,
 }
 
 pub struct NetGameDriver<const W: usize, const H: usize> {
@@ -133,6 +134,7 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
             ready: false,
             alive: true,
             away: false,
+            spectating_target: None,
         });
     }
 
@@ -147,6 +149,7 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
             ready: false,
             alive: true,
             away: false,
+            spectating_target: None,
         });
         Ok(())
     }
@@ -445,6 +448,28 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
                     self.last_remote_seq = pkt.seq;
             }
             PacketType::ResyncRequest => {}
+            PacketType::PlayerStateSync => {
+                let pkt: PktPlayerStateSync =
+                    bincode::deserialize(data).map_err(|e| NetError::Decode(e.to_string()))?;
+                if let Some(info) = self
+                    .player_infos
+                    .iter_mut()
+                    .find(|p| p.player_id == pkt.target_player_id)
+                {
+                    info.alive = pkt.alive;
+                    info.spectating_target = pkt.spectating_target;
+                }
+            }
+            PacketType::GameOver => {
+                let pkt: PktGameOver =
+                    bincode::deserialize(data).map_err(|e| NetError::Decode(e.to_string()))?;
+                self.room_mode = RoomMode::GameOver;
+                self.player_infos.iter_mut().for_each(|p| {
+                    if p.player_id != pkt.winner_player_id {
+                        p.alive = false;
+                    }
+                });
+            }
             _ => {}
         }
         Ok(())
