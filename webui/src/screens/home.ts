@@ -88,6 +88,7 @@ function create_card(config: {
   const card = document.createElement('div');
   card.className = `menu-card glass ${config.css_class}`;
   card.setAttribute('tabindex', '0');
+  card.setAttribute('role', 'button');
   card.style.position = 'relative';
 
   card.innerHTML = `
