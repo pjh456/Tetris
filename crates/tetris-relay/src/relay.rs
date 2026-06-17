@@ -14,7 +14,7 @@ pub type RoomCode = String;
 
 const ROOM_CODE_ALPHABET: &[u8] = b"ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const ROOM_CODE_LEN: usize = 4;
-const MAX_PLAYERS_PER_ROOM: usize = 4;
+pub const MAX_PLAYERS_PER_ROOM: usize = 4;
 const BROADCAST_CAPACITY: usize = 256;
 
 static NEXT_PEER_ID: AtomicU64 = AtomicU64::new(1);
@@ -28,6 +28,7 @@ pub struct RoomState {
     pub host_peer_id: RwLock<Option<u64>>,
     pub peers: Mutex<Vec<PeerInfo>>,
     pub countdown_active: AtomicUsize,
+    pub countdown_generation: AtomicU64,
     pub cancel_tx: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
     pub actor_tx: Mutex<Option<tokio::sync::mpsc::Sender<RoomCommand>>>,
 }
@@ -132,6 +133,10 @@ impl RoomManager {
             .find(|peer| peer.id == id)
             .ok_or(RelayError::PeerNotFound)?;
         peer.ready = ready;
+        if !ready {
+            room.countdown_active.store(0, Ordering::SeqCst);
+            room.countdown_generation.fetch_add(1, Ordering::SeqCst);
+        }
         Ok(peers.clone())
     }
 
@@ -167,6 +172,8 @@ impl RoomManager {
                 *host_peer_id = peers.first().map(|peer| peer.id);
             }
             room.player_count.store(peers.len(), Ordering::SeqCst);
+            room.countdown_active.store(0, Ordering::SeqCst);
+            room.countdown_generation.fetch_add(1, Ordering::SeqCst);
             peers.clone()
         } else {
             vec![]
@@ -235,25 +242,44 @@ impl RoomManager {
 
     /// Atomically try to start the countdown. Returns Ok(true) if countdown was started,
     /// Ok(false) if it was already active (caller should not start a duplicate).
-    pub async fn try_start_countdown(&self, code: &str) -> Result<bool, RelayError> {
+    pub async fn try_start_countdown(&self, code: &str) -> Result<Option<u64>, RelayError> {
         let rooms = self.rooms.read().await;
         let room = rooms
             .get(code)
             .ok_or_else(|| RelayError::RoomNotFound(code.into()))?;
-        Ok(room
+        if room
             .countdown_active
             .compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst)
-            .is_ok())
+            .is_ok()
+        {
+            let generation = room.countdown_generation.fetch_add(1, Ordering::SeqCst) + 1;
+            Ok(Some(generation))
+        } else {
+            Ok(None)
+        }
     }
 
-    pub async fn set_countdown_active(&self, code: &str, active: bool) -> Result<(), RelayError> {
+    pub async fn cancel_countdown(&self, code: &str) -> Result<(), RelayError> {
         let rooms = self.rooms.read().await;
         let room = rooms
             .get(code)
             .ok_or_else(|| RelayError::RoomNotFound(code.into()))?;
-        room.countdown_active
-            .store(usize::from(active), Ordering::SeqCst);
+        room.countdown_active.store(0, Ordering::SeqCst);
+        room.countdown_generation.fetch_add(1, Ordering::SeqCst);
         Ok(())
+    }
+
+    pub async fn countdown_generation_matches(
+        &self,
+        code: &str,
+        generation: u64,
+    ) -> Result<bool, RelayError> {
+        let rooms = self.rooms.read().await;
+        let room = rooms
+            .get(code)
+            .ok_or_else(|| RelayError::RoomNotFound(code.into()))?;
+        Ok(room.countdown_active.load(Ordering::SeqCst) != 0
+            && room.countdown_generation.load(Ordering::SeqCst) == generation)
     }
 
     pub async fn create_room(&self) -> Result<RoomCode, RelayError> {
@@ -270,6 +296,7 @@ impl RoomManager {
             host_peer_id: RwLock::new(None),
             peers: Mutex::new(vec![]),
             countdown_active: AtomicUsize::new(0),
+            countdown_generation: AtomicU64::new(0),
             cancel_tx: Mutex::new(None),
             actor_tx: Mutex::new(None),
         });
@@ -316,6 +343,8 @@ impl RoomManager {
                 if let Some(cancel_tx) = room.cancel_tx.lock().await.take() {
                     let _ = cancel_tx.send(());
                 }
+                room.countdown_active.store(0, Ordering::SeqCst);
+                room.countdown_generation.fetch_add(1, Ordering::SeqCst);
                 rooms.remove(code);
             }
         }
@@ -352,6 +381,7 @@ impl RoomManager {
             host_peer_id: RwLock::new(None),
             peers: Mutex::new(vec![]),
             countdown_active: AtomicUsize::new(0),
+            countdown_generation: AtomicU64::new(0),
             cancel_tx: Mutex::new(None),
             actor_tx: Mutex::new(None),
         });
@@ -455,5 +485,28 @@ mod tests {
             .unwrap();
 
         assert!(!manager.all_peers_ready("ABCD").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn player_slot_allocation_reuses_lowest_free_slot() {
+        let manager = RoomManager::new(4);
+        manager.get_or_create_room("ABCD").await.unwrap();
+        let first_id = RoomManager::alloc_peer_id();
+        let second_id = RoomManager::alloc_peer_id();
+        let third_id = RoomManager::alloc_peer_id();
+        manager.join_room("ABCD").await.unwrap();
+        manager.add_peer("ABCD", first_id).await.unwrap();
+        manager.join_room("ABCD").await.unwrap();
+        manager.add_peer("ABCD", second_id).await.unwrap();
+
+        let remaining = manager.remove_peer("ABCD", first_id).await;
+        assert_eq!(remaining[0].player_id, 1);
+
+        manager.join_room("ABCD").await.unwrap();
+        let peers = manager.add_peer("ABCD", third_id).await.unwrap();
+
+        let mut slots: Vec<_> = peers.iter().map(|peer| peer.player_id).collect();
+        slots.sort_unstable();
+        assert_eq!(slots, vec![0, 1]);
     }
 }

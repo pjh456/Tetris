@@ -16,6 +16,16 @@ export async function cargoFmtCheck() {
     if (!r.ok) process.exit(r.code);
 }
 
+export async function determinismProptestCheck() {
+    const r = await runRoot('cargo', ['test', '-p', 'tetris-core', '--test', 'determinism_proptest']);
+    if (!r.ok) process.exit(r.code);
+}
+
+export async function goldenSnapshotsCheck() {
+    const r = await runRoot('cargo', ['test', '-p', 'tetris-core', '--test', 'golden_snapshots']);
+    if (!r.ok) process.exit(r.code);
+}
+
 export async function tscCheck() {
     const r = await runRoot('npx', ['tsc', '--noEmit'], { cwd: WEBUI });
     if (!r.ok) process.exit(r.code);
@@ -38,11 +48,13 @@ export async function prettierCheck() {
 
 export async function fullCheck() {
     await cargoTest();
+    await determinismProptestCheck();
+    await goldenSnapshotsCheck();
     await cargoClippy();
     await cargoFmtCheck();
     await tscCheck();
     await eslintCheck();
     await vitestCheck();
     await prettierCheck();
-    process.stdout.write('\nAll 7 checks passed.\n');
+    process.stdout.write('\nAll 9 checks passed.\n');
 }

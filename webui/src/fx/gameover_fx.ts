@@ -4,7 +4,11 @@ export function run_collapse_animation(
 ): () => void {
   const ctx = canvas.getContext('2d')!;
   ctx.save();
-  ctx.resetTransform();
+  if (typeof ctx.resetTransform === 'function') {
+    ctx.resetTransform();
+  } else if (typeof ctx.setTransform === 'function') {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+  }
 
   const buf_w = canvas.width;
   const buf_h = canvas.height;
@@ -31,6 +35,10 @@ export function run_collapse_animation(
       clearTimeout(timer);
       timer = null;
     }
-    try { ctx.restore(); } catch { /* already restored */ }
+    try {
+      ctx.restore();
+    } catch {
+      /* already restored */
+    }
   };
 }

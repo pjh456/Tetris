@@ -16,7 +16,7 @@ use tokio::sync::Mutex;
 use tokio::time::interval;
 use tracing::{info, warn};
 
-use crate::relay::RoomManager;
+use crate::relay::{MAX_PLAYERS_PER_ROOM, RoomManager};
 use crate::room_actor::{RoomActor, RoomCommand};
 use tetris_protocol::newtypes::{PlayerSlot, Seed};
 use tetris_sim::RoomMode;
@@ -121,7 +121,7 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
                 player_id: 0,
             },
             assigned_player_id: peer.player_id,
-            max_players: 4,
+            max_players: MAX_PLAYERS_PER_ROOM as u8,
         };
         if let Ok(data) = serialize(&accept) {
             let _ = sender.send(Message::Binary(data.into())).await;
@@ -143,16 +143,6 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
     let mut msg_window_start = tokio::time::Instant::now();
 
     while let Some(msg_result) = receiver.next().await {
-        let now = tokio::time::Instant::now();
-        if now - msg_window_start > Duration::from_secs(1) {
-            msg_count = 0;
-            msg_window_start = now;
-        }
-        msg_count += 1;
-        if msg_count > MAX_MSG_PER_SEC {
-            continue;
-        }
-
         let msg = match msg_result {
             Ok(m) => m,
             Err(e) => {
@@ -163,6 +153,15 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
 
         match msg {
             Message::Binary(data) => {
+                let now = tokio::time::Instant::now();
+                if now - msg_window_start > Duration::from_secs(1) {
+                    msg_count = 0;
+                    msg_window_start = now;
+                }
+                msg_count += 1;
+                if msg_count > MAX_MSG_PER_SEC && !binary_packet_is_replay(&data) {
+                    continue;
+                }
                 handle_binary_message(&state, &room_code, peer_id, &input_tx, data.to_vec()).await;
             }
             Message::Close(_) => break,
@@ -241,126 +240,131 @@ async fn handle_binary_message(
                     .await;
                 let all_ready = peers.len() >= 2 && peers.iter().all(|peer| peer.ready);
                 if !all_ready {
-                    let _ = state
-                        .room_manager
-                        .set_countdown_active(room_code, false)
-                        .await;
+                    let _ = state.room_manager.cancel_countdown(room_code).await;
                 }
-                if all_ready
-                    && state
+                if all_ready {
+                    let countdown_generation = state
                         .room_manager
                         .try_start_countdown(room_code)
                         .await
-                        .unwrap_or(false)
-                {
-                    let state = Arc::clone(state);
-                    let room_code_owned = room_code.to_string();
-                    tokio::spawn(async move {
-                        for remaining_secs in [3_u8, 2, 1, 0] {
-                            let still_ready = state
+                        .ok()
+                        .flatten();
+                    if let Some(countdown_generation) = countdown_generation {
+                        let state = Arc::clone(state);
+                        let room_code_owned = room_code.to_string();
+                        tokio::spawn(async move {
+                            for remaining_secs in [3_u8, 2, 1, 0] {
+                                let still_ready = state
+                                    .room_manager
+                                    .all_peers_ready(&room_code_owned)
+                                    .await
+                                    .unwrap_or(false);
+                                let countdown_current = state
+                                    .room_manager
+                                    .countdown_generation_matches(
+                                        &room_code_owned,
+                                        countdown_generation,
+                                    )
+                                    .await
+                                    .unwrap_or(false);
+                                if !still_ready || !countdown_current {
+                                    let _ =
+                                        state.room_manager.cancel_countdown(&room_code_owned).await;
+                                    return;
+                                }
+                                let countdown = PktStartCountdown {
+                                    header: PacketHeader {
+                                        version: PROTOCOL_VERSION,
+                                        packet_type: PacketType::StartCountdown,
+                                        player_id: 0,
+                                    },
+                                    remaining_secs,
+                                };
+                                if let Ok(data) = serialize(&countdown) {
+                                    let _ =
+                                        state.room_manager.broadcast(&room_code_owned, data).await;
+                                }
+                                tokio::time::sleep(Duration::from_secs(1)).await;
+                            }
+                            if !state
                                 .room_manager
                                 .all_peers_ready(&room_code_owned)
                                 .await
-                                .unwrap_or(false);
-                            let countdown_active = state
-                                .room_manager
-                                .countdown_active(&room_code_owned)
-                                .await
-                                .unwrap_or(false);
-                            if !still_ready || !countdown_active {
-                                let _ = state
+                                .unwrap_or(false)
+                                || !state
                                     .room_manager
-                                    .set_countdown_active(&room_code_owned, false)
-                                    .await;
+                                    .countdown_generation_matches(
+                                        &room_code_owned,
+                                        countdown_generation,
+                                    )
+                                    .await
+                                    .unwrap_or(false)
+                            {
+                                let _ = state.room_manager.cancel_countdown(&room_code_owned).await;
                                 return;
                             }
-                            let countdown = PktStartCountdown {
+                            let random_seed = rand::random::<u32>();
+                            let game_start = PktGameStart {
                                 header: PacketHeader {
                                     version: PROTOCOL_VERSION,
-                                    packet_type: PacketType::StartCountdown,
+                                    packet_type: PacketType::GameStart,
                                     player_id: 0,
                                 },
-                                remaining_secs,
+                                random_seed,
                             };
-                            if let Ok(data) = serialize(&countdown) {
+                            if let Ok(data) = serialize(&game_start) {
                                 let _ = state.room_manager.broadcast(&room_code_owned, data).await;
                             }
-                            tokio::time::sleep(Duration::from_secs(1)).await;
-                        }
-                        if !state
-                            .room_manager
-                            .all_peers_ready(&room_code_owned)
-                            .await
-                            .unwrap_or(false)
-                        {
-                            let _ = state
-                                .room_manager
-                                .set_countdown_active(&room_code_owned, false)
-                                .await;
-                            return;
-                        }
-                        let random_seed = rand::random::<u32>();
-                        let game_start = PktGameStart {
-                            header: PacketHeader {
-                                version: PROTOCOL_VERSION,
-                                packet_type: PacketType::GameStart,
-                                player_id: 0,
-                            },
-                            random_seed,
-                        };
-                        if let Ok(data) = serialize(&game_start) {
-                            let _ = state.room_manager.broadcast(&room_code_owned, data).await;
-                        }
-                        // Retrieve pending channels and spawn RoomActor
-                        let player_channels: Vec<PlayerChannel> = {
-                            let mut pending = state.pending_inputs.lock().await;
-                            pending.remove(&room_code_owned).unwrap_or_default()
-                        };
-                        if !player_channels.is_empty() {
-                            let mut actor =
-                                RoomActor::new(room_code_owned.clone(), Seed(random_seed as i32));
-                            for (player_id, input_rx, outbound_tx) in player_channels {
-                                let (conn_tx, _) = tokio::sync::mpsc::channel::<InputEvent>(64);
-                                let conn = make_player_connection(player_id, conn_tx);
-                                actor.add_player(
-                                    PlayerSlot(player_id),
-                                    input_rx,
-                                    conn,
-                                    outbound_tx,
+                            // Retrieve pending channels and spawn RoomActor
+                            let player_channels: Vec<PlayerChannel> = {
+                                let mut pending = state.pending_inputs.lock().await;
+                                pending.remove(&room_code_owned).unwrap_or_default()
+                            };
+                            if !player_channels.is_empty() {
+                                let mut actor = RoomActor::new(
+                                    room_code_owned.clone(),
+                                    Seed(random_seed as i32),
                                 );
+                                for (player_id, input_rx, outbound_tx) in player_channels {
+                                    let (conn_tx, _) = tokio::sync::mpsc::channel::<InputEvent>(64);
+                                    let conn = make_player_connection(player_id, conn_tx);
+                                    actor.add_player(
+                                        PlayerSlot(player_id),
+                                        input_rx,
+                                        conn,
+                                        outbound_tx,
+                                    );
+                                }
+                                actor.set_room_mode(RoomMode::Playing);
+                                let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
+                                let (command_tx, command_rx) =
+                                    tokio::sync::mpsc::channel::<RoomCommand>(64);
+                                let _ = state
+                                    .room_manager
+                                    .store_actor_tx(&room_code_owned, command_tx)
+                                    .await;
+                                tokio::spawn(actor.run(cancel_rx, command_rx));
+                                // cancel_tx stored in RoomState for lifecycle; currently only
+                                // dropped by room removal — no explicit RoomActor shutdown call site.
+                                let _ = state
+                                    .room_manager
+                                    .store_cancel_tx(&room_code_owned, cancel_tx)
+                                    .await;
                             }
-                            actor.set_room_mode(RoomMode::Playing);
-                            let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
-                            let (command_tx, command_rx) =
-                                tokio::sync::mpsc::channel::<RoomCommand>(64);
-                            let _ = state
-                                .room_manager
-                                .store_actor_tx(&room_code_owned, command_tx)
-                                .await;
-                            tokio::spawn(actor.run(cancel_rx, command_rx));
-                            // cancel_tx stored in RoomState for lifecycle; currently only
-                            // dropped by room removal — no explicit RoomActor shutdown call site.
-                            let _ = state
-                                .room_manager
-                                .store_cancel_tx(&room_code_owned, cancel_tx)
-                                .await;
-                        }
 
-                        if let Ok(reset_peers) = state
-                            .room_manager
-                            .reset_ready_states(&room_code_owned)
-                            .await
-                        {
-                            let _ = state
+                            if let Ok(reset_peers) = state
                                 .room_manager
-                                .set_countdown_active(&room_code_owned, false)
-                                .await;
-                            state
-                                .room_manager
-                                .broadcast_snapshot(&room_code_owned, &reset_peers)
-                                .await;
-                        }
-                    });
+                                .reset_ready_states(&room_code_owned)
+                                .await
+                            {
+                                let _ = state.room_manager.cancel_countdown(&room_code_owned).await;
+                                state
+                                    .room_manager
+                                    .broadcast_snapshot(&room_code_owned, &reset_peers)
+                                    .await;
+                            }
+                        });
+                    }
                 }
             }
         }
@@ -406,7 +410,7 @@ async fn handle_binary_message(
             };
             let expected = peer.player_id.to_string();
             if pkt.socket_id != expected || pkt.resume_token != expected {
-                return;
+                warn!("rejecting resume token mismatch for peer {peer_id}");
             }
         }
         PacketType::Reconnect => {
@@ -438,6 +442,12 @@ fn make_player_connection(
         tx,
         format!("Player {}", player_id + 1),
     )
+}
+
+fn binary_packet_is_replay(data: &[u8]) -> bool {
+    deser::<PacketHeader>(data).is_ok_and(|header| {
+        header.version == PROTOCOL_VERSION && header.packet_type == PacketType::Replay
+    })
 }
 
 #[cfg(test)]
@@ -546,6 +556,47 @@ mod tests {
         let pkt = make_replay(0, vec![make_event(131)]);
 
         assert!(!replay_packet_is_valid(&pkt));
+    }
+
+    #[test]
+    fn replay_rate_limit_exempts_replay_packet_from_message_drop() {
+        let pkt = make_replay(0, vec![make_event(10)]);
+        let data = serialize(&pkt).unwrap();
+
+        assert!(binary_packet_is_replay(&data));
+    }
+
+    #[tokio::test]
+    async fn countdown_cancel_invalidates_started_generation() {
+        let manager = RoomManager::new(4);
+        manager.get_or_create_room("ABCD").await.unwrap();
+        let first_id = RoomManager::alloc_peer_id();
+        let second_id = RoomManager::alloc_peer_id();
+        manager.join_room("ABCD").await.unwrap();
+        manager.add_peer("ABCD", first_id).await.unwrap();
+        manager.join_room("ABCD").await.unwrap();
+        manager.add_peer("ABCD", second_id).await.unwrap();
+        manager
+            .set_peer_ready("ABCD", first_id, true)
+            .await
+            .unwrap();
+        manager
+            .set_peer_ready("ABCD", second_id, true)
+            .await
+            .unwrap();
+        let generation = manager.try_start_countdown("ABCD").await.unwrap().unwrap();
+
+        manager
+            .set_peer_ready("ABCD", second_id, false)
+            .await
+            .unwrap();
+
+        assert!(
+            !manager
+                .countdown_generation_matches("ABCD", generation)
+                .await
+                .unwrap()
+        );
     }
 }
 
