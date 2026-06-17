@@ -4,28 +4,34 @@ import type { ThemeName } from './theme';
 
 let container: Container | undefined = undefined;
 let initialized = false;
+let init_promise: Promise<void> | null = null;
 
 export async function init_particles(theme: ThemeName = 'cyberpunk'): Promise<void> {
   if (initialized) return;
+  if (init_promise) return init_promise;
 
-  await loadSlim(tsParticles);
-  initialized = true;
+  init_promise = (async () => {
+    await loadSlim(tsParticles);
+    initialized = true;
 
-  let el = document.getElementById('particles-bg');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'particles-bg';
-    el.style.position = 'fixed';
-    el.style.inset = '0';
-    el.style.zIndex = '-1';
-    el.style.pointerEvents = 'none';
-    document.body.prepend(el);
-  }
+    let el = document.getElementById('particles-bg');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'particles-bg';
+      el.style.position = 'fixed';
+      el.style.inset = '0';
+      el.style.zIndex = '-1';
+      el.style.pointerEvents = 'none';
+      document.body.prepend(el);
+    }
 
-  container = await tsParticles.load({
-    id: 'particles-bg',
-    options: get_config(theme),
-  });
+    container = await tsParticles.load({
+      id: 'particles-bg',
+      options: get_config(theme),
+    });
+  })();
+
+  return init_promise;
 }
 
 export async function apply_theme_particles(theme: ThemeName): Promise<void> {
