@@ -161,6 +161,7 @@ export class WsClient {
       clearTimeout(this.reconnect_timer);
     }
     this.socket?.close();
+    this.reconnect_attempt = 0;
     connection_status.value = 'offline';
   }
 }
