@@ -109,7 +109,7 @@ const LEADERBOARD_KEY = 'tetris-leaderboard';
 let _leaderboard_cache: LeaderboardEntry[] | null = null;
 
 export function get_leaderboard(): LeaderboardEntry[] {
-  if (_leaderboard_cache) return _leaderboard_cache;
+  if (_leaderboard_cache !== null) return _leaderboard_cache;
   try {
     const raw = localStorage.getItem(LEADERBOARD_KEY);
     if (!raw) { _leaderboard_cache = []; return []; }
