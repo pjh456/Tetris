@@ -30,7 +30,14 @@ pub fn check_t_spin<const W: usize, const H: usize>(st: &State<W, H>) -> bool {
     if st.piece != Piece::T || !st.last_move_was_rotation {
         return false;
     }
+    corner_count(st) >= 2
+}
 
+fn check_full_t_spin<const W: usize, const H: usize>(st: &State<W, H>) -> bool {
+    corner_count(st) >= 3
+}
+
+fn corner_count<const W: usize, const H: usize>(st: &State<W, H>) -> usize {
     let cx = st.x as i32 + 1;
     let cy = st.y as i32 + 1;
 
@@ -47,8 +54,7 @@ pub fn check_t_spin<const W: usize, const H: usize>(st: &State<W, H>) -> bool {
     if is_occupied(&st.board, cx + 1, cy + 1) {
         corners += 1;
     }
-
-    corners >= 3
+    corners
 }
 
 pub fn calculate_attack<const W: usize, const H: usize>(
@@ -63,6 +69,7 @@ pub fn calculate_attack<const W: usize, const H: usize>(
 
     let lc = lines_cleared as usize;
     res.is_tspin = check_t_spin(st);
+    res.is_mini = res.is_tspin && !check_full_t_spin(st);
 
     if res.is_tspin {
         res.damage = TSPIN_DMG[lc.min(4)];
