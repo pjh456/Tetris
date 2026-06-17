@@ -501,6 +501,25 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
                     }
                 });
             }
+            PacketType::Reconnect => {
+                let pkt: PktReconnect =
+                    deser(data).map_err(|e| NetError::Decode(e.to_string()))?;
+                if let Some(key) = self.player_key_from_id(header.player_id) {
+                    self.prev_board_rows.remove(&key);
+                    self.prev_board_rows.insert(key, vec![0u64; H]);
+                }
+                let _ = pkt;
+            }
+            PacketType::PlayerAway => {
+                if let Some(info) = self
+                    .player_infos
+                    .iter_mut()
+                    .find(|p| p.player_id == header.player_id)
+                {
+                    info.away = true;
+                }
+            }
+            PacketType::HostMigrate | PacketType::ReconnectAck | PacketType::Resume => {}
             _ => {}
         }
         Ok(())
