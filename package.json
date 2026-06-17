@@ -15,6 +15,10 @@
     "check:web":  "node scripts/check-web.js",
     "clean":   "node scripts/clean.js",
     "build:desktop": "node scripts/build-desktop.js",
-    "dev:desktop": "cd crates/tetris-tauri && cargo tauri dev"
+    "dev:desktop": "cd crates/tetris-tauri && cargo tauri dev",
+    "build:ai": "cd crates/tetris-ai && python build_ai.py",
+    "build:ai:release": "cd crates/tetris-ai && python build_ai.py --release",
+    "train:ppo": "cd crates/tetris-ai/python && python train_ppo.py",
+    "check:ai": "cargo test -p tetris-ai -p tetris-core && cd crates/tetris-ai && python -m pytest python/tests/ -v"
   }
 }

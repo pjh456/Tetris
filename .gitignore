@@ -12,6 +12,17 @@ crates/tetris-tauri/gen/
 # Production Build
 dist/
 
+# AI Training Artifacts
+models/
+ppo_tetris_logs/
+crates/tetris-ai/python/models/
+crates/tetris-ai/python/ppo_tetris_logs/
+
+# Python
+__pycache__/
+.pytest_cache/
+*.pyc
+
 # Agent
 AGENTS.md
 .claude/
