@@ -8,7 +8,17 @@ import {
 } from '../core/wasm';
 import { InputBuffer } from '../core/input_buffer';
 import { is_hud_data, is_hard_drop_info } from '../types/predicates';
-import { page, score, level, combo, b2b_count, lines, settings, is_multiplayer } from '../state';
+import {
+  page,
+  score,
+  level,
+  combo,
+  b2b_count,
+  lines,
+  settings,
+  is_multiplayer,
+  connection_status,
+} from '../state';
 import { createBoardRenderer, create_mini_board_renderer } from '../render/board';
 import { createPreviewRenderer, createNextStackRenderer } from '../render/preview';
 import { create_hud_overlay } from '../render/hud';
@@ -22,6 +32,8 @@ import { Actions } from '../game/actions';
 import { audio_manager } from '../core/audio';
 import { create_touch_overlay } from '../input/touch';
 import { get_multiplayer_ws } from '../core/multiplayer';
+import { OpponentReplayPlayer } from '../core/replay_player';
+import type { MultiplayerEvent } from '../core/wasm';
 
 function setup_hidpi(
   canvas: HTMLCanvasElement,
@@ -128,6 +140,7 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   const mp_ws = is_multiplayer.value ? get_multiplayer_ws() : null;
   const opponent_grids: Map<number, Uint8Array> = new Map();
   const opponent_labels: HTMLElement[] = [];
+  const replay_players: Map<number, OpponentReplayPlayer> = new Map();
 
   if (mp_ws) {
     const opp_label = document.createElement('div');
@@ -183,6 +196,46 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   let collapse_cancel: (() => void) | null = null;
 
   const input_buffer = mp_ws ? new InputBuffer(wasm) : null;
+
+  function replay_player_for(player_id: number): OpponentReplayPlayer {
+    let player = replay_players.get(player_id);
+    if (!player) {
+      player = new OpponentReplayPlayer(player_id);
+      replay_players.set(player_id, player);
+    }
+    return player;
+  }
+
+  function handle_multiplayer_packet(event: MultiplayerEvent | null) {
+    if (!event) return;
+    if (event.kind === 'server_replay' && typeof event.source_player_id === 'number') {
+      replay_player_for(event.source_player_id).push_replay(
+        event.source_player_id,
+        event.events ?? [],
+      );
+      return;
+    }
+    if (event.kind === 'state_hash' && typeof event.tick === 'number') {
+      for (const player of replay_players.values()) player.apply_tick(event.tick);
+      if (connection_status.value === 'resyncing') connection_status.value = 'online';
+      return;
+    }
+    if (event.kind === 'resync_required') {
+      connection_status.value = 'resyncing';
+      return;
+    }
+    if (event.kind === 'state_snapshot') {
+      if (connection_status.value === 'resyncing') connection_status.value = 'online';
+      return;
+    }
+    if (event.kind === 'game_over') {
+      finish_game();
+    }
+  }
+
+  if (mp_ws) {
+    mp_ws.onpacket = handle_multiplayer_packet;
+  }
 
   function queue_multiplayer_input(action: number, pressed: boolean) {
     if (!mp_ws || !input_buffer) return;
@@ -270,9 +323,7 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
 
     const prev_level = level.value;
     const prev_lines = lines.value;
-    if (!mp_ws) {
-      wasm.tick(delta_ms);
-    }
+    wasm.tick(delta_ms);
     last_tick = now;
 
     const hud_after: unknown = wasm.get_hud_data();
@@ -310,6 +361,7 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
           continue;
         }
         label.textContent = `${player.name}${player.away ? ' (AWAY)' : player.alive ? '' : ' (KO)'}`;
+        replay_player_for(player.player_id);
         const grid = get_opponent_player_grid(player.player_id);
         opponent_grids.set(i, grid);
         renderer.canvas.style.display = '';
@@ -453,6 +505,9 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
     cleanup_runtime();
     touch_overlay.destroy();
     document.removeEventListener('visibilitychange', on_visibility_change);
+    if (mp_ws?.onpacket === handle_multiplayer_packet) {
+      mp_ws.onpacket = null;
+    }
     hud.destroy();
     renderer.destroy();
     for (const r of opponent_renderers) r.destroy();

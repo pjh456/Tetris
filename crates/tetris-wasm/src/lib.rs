@@ -1,29 +1,26 @@
 use serde::{Deserialize, Serialize};
-#[cfg(target_arch = "wasm32")]
 use tetris_core::engine::Action;
 use tetris_core::engine::Engine;
-#[cfg(target_arch = "wasm32")]
 use tetris_protocol::protocol::*;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-#[cfg(target_arch = "wasm32")]
 use bincode::Options;
 
 mod error;
 mod input_buffer;
 mod utils;
 
-#[cfg(target_arch = "wasm32")]
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 const OPPONENT_GRID_LEN: usize = 200;
 
-#[cfg(target_arch = "wasm32")]
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 const MAX_OPPONENTS: u8 = 8;
 
-#[cfg(target_arch = "wasm32")]
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 const MAX_PACKET_BYTES: u64 = 65536;
 
-#[cfg(target_arch = "wasm32")]
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 fn deser<'de, T: serde::Deserialize<'de>>(data: &'de [u8]) -> Result<T, bincode::Error> {
     bincode::DefaultOptions::new()
         .with_fixint_encoding()
@@ -45,7 +42,7 @@ pub struct OpponentInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MultiplayerSnapshot {
-    pub local_player_id: u8,
+    pub local_player_id: Option<u8>,
     pub room_code: Option<String>,
     pub countdown: Option<u8>,
     pub players: Vec<OpponentInfo>,
@@ -57,11 +54,43 @@ pub struct MultiplayerEvent {
     pub kind: String,
     pub room_code: Option<String>,
     pub player_id: Option<u8>,
+    pub source_player_id: Option<u8>,
     pub countdown: Option<u8>,
     pub random_seed: Option<u32>,
     pub message: Option<String>,
     pub incoming_garbage_lines: Option<u8>,
+    pub incoming_garbage_hole_x: Option<u8>,
     pub winner_player_id: Option<u8>,
+    pub tick: Option<u64>,
+    pub hash: Option<u32>,
+    pub local_hash: Option<u32>,
+    pub hash_match: Option<bool>,
+    pub event_count: Option<usize>,
+    pub events: Vec<InputEvent>,
+}
+
+impl MultiplayerEvent {
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    fn new(kind: impl Into<String>, room_code: Option<String>, countdown: Option<u8>) -> Self {
+        Self {
+            kind: kind.into(),
+            room_code,
+            player_id: None,
+            source_player_id: None,
+            countdown,
+            random_seed: None,
+            message: None,
+            incoming_garbage_lines: None,
+            incoming_garbage_hole_x: None,
+            winner_player_id: None,
+            tick: None,
+            hash: None,
+            local_hash: None,
+            hash_match: None,
+            event_count: None,
+            events: Vec::new(),
+        }
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -76,7 +105,7 @@ pub struct WebTetris {
     room_player_infos: Vec<OpponentInfo>,
     opponent_infos: Vec<OpponentInfo>,
     room_code: Option<String>,
-    local_player_id: u8,
+    local_player_id: Option<u8>,
     countdown: Option<u8>,
     last_event: Option<MultiplayerEvent>,
     input_buf: input_buffer::ClientInputBuffer,
@@ -100,7 +129,7 @@ impl WebTetris {
             room_player_infos: Vec::new(),
             opponent_infos: Vec::new(),
             room_code: None,
-            local_player_id: 0,
+            local_player_id: None,
             countdown: None,
             last_event: None,
             input_buf: input_buffer::ClientInputBuffer::new(),
@@ -139,7 +168,10 @@ impl WebTetris {
             return None;
         }
         let idx = player_id as usize;
-        if idx == self.local_player_id as usize {
+        if self
+            .local_player_id
+            .is_some_and(|local| idx == local as usize)
+        {
             return None;
         }
         while self.opponent_engines.len() <= idx {
@@ -161,53 +193,6 @@ impl WebTetris {
             engine.game_over,
             &mut self.opponent_grid_bufs[idx],
         );
-    }
-
-    fn apply_state_sync(&mut self, player_id: u8, pkt: &PktStateSync) {
-        let Some(idx) = self.ensure_opponent_slot(player_id) else {
-            return;
-        };
-        let engine = &mut self.opponent_engines[idx];
-        for (row_idx, row_val) in pkt.board_rows.iter().enumerate().take(20) {
-            engine.state.board.rows[row_idx] = *row_val;
-        }
-        engine.state.piece = pkt.piece;
-        engine.state.rot = pkt.rot;
-        engine.state.x = pkt.x;
-        engine.state.y = pkt.y;
-        engine.state.hold = pkt.hold;
-        engine.state.hold_used = pkt.hold_used;
-        engine.state.next[0] = pkt.next[0];
-        engine.state.next[1] = pkt.next[1];
-        engine.state.next[2] = pkt.next[2];
-        engine.state.pending_garbage = pkt.pending_garbage;
-        engine.state.rng = pkt.rng_state;
-        engine.game_over = false;
-        self.refresh_opponent_grid(idx);
-    }
-
-    fn apply_delta_sync(&mut self, player_id: u8, pkt: &PktDeltaSync) {
-        let Some(idx) = self.ensure_opponent_slot(player_id) else {
-            return;
-        };
-        let engine = &mut self.opponent_engines[idx];
-        for &(row_idx, row_val) in &pkt.changed_rows {
-            let row_idx = row_idx as usize;
-            if row_idx < 20 {
-                engine.state.board.rows[row_idx] = row_val;
-            }
-        }
-        engine.state.piece = pkt.piece;
-        engine.state.rot = pkt.rot;
-        engine.state.x = pkt.x;
-        engine.state.y = pkt.y;
-        engine.state.hold = pkt.hold;
-        engine.state.hold_used = pkt.hold_used;
-        engine.state.next[0] = pkt.next[0];
-        engine.state.next[1] = pkt.next[1];
-        engine.state.next[2] = pkt.next[2];
-        engine.game_over = false;
-        self.refresh_opponent_grid(idx);
     }
 
     pub fn tick(&mut self, delta_ms: u32) -> JsValue {
@@ -342,323 +327,10 @@ impl WebTetris {
         serde_wasm_bindgen::to_value(&data).unwrap_or(JsValue::NULL)
     }
 
-    /// NOTE: deserialization failures return JsValue::NULL silently (12 call sites).
-    /// This is intentional for WASM FFI simplicity; JS side tolerates null events.
     pub fn parse_packet(&mut self, data: &[u8]) -> JsValue {
-        let header: PacketHeader = match deser(data) {
-            Ok(h) => h,
-            Err(_) => return JsValue::NULL,
-        };
-        if header.version != PROTOCOL_VERSION {
-            return JsValue::NULL;
-        }
-        match header.packet_type {
-            PacketType::Batch => {
-                let batch: PktBatch = match deser(data) {
-                    Ok(b) => b,
-                    Err(_) => return JsValue::NULL,
-                };
-                for inner in &batch.packets {
-                    self.parse_packet(inner);
-                }
-                JsValue::NULL
-            }
-            PacketType::ServerAccept => {
-                let pkt: PktServerAccept = match deser(data) {
-                    Ok(p) => p,
-                    Err(_) => return JsValue::NULL,
-                };
-                self.local_player_id = pkt.assigned_player_id;
-                self.last_event = Some(MultiplayerEvent {
-                    kind: "server_accept".into(),
-                    room_code: self.room_code.clone(),
-                    player_id: Some(pkt.assigned_player_id),
-                    countdown: None,
-                    random_seed: None,
-                    message: None,
-                    incoming_garbage_lines: None,
-                    winner_player_id: None,
-                });
-                serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
-            }
-            PacketType::RoomSnapshot => {
-                let pkt: PktRoomSnapshot = match deser(data) {
-                    Ok(p) => p,
-                    Err(_) => return JsValue::NULL,
-                };
-                self.room_code = Some(pkt.room_code.clone());
-                self.room_player_infos = pkt
-                    .players
-                    .iter()
-                    .map(|player| OpponentInfo {
-                        player_id: player.player_id,
-                        name: player.name.clone(),
-                        ready: player.ready,
-                        alive: player.alive,
-                        away: player.away,
-                        is_host: player.is_host,
-                        spectating: false,
-                    })
-                    .collect();
-                // NOTE: if RoomSnapshot arrives before ServerAccept, local_player_id
-                // defaults to 0 — opponent filter may incorrectly include self.
-                self.opponent_infos = self
-                    .room_player_infos
-                    .iter()
-                    .filter(|player| player.player_id != self.local_player_id)
-                    .cloned()
-                    .collect();
-                self.last_event = Some(MultiplayerEvent {
-                    kind: "room_snapshot".into(),
-                    room_code: self.room_code.clone(),
-                    player_id: None,
-                    countdown: self.countdown,
-                    random_seed: None,
-                    message: None,
-                    incoming_garbage_lines: None,
-                    winner_player_id: None,
-                });
-                serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
-            }
-            PacketType::GameStart => {
-                let pkt: PktGameStart = match deser(data) {
-                    Ok(p) => p,
-                    Err(_) => return JsValue::NULL,
-                };
-                self.countdown = None;
-                self.last_event = Some(MultiplayerEvent {
-                    kind: "game_start".into(),
-                    room_code: self.room_code.clone(),
-                    player_id: None,
-                    countdown: None,
-                    random_seed: Some(pkt.random_seed),
-                    message: None,
-                    incoming_garbage_lines: None,
-                    winner_player_id: None,
-                });
-                serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
-            }
-            PacketType::StateSync => {
-                let pkt: PktStateSync = match deser(data) {
-                    Ok(p) => p,
-                    Err(_) => return JsValue::NULL,
-                };
-                self.apply_state_sync(header.player_id, &pkt);
-                self.last_event = Some(MultiplayerEvent {
-                    kind: "state_sync".into(),
-                    room_code: self.room_code.clone(),
-                    player_id: Some(header.player_id),
-                    countdown: self.countdown,
-                    random_seed: None,
-                    message: None,
-                    incoming_garbage_lines: None,
-                    winner_player_id: None,
-                });
-                serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
-            }
-            PacketType::DeltaSync => {
-                let pkt: PktDeltaSync = match deser(data) {
-                    Ok(p) => p,
-                    Err(_) => return JsValue::NULL,
-                };
-                self.apply_delta_sync(header.player_id, &pkt);
-                self.last_event = Some(MultiplayerEvent {
-                    kind: "delta_sync".into(),
-                    room_code: self.room_code.clone(),
-                    player_id: Some(header.player_id),
-                    countdown: self.countdown,
-                    random_seed: None,
-                    message: None,
-                    incoming_garbage_lines: None,
-                    winner_player_id: None,
-                });
-                serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
-            }
-            PacketType::ChatMessage => {
-                let pkt: PktChatMessage = match deser(data) {
-                    Ok(p) => p,
-                    Err(_) => return JsValue::NULL,
-                };
-                self.last_event = Some(MultiplayerEvent {
-                    kind: "chat".into(),
-                    room_code: self.room_code.clone(),
-                    player_id: Some(pkt.header.player_id),
-                    countdown: self.countdown,
-                    random_seed: None,
-                    message: Some(pkt.message.clone()),
-                    incoming_garbage_lines: None,
-                    winner_player_id: None,
-                });
-                serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
-            }
-            PacketType::StartCountdown => {
-                let pkt: PktStartCountdown = match deser(data) {
-                    Ok(p) => p,
-                    Err(_) => return JsValue::NULL,
-                };
-                self.countdown = Some(pkt.remaining_secs);
-                self.last_event = Some(MultiplayerEvent {
-                    kind: "countdown".into(),
-                    room_code: self.room_code.clone(),
-                    player_id: None,
-                    countdown: Some(pkt.remaining_secs),
-                    random_seed: None,
-                    message: None,
-                    incoming_garbage_lines: None,
-                    winner_player_id: None,
-                });
-                serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
-            }
-            PacketType::StateHash => {
-                let pkt: PktStateHash = match deser(data) {
-                    Ok(p) => p,
-                    Err(_) => return JsValue::NULL,
-                };
-                self.last_state_hash = Some((pkt.tick, pkt.hash));
-                JsValue::NULL
-            }
-            PacketType::StateSnapshot => {
-                let pkt: PktStateSnapshot = match deser(data) {
-                    Ok(p) => p,
-                    Err(_) => return JsValue::NULL,
-                };
-                self.apply_state_snapshot(header.player_id, &pkt);
-                self.last_event = Some(MultiplayerEvent {
-                    kind: "state_snapshot".into(),
-                    room_code: self.room_code.clone(),
-                    player_id: Some(header.player_id),
-                    countdown: self.countdown,
-                    random_seed: None,
-                    message: None,
-                    incoming_garbage_lines: None,
-                    winner_player_id: None,
-                });
-                serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
-            }
-            PacketType::ServerReplay => {
-                let pkt: PktServerReplay = match deser(data) {
-                    Ok(p) => p,
-                    Err(_) => return JsValue::NULL,
-                };
-                let player_id = pkt.source_player.0;
-                let Some(idx) = self.ensure_opponent_slot(player_id) else {
-                    return JsValue::NULL;
-                };
-                for event in &pkt.events {
-                    let action = Action::from_u8(event.key as u8);
-                    if event.pressed {
-                        self.opponent_engines[idx].handle_action(action);
-                    }
-                }
-                if pkt.ige_garbage_lines > 0 {
-                    let engine = &mut self.opponent_engines[idx];
-                    engine.state.pending_garbage = engine
-                        .state
-                        .pending_garbage
-                        .saturating_add(pkt.ige_garbage_lines);
-                    engine.garbage_hole_x = pkt.ige_hole_x;
-                }
-                self.refresh_opponent_grid(idx);
-                JsValue::NULL
-            }
-            PacketType::ReconnectAck => {
-                let pkt: PktReconnectAck = match deser(data) {
-                    Ok(p) => p,
-                    Err(_) => return JsValue::NULL,
-                };
-                for replay in &pkt.replay_events {
-                    let player_id = replay.source_player.0;
-                    let Some(idx) = self.ensure_opponent_slot(player_id) else {
-                        continue;
-                    };
-                    for event in &replay.events {
-                        let action = Action::from_u8(event.key as u8);
-                        if event.pressed {
-                            self.opponent_engines[idx].handle_action(action);
-                        }
-                    }
-                    self.refresh_opponent_grid(idx);
-                    if replay.ige_garbage_lines > 0 {
-                        let engine = &mut self.opponent_engines[idx];
-                        engine.state.pending_garbage = engine
-                            .state
-                            .pending_garbage
-                            .saturating_add(replay.ige_garbage_lines);
-                        engine.garbage_hole_x = replay.ige_hole_x;
-                    }
-                }
-                self.last_event = Some(MultiplayerEvent {
-                    kind: "reconnect_ack".into(),
-                    room_code: self.room_code.clone(),
-                    player_id: None,
-                    countdown: self.countdown,
-                    random_seed: None,
-                    message: None,
-                    incoming_garbage_lines: None,
-                    winner_player_id: None,
-                });
-                serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
-            }
-            PacketType::IncomingGarbage => {
-                let pkt: PktIncomingGarbage = match deser(data) {
-                    Ok(p) => p,
-                    Err(_) => return JsValue::NULL,
-                };
-                self.last_event = Some(MultiplayerEvent {
-                    kind: "incoming_garbage".into(),
-                    room_code: self.room_code.clone(),
-                    player_id: None,
-                    countdown: self.countdown,
-                    random_seed: None,
-                    message: None,
-                    incoming_garbage_lines: Some(pkt.incoming_lines),
-                    winner_player_id: None,
-                });
-                serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
-            }
-            PacketType::PlayerStateSync => {
-                let pkt: PktPlayerStateSync = match deser(data) {
-                    Ok(p) => p,
-                    Err(_) => return JsValue::NULL,
-                };
-                if let Some(info) = self
-                    .opponent_infos
-                    .iter_mut()
-                    .find(|p| p.player_id == pkt.target_player_id)
-                {
-                    info.alive = pkt.alive;
-                    info.spectating = pkt.spectating;
-                }
-                self.last_event = Some(MultiplayerEvent {
-                    kind: "player_state".into(),
-                    room_code: self.room_code.clone(),
-                    player_id: Some(pkt.target_player_id),
-                    countdown: self.countdown,
-                    random_seed: None,
-                    message: None,
-                    incoming_garbage_lines: None,
-                    winner_player_id: None,
-                });
-                serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
-            }
-            PacketType::GameOver => {
-                let pkt: PktGameOver = match deser(data) {
-                    Ok(p) => p,
-                    Err(_) => return JsValue::NULL,
-                };
-                self.last_event = Some(MultiplayerEvent {
-                    kind: "game_over".into(),
-                    room_code: self.room_code.clone(),
-                    player_id: None,
-                    countdown: self.countdown,
-                    random_seed: None,
-                    message: None,
-                    incoming_garbage_lines: None,
-                    winner_player_id: Some(pkt.winner_player_id),
-                });
-                serde_wasm_bindgen::to_value(&self.last_event).unwrap_or(JsValue::NULL)
-            }
-            _ => JsValue::NULL,
+        match self.apply_packet(data) {
+            Some(event) => serde_wasm_bindgen::to_value(&event).unwrap_or(JsValue::NULL),
+            None => JsValue::NULL,
         }
     }
 
@@ -686,7 +358,7 @@ impl WebTetris {
             header: PacketHeader {
                 version: PROTOCOL_VERSION,
                 packet_type: PacketType::JoinRoom,
-                player_id: self.local_player_id,
+                player_id: self.local_player_id.unwrap_or(0),
             },
             room_code,
             player_name,
@@ -699,7 +371,7 @@ impl WebTetris {
             header: PacketHeader {
                 version: PROTOCOL_VERSION,
                 packet_type: PacketType::PlayerReady,
-                player_id: self.local_player_id,
+                player_id: self.local_player_id.unwrap_or(0),
             },
             ready,
         };
@@ -715,7 +387,7 @@ impl WebTetris {
             header: PacketHeader {
                 version: PROTOCOL_VERSION,
                 packet_type: PacketType::ChatMessage,
-                player_id: self.local_player_id,
+                player_id: self.local_player_id.unwrap_or(0),
             },
             message,
             timestamp,
@@ -728,7 +400,7 @@ impl WebTetris {
             header: PacketHeader {
                 version: PROTOCOL_VERSION,
                 packet_type: PacketType::StateSync,
-                player_id: self.local_player_id,
+                player_id: self.local_player_id.unwrap_or(0),
             },
             board_rows: self.engine.state.board.rows.to_vec(),
             piece: self.engine.state.piece,
@@ -769,29 +441,6 @@ impl WebTetris {
         serde_wasm_bindgen::to_value(&self.opponent_infos[idx]).unwrap_or(JsValue::NULL)
     }
 
-    fn apply_state_snapshot(&mut self, player_id: u8, pkt: &PktStateSnapshot) {
-        let Some(idx) = self.ensure_opponent_slot(player_id) else {
-            return;
-        };
-        let engine = &mut self.opponent_engines[idx];
-        for (row_idx, row_val) in pkt.board_rows.iter().enumerate().take(20) {
-            engine.state.board.rows[row_idx] = *row_val;
-        }
-        engine.state.piece = pkt.piece;
-        engine.state.rot = pkt.rot;
-        engine.state.x = pkt.x;
-        engine.state.y = pkt.y;
-        engine.state.hold = pkt.hold;
-        engine.state.hold_used = pkt.hold_used;
-        engine.state.next = pkt.next;
-        engine.state.rng = pkt.rng_state;
-        engine.state.combo = pkt.combo;
-        engine.state.b2b = pkt.b2b;
-        engine.state.pending_garbage = pkt.pending_garbage;
-        engine.game_over = false;
-        self.refresh_opponent_grid(idx);
-    }
-
     pub fn push_input_event(&mut self, key: u8, pressed: bool, subframe: f32) {
         let action = tetris_protocol::newtypes::KeyAction::from_u8(key);
         self.input_buf.push(action, pressed, subframe);
@@ -822,7 +471,7 @@ impl WebTetris {
             header: PacketHeader {
                 version: PROTOCOL_VERSION,
                 packet_type: PacketType::Replay,
-                player_id: self.local_player_id,
+                player_id: self.local_player_id.unwrap_or(0),
             },
             start_tick: events
                 .first()
@@ -859,7 +508,7 @@ pub struct WebTetris {
     room_player_infos: Vec<OpponentInfo>,
     opponent_infos: Vec<OpponentInfo>,
     room_code: Option<String>,
-    local_player_id: u8,
+    local_player_id: Option<u8>,
     countdown: Option<u8>,
     last_event: Option<MultiplayerEvent>,
     input_buf: input_buffer::ClientInputBuffer,
@@ -867,6 +516,7 @@ pub struct WebTetris {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+#[allow(dead_code)]
 impl WebTetris {
     pub fn new(seed: u32) -> Self {
         let mut engine = Engine::<10, 20>::new();
@@ -880,18 +530,271 @@ impl WebTetris {
             room_player_infos: Vec::new(),
             opponent_infos: Vec::new(),
             room_code: None,
-            local_player_id: 0,
+            local_player_id: None,
             countdown: None,
             last_event: None,
             input_buf: input_buffer::ClientInputBuffer::new(),
             last_state_hash: None,
         }
     }
+
+    fn ensure_opponent_slot(&mut self, player_id: u8) -> Option<usize> {
+        if player_id >= MAX_OPPONENTS {
+            return None;
+        }
+        let idx = player_id as usize;
+        if self
+            .local_player_id
+            .is_some_and(|local| idx == local as usize)
+        {
+            return None;
+        }
+        while self.opponent_engines.len() <= idx {
+            self.opponent_engines.push(Engine::<10, 20>::new());
+            self.opponent_grid_bufs.push(vec![0u8; OPPONENT_GRID_LEN]);
+        }
+        Some(idx)
+    }
+
+    fn refresh_opponent_grid(&mut self, idx: usize) {
+        if idx >= self.opponent_engines.len() || idx >= self.opponent_grid_bufs.len() {
+            return;
+        }
+        let engine = &self.opponent_engines[idx];
+        let ghost_y = tetris_core::rules::get_ghost_y(&engine.state);
+        utils::fill_grid_buf(
+            &engine.state,
+            ghost_y,
+            engine.game_over,
+            &mut self.opponent_grid_bufs[idx],
+        );
+    }
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+impl WebTetris {
+    fn rebuild_opponents(&mut self) {
+        self.opponent_infos = match self.local_player_id {
+            Some(local_player_id) => self
+                .room_player_infos
+                .iter()
+                .filter(|player| player.player_id != local_player_id)
+                .cloned()
+                .collect(),
+            None => Vec::new(),
+        };
+    }
+
+    fn apply_local_state_snapshot(&mut self, pkt: &PktStateSnapshot) {
+        self.engine.reset(pkt.seed.0 as u32);
+        for (idx, row) in pkt.board_rows.iter().copied().enumerate().take(20) {
+            self.engine.state.board.rows[idx] = row;
+        }
+        self.engine.state.piece = pkt.piece;
+        self.engine.state.rot = pkt.rot;
+        self.engine.state.x = pkt.x;
+        self.engine.state.y = pkt.y;
+        self.engine.state.hold = pkt.hold;
+        self.engine.state.hold_used = pkt.hold_used;
+        self.engine.state.next = pkt.next;
+        self.engine.state.rng = pkt.rng_state;
+        self.engine.state.combo = pkt.combo;
+        self.engine.state.b2b = pkt.b2b;
+        self.engine.state.pending_garbage = pkt.pending_garbage;
+        self.engine.game_over = false;
+        self.has_hold = pkt.hold_used;
+    }
+
+    fn apply_server_replay(&mut self, pkt: &PktServerReplay) -> bool {
+        let player_id = pkt.source_player.0;
+        let Some(idx) = self.ensure_opponent_slot(player_id) else {
+            return false;
+        };
+        for event in &pkt.events {
+            let action = Action::from_u8(event.key as u8);
+            if event.pressed {
+                self.opponent_engines[idx].handle_action(action);
+            }
+        }
+        if pkt.ige_garbage_lines > 0 {
+            let engine = &mut self.opponent_engines[idx];
+            engine.state.pending_garbage = engine
+                .state
+                .pending_garbage
+                .saturating_add(pkt.ige_garbage_lines);
+            engine.garbage_hole_x = pkt.ige_hole_x;
+        }
+        self.refresh_opponent_grid(idx);
+        true
+    }
+
+    fn apply_packet(&mut self, data: &[u8]) -> Option<MultiplayerEvent> {
+        let header: PacketHeader = deser(data).ok()?;
+        if header.version != PROTOCOL_VERSION {
+            return None;
+        }
+
+        let event = match header.packet_type {
+            PacketType::Batch => {
+                let batch: PktBatch = deser(data).ok()?;
+                let mut last_event = None;
+                for inner in &batch.packets {
+                    last_event = self.apply_packet(inner).or(last_event);
+                }
+                return last_event;
+            }
+            PacketType::ServerAccept => {
+                let pkt: PktServerAccept = deser(data).ok()?;
+                self.local_player_id = Some(pkt.assigned_player_id);
+                self.rebuild_opponents();
+                let mut event =
+                    MultiplayerEvent::new("server_accept", self.room_code.clone(), None);
+                event.player_id = Some(pkt.assigned_player_id);
+                event
+            }
+            PacketType::RoomSnapshot => {
+                let pkt: PktRoomSnapshot = deser(data).ok()?;
+                self.room_code = Some(pkt.room_code.clone());
+                self.room_player_infos = pkt
+                    .players
+                    .iter()
+                    .map(|player| OpponentInfo {
+                        player_id: player.player_id,
+                        name: player.name.clone(),
+                        ready: player.ready,
+                        alive: player.alive,
+                        away: player.away,
+                        is_host: player.is_host,
+                        spectating: false,
+                    })
+                    .collect();
+                self.rebuild_opponents();
+                MultiplayerEvent::new("room_snapshot", self.room_code.clone(), self.countdown)
+            }
+            PacketType::GameStart => {
+                let pkt: PktGameStart = deser(data).ok()?;
+                self.countdown = None;
+                let mut event = MultiplayerEvent::new("game_start", self.room_code.clone(), None);
+                event.random_seed = Some(pkt.random_seed);
+                event
+            }
+            PacketType::ChatMessage => {
+                let pkt: PktChatMessage = deser(data).ok()?;
+                let mut event =
+                    MultiplayerEvent::new("chat", self.room_code.clone(), self.countdown);
+                event.player_id = Some(pkt.header.player_id);
+                event.message = Some(pkt.message);
+                event
+            }
+            PacketType::StartCountdown => {
+                let pkt: PktStartCountdown = deser(data).ok()?;
+                self.countdown = Some(pkt.remaining_secs);
+                MultiplayerEvent::new("countdown", self.room_code.clone(), self.countdown)
+            }
+            PacketType::StateHash => {
+                let pkt: PktStateHash = deser(data).ok()?;
+                let local_hash = self.engine.state_hash();
+                let hash_match = local_hash == pkt.hash;
+                self.last_state_hash = Some((pkt.tick, pkt.hash));
+                let mut event = MultiplayerEvent::new(
+                    if hash_match {
+                        "state_hash"
+                    } else {
+                        "resync_required"
+                    },
+                    self.room_code.clone(),
+                    self.countdown,
+                );
+                event.tick = Some(pkt.tick.0);
+                event.hash = Some(pkt.hash);
+                event.local_hash = Some(local_hash);
+                event.hash_match = Some(hash_match);
+                event
+            }
+            PacketType::StateSnapshot => {
+                let pkt: PktStateSnapshot = deser(data).ok()?;
+                self.apply_local_state_snapshot(&pkt);
+                let mut event =
+                    MultiplayerEvent::new("state_snapshot", self.room_code.clone(), self.countdown);
+                event.player_id = self.local_player_id;
+                event.tick = Some(pkt.tick.0);
+                event
+            }
+            PacketType::ServerReplay => {
+                let pkt: PktServerReplay = deser(data).ok()?;
+                if !self.apply_server_replay(&pkt) {
+                    return None;
+                }
+                let mut event =
+                    MultiplayerEvent::new("server_replay", self.room_code.clone(), self.countdown);
+                event.source_player_id = Some(pkt.source_player.0);
+                event.incoming_garbage_lines = Some(pkt.ige_garbage_lines);
+                event.incoming_garbage_hole_x = Some(pkt.ige_hole_x);
+                event.event_count = Some(pkt.events.len());
+                event.events = pkt.events;
+                event
+            }
+            PacketType::ReconnectAck => {
+                let pkt: PktReconnectAck = deser(data).ok()?;
+                let replay_count = pkt.replay_events.len();
+                for replay in &pkt.replay_events {
+                    self.apply_server_replay(replay);
+                }
+                let mut event =
+                    MultiplayerEvent::new("reconnect_ack", self.room_code.clone(), self.countdown);
+                event.tick = Some(pkt.divergence_tick.0);
+                event.event_count = Some(replay_count);
+                event
+            }
+            PacketType::IncomingGarbage => {
+                let pkt: PktIncomingGarbage = deser(data).ok()?;
+                let mut event = MultiplayerEvent::new(
+                    "incoming_garbage",
+                    self.room_code.clone(),
+                    self.countdown,
+                );
+                event.incoming_garbage_lines = Some(pkt.incoming_lines);
+                event
+            }
+            PacketType::PlayerStateSync => {
+                let pkt: PktPlayerStateSync = deser(data).ok()?;
+                if let Some(info) = self
+                    .opponent_infos
+                    .iter_mut()
+                    .find(|player| player.player_id == pkt.target_player_id)
+                {
+                    info.alive = pkt.alive;
+                    info.spectating = pkt.spectating;
+                }
+                let mut event =
+                    MultiplayerEvent::new("player_state", self.room_code.clone(), self.countdown);
+                event.player_id = Some(pkt.target_player_id);
+                event
+            }
+            PacketType::GameOver => {
+                let pkt: PktGameOver = deser(data).ok()?;
+                let mut event =
+                    MultiplayerEvent::new("game_over", self.room_code.clone(), self.countdown);
+                event.winner_player_id = Some(pkt.winner_player_id);
+                event
+            }
+            _ => return None,
+        };
+
+        self.last_event = Some(event.clone());
+        Some(event)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tetris_core::types::{Piece, Rot};
+    use tetris_protocol::newtypes::{KeyAction, PlayerSlot, Seed, TickNumber};
+
+    fn packet_bytes<T: Serialize>(pkt: &T) -> Vec<u8> {
+        bincode::serialize(pkt).unwrap()
+    }
 
     #[test]
     fn test_web_tetris_new() {
@@ -918,5 +821,143 @@ mod tests {
             !(same_piece && same_next),
             "different seeds should produce different states"
         );
+    }
+
+    #[test]
+    fn packet_parse_room_snapshot_waits_for_local_player_id() {
+        let mut wt = WebTetris::new(42);
+        let snapshot = PktRoomSnapshot {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::RoomSnapshot,
+                player_id: 0,
+            },
+            room_code: "ABCD".into(),
+            players: vec![
+                RoomPlayerSnapshot {
+                    player_id: 0,
+                    name: "Alice".into(),
+                    ready: true,
+                    alive: true,
+                    away: false,
+                    is_host: true,
+                },
+                RoomPlayerSnapshot {
+                    player_id: 1,
+                    name: "Bob".into(),
+                    ready: true,
+                    alive: true,
+                    away: false,
+                    is_host: false,
+                },
+            ],
+        };
+
+        let event = wt.apply_packet(&packet_bytes(&snapshot)).unwrap();
+
+        assert_eq!(event.kind, "room_snapshot");
+        assert!(wt.opponent_infos.is_empty());
+
+        let accept = PktServerAccept {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::ServerAccept,
+                player_id: 0,
+            },
+            assigned_player_id: 0,
+            max_players: 2,
+        };
+        wt.apply_packet(&packet_bytes(&accept)).unwrap();
+        wt.apply_packet(&packet_bytes(&snapshot)).unwrap();
+
+        assert_eq!(wt.local_player_id, Some(0));
+        assert_eq!(wt.opponent_infos.len(), 1);
+        assert_eq!(wt.opponent_infos[0].player_id, 1);
+    }
+
+    #[test]
+    fn packet_parse_state_hash_reports_mismatch() {
+        let mut wt = WebTetris::new(42);
+        let pkt = PktStateHash {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::StateHash,
+                player_id: 0,
+            },
+            tick: TickNumber(100),
+            hash: 0xDEAD_BEEF,
+        };
+
+        let event = wt.apply_packet(&packet_bytes(&pkt)).unwrap();
+
+        assert_eq!(event.kind, "resync_required");
+        assert_eq!(event.tick, Some(100));
+        assert_eq!(event.hash, Some(0xDEAD_BEEF));
+        assert_eq!(event.hash_match, Some(false));
+    }
+
+    #[test]
+    fn reconcile_state_snapshot_applies_local_authority() {
+        let mut wt = WebTetris::new(42);
+        let pkt = PktStateSnapshot {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::StateSnapshot,
+                player_id: 0,
+            },
+            tick: TickNumber(7),
+            board_rows: vec![0x3ff; 20],
+            piece: Piece::O,
+            rot: Rot::R90,
+            x: 4,
+            y: 5,
+            hold: Piece::T,
+            hold_used: true,
+            next: [Piece::I, Piece::O, Piece::T, Piece::S, Piece::Z],
+            rng_state: 99,
+            combo: 2,
+            b2b: true,
+            pending_garbage: 3,
+            seed: Seed(123),
+        };
+
+        let event = wt.apply_packet(&packet_bytes(&pkt)).unwrap();
+
+        assert_eq!(event.kind, "state_snapshot");
+        assert_eq!(event.tick, Some(7));
+        assert_eq!(wt.engine.state.piece, Piece::O);
+        assert_eq!(wt.engine.state.rot, Rot::R90);
+        assert_eq!(wt.engine.state.board.rows[0], 0x3ff);
+        assert_eq!(wt.engine.state.pending_garbage, 3);
+    }
+
+    #[test]
+    fn packet_parse_server_replay_updates_opponent() {
+        let mut wt = WebTetris::new(42);
+        wt.local_player_id = Some(0);
+        let pkt = PktServerReplay {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::ServerReplay,
+                player_id: 0,
+            },
+            source_player: PlayerSlot(1),
+            events: vec![InputEvent {
+                key: KeyAction::KeyLeft,
+                pressed: true,
+                tick: TickNumber(1),
+                subframe: 0.0,
+            }],
+            ige_garbage_lines: 2,
+            ige_hole_x: 4,
+        };
+
+        let event = wt.apply_packet(&packet_bytes(&pkt)).unwrap();
+
+        assert_eq!(event.kind, "server_replay");
+        assert_eq!(event.source_player_id, Some(1));
+        assert_eq!(event.event_count, Some(1));
+        assert_eq!(event.incoming_garbage_lines, Some(2));
+        assert_eq!(wt.opponent_engines[1].state.pending_garbage, 2);
     }
 }

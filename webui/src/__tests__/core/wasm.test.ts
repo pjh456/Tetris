@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../../../wasm/tetris_wasm.js', () => import('../../__mocks__/tetris_wasm.js'));
 
-import { init_wasm, get_wasm, reset_wasm } from '../../core/wasm';
+import { init_wasm, get_wasm, reset_wasm, get_multiplayer_snapshot } from '../../core/wasm';
 
 beforeEach(() => {
   vi.restoreAllMocks();
@@ -32,5 +32,16 @@ describe('reset_wasm', () => {
     await init_wasm(container);
     const wasm = reset_wasm();
     expect(wasm).toBeDefined();
+  });
+});
+
+describe('get_multiplayer_snapshot', () => {
+  it('allows unknown local player id before ServerAccept', async () => {
+    const container = document.createElement('div');
+    await init_wasm(container);
+
+    const snapshot = get_multiplayer_snapshot();
+
+    expect(snapshot?.local_player_id).toBeNull();
   });
 });

@@ -6,6 +6,14 @@ export class WebTetris {
     this._game_over = false;
     this._input_events = [];
     this._client_tick = 0;
+    this._last_event = null;
+    this._snapshot = {
+      local_player_id: null,
+      room_code: 'ABCD',
+      countdown: null,
+      players: [],
+      opponents: [],
+    };
   }
   reset(seed) {
     this._seed = seed;
@@ -85,7 +93,7 @@ export class WebTetris {
     return new Uint8Array([25]);
   }
   get_multiplayer_snapshot() {
-    return { local_player_id: 0, room_code: 'ABCD', countdown: null, players: [], opponents: [] };
+    return this._snapshot;
   }
   opponent_count() {
     return 0;
@@ -97,7 +105,16 @@ export class WebTetris {
     return null;
   }
   parse_packet() {
-    return null;
+    return this._last_event;
+  }
+  consume_last_multiplayer_event() {
+    return this._last_event;
+  }
+  __set_multiplayer_event(event) {
+    this._last_event = event;
+  }
+  __set_multiplayer_snapshot(snapshot) {
+    this._snapshot = snapshot;
   }
 }
 

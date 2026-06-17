@@ -164,7 +164,7 @@ export type MultiplayerPlayer = {
 };
 
 export type MultiplayerSnapshot = {
-  local_player_id: number;
+  local_player_id: number | null;
   room_code: string | null;
   countdown: number | null;
   players: MultiplayerPlayer[];
@@ -175,9 +175,19 @@ export type MultiplayerEvent = {
   kind: string;
   room_code?: string | null;
   player_id?: number | null;
+  source_player_id?: number | null;
   countdown?: number | null;
   random_seed?: number | null;
   message?: string | null;
+  incoming_garbage_lines?: number | null;
+  incoming_garbage_hole_x?: number | null;
+  winner_player_id?: number | null;
+  tick?: number | null;
+  hash?: number | null;
+  local_hash?: number | null;
+  hash_match?: boolean | null;
+  event_count?: number | null;
+  events?: unknown[];
 };
 
 export function get_multiplayer_snapshot(): MultiplayerSnapshot | null {

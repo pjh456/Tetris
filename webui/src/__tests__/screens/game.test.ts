@@ -33,8 +33,9 @@ vi.stubGlobal(
 );
 
 import { create_game_screen } from '../../screens/game';
-import { is_multiplayer } from '../../state';
+import { connection_status, is_multiplayer } from '../../state';
 import { set_multiplayer_ws, reset_multiplayer_ws } from '../../core/multiplayer';
+import type { MultiplayerEvent } from '../../core/wasm';
 
 vi.mock('../../fx/gameover_fx', () => ({
   run_collapse_animation: vi.fn((_canvas: HTMLCanvasElement, done?: () => void) => {
@@ -83,11 +84,16 @@ function run_raf_callbacks(count: number) {
 }
 
 function make_mock_ws(send: ReturnType<typeof vi.fn>) {
-  return { send, close: vi.fn() };
+  return {
+    send,
+    close: vi.fn(),
+    onpacket: null as ((event: MultiplayerEvent | null) => void) | null,
+  };
 }
 
 beforeEach(() => {
   is_multiplayer.value = false;
+  connection_status.value = 'offline';
   reset_multiplayer_ws();
   raf_callbacks.length = 0;
   vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb: FrameRequestCallback) => {
@@ -140,6 +146,46 @@ describe('create_game_screen', () => {
     run_raf_callbacks(62);
 
     expect(send).not.toHaveBeenCalled();
+    destroy();
+  });
+
+  it('multiplayer packet handler marks resync and recovers on snapshot', async () => {
+    is_multiplayer.value = true;
+    connection_status.value = 'online';
+    const send = vi.fn();
+    const ws = make_mock_ws(send);
+    set_multiplayer_ws(ws as never);
+    const root = document.createElement('div');
+
+    const destroy = await create_game_screen(root);
+    expect(typeof ws.onpacket).toBe('function');
+
+    ws.onpacket?.({ kind: 'resync_required', hash_match: false });
+    expect(connection_status.value).toBe('resyncing');
+
+    ws.onpacket?.({ kind: 'state_snapshot', tick: 100 });
+    expect(connection_status.value).toBe('online');
+
+    destroy();
+    expect(ws.onpacket).toBeNull();
+  });
+
+  it('multiplayer packet handler accepts server replay', async () => {
+    is_multiplayer.value = true;
+    const send = vi.fn();
+    const ws = make_mock_ws(send);
+    set_multiplayer_ws(ws as never);
+    const root = document.createElement('div');
+
+    const destroy = await create_game_screen(root);
+    ws.onpacket?.({
+      kind: 'server_replay',
+      source_player_id: 1,
+      event_count: 1,
+      events: [{ tick: 1, key: 0, pressed: true, subframe: 0 }],
+    });
+
+    expect(ws.onpacket).not.toBeNull();
     destroy();
   });
 });
