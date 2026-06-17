@@ -150,10 +150,8 @@ impl RoomActor {
     }
 
     fn broadcast(&self, data: Vec<u8>) {
-        for tx_opt in &self.outbound_txs {
-            if let Some(tx) = tx_opt {
-                let _ = tx.try_send(data.clone());
-            }
+        for tx in self.outbound_txs.iter().flatten() {
+            let _ = tx.try_send(data.clone());
         }
     }
 
@@ -343,5 +341,13 @@ mod tests {
         let ack = actor.handle_reconnect(PlayerSlot(0), &[(TickNumber(100), 0xDEAD_BEEF)]);
 
         assert_eq!(ack.divergence_tick, TickNumber(100));
+    }
+
+    #[test]
+    fn game_start_sets_playing() {
+        let mut actor = RoomActor::new("ABCD".into(), Seed(42));
+        actor.set_room_mode(RoomMode::Playing);
+
+        assert_eq!(actor.room_mode(), RoomMode::Playing);
     }
 }

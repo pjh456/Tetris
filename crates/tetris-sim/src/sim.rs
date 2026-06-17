@@ -12,6 +12,8 @@ use crate::snapshot::build_snapshot;
 use crate::transport::SimOutbound;
 
 pub const DEFAULT_STATE_HASH_INTERVAL: u64 = 100;
+type OutgoingAttack = (PlayerSlot, u8, u8);
+type IncomingGarbage = (PlayerSlot, u8);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SimConfig {
@@ -210,11 +212,12 @@ impl AuthoritativeSim {
     pub fn tick(&mut self) -> Result<Vec<SimOutbound>, SimError> {
         let mut outbound = Vec::new();
         let per_replay = self.drain_inputs_by_player();
+        outbound.extend(self.server_replay_outbound(&per_replay)?);
         let (outgoing_attacks, mut incoming_notify) = self.tick_engines(&per_replay);
 
         outbound.extend(self.update_lifecycle()?);
         self.route_attacks(&outgoing_attacks, &mut incoming_notify);
-        outbound.extend(self.incoming_garbage_outbound(&incoming_notify)?);
+        outbound.extend(Self::incoming_garbage_outbound(&incoming_notify)?);
 
         self.tick.0 += 1;
 
@@ -224,6 +227,7 @@ impl AuthoritativeSim {
                 self.hash_ladder.insert(self.tick, *hash);
             }
             outbound.extend(self.state_hash_outbound(&hashes)?);
+            outbound.extend(self.state_snapshot_outbound()?);
         }
 
         Ok(outbound)
@@ -270,7 +274,7 @@ impl AuthoritativeSim {
     fn tick_engines(
         &mut self,
         per_replay: &HashMap<usize, Vec<InputEvent>>,
-    ) -> (Vec<(PlayerSlot, u8, u8)>, Vec<(PlayerSlot, u8)>) {
+    ) -> (Vec<OutgoingAttack>, Vec<IncomingGarbage>) {
         let mut outgoing_attacks = Vec::new();
         let mut incoming_notify = Vec::new();
 
@@ -299,6 +303,39 @@ impl AuthoritativeSim {
         }
 
         (outgoing_attacks, incoming_notify)
+    }
+
+    fn server_replay_outbound(
+        &self,
+        per_replay: &HashMap<usize, Vec<InputEvent>>,
+    ) -> Result<Vec<SimOutbound>, SimError> {
+        let mut outbound = Vec::new();
+        for (source_idx, events) in per_replay {
+            if events.is_empty() {
+                continue;
+            }
+            let source_slot = PlayerSlot(*source_idx as u8);
+            let pkt = PktServerReplay {
+                header: PacketHeader {
+                    version: PROTOCOL_VERSION,
+                    packet_type: PacketType::ServerReplay,
+                    player_id: 0,
+                },
+                source_player: source_slot,
+                events: events.clone(),
+                ige_garbage_lines: 0,
+                ige_hole_x: 0,
+            };
+            let data = serialize_packet(&pkt)?;
+            outbound.extend(self.engines.iter().enumerate().filter_map(|(idx, engine)| {
+                if engine.is_some() && idx != *source_idx {
+                    Some(SimOutbound::ToPlayer(PlayerSlot(idx as u8), data.clone()))
+                } else {
+                    None
+                }
+            }));
+        }
+        Ok(outbound)
     }
 
     fn update_lifecycle(&mut self) -> Result<Vec<SimOutbound>, SimError> {
@@ -336,11 +373,10 @@ impl AuthoritativeSim {
                     .iter()
                     .enumerate()
                     .find(|(_, alive)| **alive)
-                    .map(|(idx, _)| idx as u8)
-                    .unwrap_or(0);
+                    .map_or(0, |(idx, _)| idx as u8);
                 self.room_mode = RoomMode::GameOver;
                 self.game_over_countdown = 180;
-                outbound.push(SimOutbound::Broadcast(self.game_over_packet(winner_id)?));
+                outbound.push(SimOutbound::Broadcast(Self::game_over_packet(winner_id)?));
             }
         }
 
@@ -359,8 +395,8 @@ impl AuthoritativeSim {
 
     fn route_attacks(
         &mut self,
-        outgoing_attacks: &[(PlayerSlot, u8, u8)],
-        incoming_notify: &mut Vec<(PlayerSlot, u8)>,
+        outgoing_attacks: &[OutgoingAttack],
+        incoming_notify: &mut Vec<IncomingGarbage>,
     ) {
         let garbage_delay_ticks = self.config.garbage_delay_ticks;
         for (source_slot, damage, hole_x) in outgoing_attacks {
@@ -391,8 +427,7 @@ impl AuthoritativeSim {
     }
 
     fn incoming_garbage_outbound(
-        &self,
-        incoming_notify: &[(PlayerSlot, u8)],
+        incoming_notify: &[IncomingGarbage],
     ) -> Result<Vec<SimOutbound>, SimError> {
         let mut outbound = Vec::new();
         for (slot, lines) in incoming_notify {
@@ -442,6 +477,21 @@ impl AuthoritativeSim {
         Ok(outbound)
     }
 
+    fn state_snapshot_outbound(&self) -> Result<Vec<SimOutbound>, SimError> {
+        let mut outbound = Vec::new();
+        for (idx, engine_opt) in self.engines.iter().enumerate() {
+            let Some(engine) = engine_opt else {
+                continue;
+            };
+            let snapshot = build_snapshot(engine, self.tick, self.seed);
+            outbound.push(SimOutbound::ToPlayer(
+                PlayerSlot(idx as u8),
+                serialize_packet(&snapshot)?,
+            ));
+        }
+        Ok(outbound)
+    }
+
     fn player_state_packet(&self, slot: PlayerSlot) -> Result<Vec<u8>, SimError> {
         let idx = slot.0 as usize;
         let pkt = PktPlayerStateSync {
@@ -461,7 +511,7 @@ impl AuthoritativeSim {
         serialize_packet(&pkt)
     }
 
-    fn game_over_packet(&self, winner_id: u8) -> Result<Vec<u8>, SimError> {
+    fn game_over_packet(winner_id: u8) -> Result<Vec<u8>, SimError> {
         let pkt = PktGameOver {
             header: PacketHeader {
                 version: PROTOCOL_VERSION,
@@ -474,10 +524,8 @@ impl AuthoritativeSim {
     }
 
     fn reset_to_lobby(&mut self) {
-        for engine in &mut self.engines {
-            if let Some(engine) = engine {
-                engine.reset(self.seed.0 as u32);
-            }
+        for engine in self.engines.iter_mut().flatten() {
+            engine.reset(self.seed.0 as u32);
         }
         for alive in &mut self.player_alive {
             *alive = true;
@@ -555,5 +603,58 @@ mod tests {
         let ack = sim.handle_reconnect(PlayerSlot(0), &[(TickNumber(100), 0xDEAD_BEEF)]);
 
         assert_eq!(ack.divergence_tick, TickNumber(100));
+    }
+
+    #[test]
+    fn emits_replay_hash_snapshot() {
+        let mut sim = AuthoritativeSim::new(Seed(42));
+        sim.add_player(PlayerSlot(0));
+        sim.add_player(PlayerSlot(1));
+        sim.enqueue_input(PlayerSlot(0), make_event(KeyAction::KeyLeft, true));
+
+        let first_tick = sim.tick().unwrap();
+
+        assert!(first_tick.iter().any(|event| {
+            let SimOutbound::ToPlayer(PlayerSlot(1), data) = event else {
+                return false;
+            };
+            bincode::deserialize::<PktServerReplay>(data).is_ok()
+        }));
+
+        let mut interval_tick = Vec::new();
+        for _ in 1..100 {
+            interval_tick = sim.tick().unwrap();
+        }
+
+        assert!(interval_tick.iter().any(|event| {
+            let SimOutbound::ToPlayer(_, data) = event else {
+                return false;
+            };
+            bincode::deserialize::<PktStateHash>(data).is_ok()
+        }));
+        assert!(interval_tick.iter().any(|event| {
+            let SimOutbound::ToPlayer(_, data) = event else {
+                return false;
+            };
+            bincode::deserialize::<PktStateSnapshot>(data).is_ok()
+        }));
+    }
+
+    #[test]
+    fn lifecycle_game_over_broadcasts_winner() {
+        let mut sim = AuthoritativeSim::new(Seed(42));
+        sim.add_player(PlayerSlot(0));
+        sim.add_player(PlayerSlot(1));
+        sim.set_room_mode(RoomMode::Playing);
+        sim.engine_mut(PlayerSlot(1)).unwrap().game_over = true;
+
+        let outbound = sim.tick().unwrap();
+
+        assert!(outbound.iter().any(|event| {
+            let SimOutbound::Broadcast(data) = event else {
+                return false;
+            };
+            bincode::deserialize::<PktGameOver>(data).is_ok_and(|pkt| pkt.winner_player_id == 0)
+        }));
     }
 }

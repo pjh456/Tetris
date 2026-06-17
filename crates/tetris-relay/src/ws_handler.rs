@@ -18,10 +18,15 @@ use tracing::{info, warn};
 use crate::relay::RoomManager;
 use crate::room_actor::RoomActor;
 use tetris_protocol::newtypes::Seed;
+use tetris_sim::RoomMode;
 
 use std::collections::HashMap;
 
 const MAX_PACKET_BYTES: u64 = 65536;
+const MAX_REPLAY_EVENTS_PER_PACKET: usize = 120;
+const MAX_REPLAY_TICK_SPAN: u64 = 120;
+const MAX_MSG_PER_SEC: u32 = 60;
+const MAX_CHAT_LEN: usize = 256;
 
 fn deser<'de, T: serde::Deserialize<'de>>(data: &'de [u8]) -> Result<T, bincode::Error> {
     bincode::DefaultOptions::new()
@@ -123,7 +128,6 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
 
     let send_task = tokio::spawn(send_loop(sender, outbound_rx, broadcast_rx));
 
-    const MAX_MSG_PER_SEC: u32 = 60;
     let mut msg_count: u32 = 0;
     let mut msg_window_start = tokio::time::Instant::now();
 
@@ -177,7 +181,7 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
     }
 }
 
-/// NOTE: each packet is deserialized twice — first as PacketHeader for dispatch,
+/// NOTE: each packet is deserialized twice — first as `PacketHeader` for dispatch,
 /// then as the typed packet. Acceptable for relay; would optimize for hot path.
 async fn handle_binary_message(
     state: &Arc<AppState>,
@@ -186,6 +190,10 @@ async fn handle_binary_message(
     input_tx: &tokio::sync::mpsc::Sender<InputEvent>,
     data: Vec<u8>,
 ) {
+    if data.len() > MAX_PACKET_BYTES as usize {
+        return;
+    }
+
     let header = match deser::<PacketHeader>(&data) {
         Ok(header) if header.version == PROTOCOL_VERSION => header,
         _ => return,
@@ -221,6 +229,12 @@ async fn handle_binary_message(
                     .broadcast_snapshot(room_code, &peers)
                     .await;
                 let all_ready = peers.len() >= 2 && peers.iter().all(|peer| peer.ready);
+                if !all_ready {
+                    let _ = state
+                        .room_manager
+                        .set_countdown_active(room_code, false)
+                        .await;
+                }
                 if all_ready
                     && state
                         .room_manager
@@ -232,6 +246,23 @@ async fn handle_binary_message(
                     let room_code_owned = room_code.to_string();
                     tokio::spawn(async move {
                         for remaining_secs in [3_u8, 2, 1, 0] {
+                            let still_ready = state
+                                .room_manager
+                                .all_peers_ready(&room_code_owned)
+                                .await
+                                .unwrap_or(false);
+                            let countdown_active = state
+                                .room_manager
+                                .countdown_active(&room_code_owned)
+                                .await
+                                .unwrap_or(false);
+                            if !still_ready || !countdown_active {
+                                let _ = state
+                                    .room_manager
+                                    .set_countdown_active(&room_code_owned, false)
+                                    .await;
+                                return;
+                            }
                             let countdown = PktStartCountdown {
                                 header: PacketHeader {
                                     version: PROTOCOL_VERSION,
@@ -244,6 +275,18 @@ async fn handle_binary_message(
                                 let _ = state.room_manager.broadcast(&room_code_owned, data).await;
                             }
                             tokio::time::sleep(Duration::from_secs(1)).await;
+                        }
+                        if !state
+                            .room_manager
+                            .all_peers_ready(&room_code_owned)
+                            .await
+                            .unwrap_or(false)
+                        {
+                            let _ = state
+                                .room_manager
+                                .set_countdown_active(&room_code_owned, false)
+                                .await;
+                            return;
                         }
                         let random_seed = rand::random::<u32>();
                         let game_start = PktGameStart {
@@ -284,6 +327,7 @@ async fn handle_binary_message(
                                     outbound_tx,
                                 );
                             }
+                            actor.set_room_mode(RoomMode::Playing);
                             let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
                             tokio::spawn(actor.run(cancel_rx));
                             // cancel_tx stored in RoomState for lifecycle; currently only
@@ -316,7 +360,6 @@ async fn handle_binary_message(
             let Ok(mut pkt) = deser::<PktChatMessage>(&data) else {
                 return;
             };
-            const MAX_CHAT_LEN: usize = 256;
             pkt.message.truncate(MAX_CHAT_LEN);
             let chat_pkt = if let Ok(peer) = state.room_manager.peer_by_id(room_code, peer_id).await
             {
@@ -337,15 +380,83 @@ async fn handle_binary_message(
             }
         }
         // New protocol types (Replay, etc.) — forward to input_tx if RoomActor is active
-        PacketType::Replay | PacketType::PlayerAction => {
-            if let Ok(pkt) = deser::<PktReplay>(&data) {
-                for ev in &pkt.events {
-                    let _ = input_tx.try_send(ev.clone());
+        PacketType::Replay => {
+            if let Ok(pkt) = deser::<PktReplay>(&data)
+                && replay_packet_is_valid(&pkt)
+            {
+                for ev in pkt.events {
+                    let _ = input_tx.try_send(ev);
                 }
             }
         }
         _ => {}
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tetris_protocol::newtypes::{KeyAction, TickNumber};
+
+    fn make_replay(player_id: u8, events: Vec<InputEvent>) -> PktReplay {
+        PktReplay {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::Replay,
+                player_id,
+            },
+            events,
+            start_tick: TickNumber(10),
+        }
+    }
+
+    fn make_event(tick: u64) -> InputEvent {
+        InputEvent {
+            key: KeyAction::KeyHardDrop,
+            pressed: true,
+            tick: TickNumber(tick),
+            subframe: 0.5,
+        }
+    }
+
+    #[tokio::test]
+    async fn replay_input_routes_by_connection_slot() {
+        let manager = Arc::new(RoomManager::new(4));
+        manager.get_or_create_room("ABCD").await.unwrap();
+        let state = Arc::new(AppState {
+            room_manager: manager,
+            pending_inputs: Arc::new(Mutex::new(HashMap::new())),
+        });
+        let (input_tx, mut input_rx) = tokio::sync::mpsc::channel::<InputEvent>(4);
+        let pkt = make_replay(99, vec![make_event(10)]);
+        let data = serialize(&pkt).unwrap();
+
+        handle_binary_message(&state, "ABCD", 1, &input_tx, data).await;
+
+        let received = input_rx.try_recv().unwrap();
+        assert_eq!(received.key, KeyAction::KeyHardDrop);
+    }
+
+    #[test]
+    fn replay_packet_rejects_invalid_tick_window() {
+        let pkt = make_replay(0, vec![make_event(131)]);
+
+        assert!(!replay_packet_is_valid(&pkt));
+    }
+}
+
+fn replay_packet_is_valid(pkt: &PktReplay) -> bool {
+    if pkt.events.is_empty() || pkt.events.len() > MAX_REPLAY_EVENTS_PER_PACKET {
+        return false;
+    }
+
+    let max_tick = pkt.start_tick.0.saturating_add(MAX_REPLAY_TICK_SPAN);
+    pkt.events.iter().all(|event| {
+        event.tick >= pkt.start_tick
+            && event.tick.0 <= max_tick
+            && event.subframe.is_finite()
+            && (0.0..1.0).contains(&event.subframe)
+    })
 }
 
 async fn send_loop(
@@ -374,7 +485,7 @@ async fn send_loop(
                             break;
                         }
                     }
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                 }
             }

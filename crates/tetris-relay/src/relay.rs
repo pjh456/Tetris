@@ -21,8 +21,8 @@ static NEXT_PEER_ID: AtomicU64 = AtomicU64::new(1);
 pub struct RoomState {
     pub code: RoomCode,
     pub tx: broadcast::Sender<Vec<u8>>,
-    /// player_count is used two ways: join/leave CAS for capacity gating,
-    /// add_peer/remove_peer overwrite from peers.len() for consistency.
+    /// `player_count` is used two ways: join/leave CAS for capacity gating,
+    /// `add_peer`/`remove_peer` overwrite from `peers.len()` for consistency.
     pub player_count: AtomicUsize,
     pub host_peer_id: RwLock<Option<u64>>,
     pub peers: Mutex<Vec<PeerInfo>>,
@@ -77,8 +77,7 @@ impl RoomManager {
         let player_id = used
             .iter()
             .position(|u| !u)
-            .map(|i| i as u8)
-            .unwrap_or(MAX_PLAYERS_PER_ROOM as u8 - 1);
+            .map_or(MAX_PLAYERS_PER_ROOM as u8 - 1, |i| i as u8);
         let name = format!("Player {}", player_id + 1);
         peers.push(PeerInfo {
             id,
@@ -144,6 +143,15 @@ impl RoomManager {
             peer.ready = false;
         }
         Ok(peers.clone())
+    }
+
+    pub async fn all_peers_ready(&self, code: &str) -> Result<bool, RelayError> {
+        let rooms = self.rooms.read().await;
+        let room = rooms
+            .get(code)
+            .ok_or_else(|| RelayError::RoomNotFound(code.into()))?;
+        let peers = room.peers.lock().await;
+        Ok(peers.len() >= 2 && peers.iter().all(|peer| peer.ready))
     }
 
     /// Remove peer from room. Returns updated peer list (may be empty if room gone).
@@ -299,10 +307,12 @@ impl RoomManager {
         };
         if should_remove {
             let mut rooms = self.rooms.write().await;
-            if rooms
-                .get(code)
-                .is_some_and(|r| r.player_count.load(Ordering::SeqCst) == 0)
+            if let Some(room) = rooms.get(code)
+                && room.player_count.load(Ordering::SeqCst) == 0
             {
+                if let Some(cancel_tx) = room.cancel_tx.lock().await.take() {
+                    let _ = cancel_tx.send(());
+                }
                 rooms.remove(code);
             }
         }
@@ -372,5 +382,50 @@ fn generate_room_code(existing: &HashMap<RoomCode, Arc<RoomState>>) -> RoomCode 
         if !existing.contains_key(&code) {
             return code;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::time::{Duration, timeout};
+
+    #[tokio::test]
+    async fn lifecycle_game_over_and_cancel() {
+        let manager = RoomManager::new(4);
+        manager.get_or_create_room("ABCD").await.unwrap();
+        let _rx = manager.join_room("ABCD").await.unwrap();
+        let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel();
+        manager.store_cancel_tx("ABCD", cancel_tx).await.unwrap();
+
+        manager.leave_room("ABCD").await;
+
+        assert!(timeout(Duration::from_millis(100), cancel_rx).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn all_peers_ready_returns_false_after_ready_revoked() {
+        let manager = RoomManager::new(4);
+        manager.get_or_create_room("ABCD").await.unwrap();
+        let first_id = RoomManager::alloc_peer_id();
+        let second_id = RoomManager::alloc_peer_id();
+        manager.join_room("ABCD").await.unwrap();
+        manager.add_peer("ABCD", first_id).await.unwrap();
+        manager.join_room("ABCD").await.unwrap();
+        manager.add_peer("ABCD", second_id).await.unwrap();
+        manager
+            .set_peer_ready("ABCD", first_id, true)
+            .await
+            .unwrap();
+        manager
+            .set_peer_ready("ABCD", second_id, true)
+            .await
+            .unwrap();
+        manager
+            .set_peer_ready("ABCD", second_id, false)
+            .await
+            .unwrap();
+
+        assert!(!manager.all_peers_ready("ABCD").await.unwrap());
     }
 }
