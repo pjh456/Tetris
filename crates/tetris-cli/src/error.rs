@@ -9,4 +9,6 @@ pub enum CliError {
     Render(String),
     #[error("input error: {0}")]
     Input(String),
+    #[error("network error: {0}")]
+    Network(String),
 }

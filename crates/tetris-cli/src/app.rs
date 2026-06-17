@@ -3,6 +3,11 @@ use std::time::Instant;
 use tetris_core::engine::{Action, Engine};
 use tetris_core::types::Piece;
 
+use crate::multiplayer::{
+    ConnectionStatus, MultiplayerMode, MultiplayerSession, OpponentView, apply_authority_packet,
+    apply_input_prediction,
+};
+
 #[derive(Clone, Copy, PartialEq)]
 pub enum CellType {
     Empty,
@@ -39,15 +44,17 @@ pub enum AppState {
     LobbyHost {
         room_code: String,
         players: Vec<String>,
+        mode: MultiplayerMode,
     },
     LobbyClient {
         room_code: String,
         players: Vec<String>,
+        mode: MultiplayerMode,
     },
     PlayingMulti {
         engine: Engine<10, 20>,
-        opponents: Vec<Engine<10, 20>>,
-        opponent_names: Vec<String>,
+        opponents: Vec<OpponentView>,
+        session: MultiplayerSession,
         start_time: Instant,
         clear_flash_timer: u8,
         score_flash_timer: u8,
@@ -74,6 +81,8 @@ pub enum Message {
     Key(KeyCode),
     Tick,
     FrameTick,
+    #[allow(dead_code)]
+    NetworkPacket(Vec<u8>),
     #[allow(dead_code)]
     Quit,
 }
@@ -103,6 +112,38 @@ fn start_game() -> AppState {
     }
 }
 
+fn default_host_mode() -> MultiplayerMode {
+    match MultiplayerMode::host_p2p("127.0.0.1:0") {
+        Ok(mode) => mode,
+        Err(_) => MultiplayerMode::join_relay("ws://127.0.0.1:9000/room", "HOST"),
+    }
+}
+
+fn default_join_p2p_mode() -> MultiplayerMode {
+    match MultiplayerMode::join_p2p("127.0.0.1:5000") {
+        Ok(mode) => mode,
+        Err(_) => MultiplayerMode::join_relay("ws://127.0.0.1:9000/room", "JOIN"),
+    }
+}
+
+fn start_multiplayer(mode: MultiplayerMode, player_id: u8) -> AppState {
+    let seed = crate::multiplayer::default_seed_for_mode(&mode).0 as u32;
+    let mut engine = Engine::<10, 20>::new();
+    engine.reset(seed);
+    AppState::PlayingMulti {
+        engine,
+        opponents: Vec::new(),
+        session: MultiplayerSession::new(mode, player_id),
+        start_time: Instant::now(),
+        clear_flash_timer: 0,
+        score_flash_timer: 0,
+        prev_grid: [[CellType::Empty; 10]; 20],
+        prev_flash_mask: 0,
+        prev_half: false,
+        spectating: None,
+    }
+}
+
 fn step(state: AppState, msg: Message) -> (AppState, bool) {
     match state {
         AppState::Menu { mut selected } => match msg {
@@ -120,22 +161,25 @@ fn step(state: AppState, msg: Message) -> (AppState, bool) {
                 0 => (start_game(), false),
                 1 => (
                     AppState::LobbyHost {
-                        room_code: String::new(),
+                        room_code: "127.0.0.1:0".into(),
                         players: vec!["Host".into()],
+                        mode: default_host_mode(),
                     },
                     false,
                 ),
                 2 => (
                     AppState::LobbyClient {
-                        room_code: String::new(),
+                        room_code: "127.0.0.1:5000".into(),
                         players: vec!["Joining...".into()],
+                        mode: default_join_p2p_mode(),
                     },
                     false,
                 ),
                 3 => (
                     AppState::LobbyClient {
-                        room_code: String::new(),
+                        room_code: "ABCD".into(),
                         players: vec!["Joining relay...".into()],
+                        mode: MultiplayerMode::join_relay("ws://127.0.0.1:9000/room", "ABCD"),
                     },
                     false,
                 ),
@@ -148,16 +192,44 @@ fn step(state: AppState, msg: Message) -> (AppState, bool) {
             _ => (AppState::Menu { selected }, false),
         },
 
-        AppState::LobbyHost { room_code, players } => match msg {
-            Message::Key(_) => (AppState::Menu { selected: 1 }, false),
+        AppState::LobbyHost {
+            room_code,
+            players,
+            mode,
+        } => match msg {
+            Message::Key(KeyCode::Enter) => (start_multiplayer(mode, 0), false),
+            Message::Key(KeyCode::Esc | KeyCode::Char('q')) => {
+                (AppState::Menu { selected: 1 }, false)
+            }
             Message::Quit => (AppState::Menu { selected: 0 }, true),
-            _ => (AppState::LobbyHost { room_code, players }, false),
+            _ => (
+                AppState::LobbyHost {
+                    room_code,
+                    players,
+                    mode,
+                },
+                false,
+            ),
         },
 
-        AppState::LobbyClient { room_code, players } => match msg {
-            Message::Key(_) => (AppState::Menu { selected: 2 }, false),
+        AppState::LobbyClient {
+            room_code,
+            players,
+            mode,
+        } => match msg {
+            Message::Key(KeyCode::Enter) => (start_multiplayer(mode, 1), false),
+            Message::Key(KeyCode::Esc | KeyCode::Char('q')) => {
+                (AppState::Menu { selected: 2 }, false)
+            }
             Message::Quit => (AppState::Menu { selected: 0 }, true),
-            _ => (AppState::LobbyClient { room_code, players }, false),
+            _ => (
+                AppState::LobbyClient {
+                    room_code,
+                    players,
+                    mode,
+                },
+                false,
+            ),
         },
 
         AppState::Playing {
@@ -221,7 +293,7 @@ fn step(state: AppState, msg: Message) -> (AppState, bool) {
                     clear_flash_timer = clear_flash_timer.saturating_sub(1);
                     score_flash_timer = score_flash_timer.saturating_sub(1);
                 }
-                Message::Key(KeyCode::Esc) | Message::Key(KeyCode::Char('q')) => {
+                Message::Key(KeyCode::Esc | KeyCode::Char('q')) => {
                     return (AppState::Menu { selected: 0 }, true);
                 }
                 Message::Quit => return (AppState::Menu { selected: 0 }, true),
@@ -339,8 +411,8 @@ fn step(state: AppState, msg: Message) -> (AppState, bool) {
 
         AppState::PlayingMulti {
             mut engine,
-            opponents,
-            opponent_names,
+            mut opponents,
+            mut session,
             start_time,
             clear_flash_timer,
             score_flash_timer,
@@ -349,14 +421,42 @@ fn step(state: AppState, msg: Message) -> (AppState, bool) {
             prev_half,
             spectating,
         } => match msg {
-            Message::Tick => {
-                engine.scorer.tick_time(20);
-                engine.tick(20);
+            Message::NetworkPacket(data) => {
+                apply_authority_packet(
+                    session.player_id,
+                    &mut engine,
+                    &mut opponents,
+                    &mut session,
+                    &data,
+                );
                 (
                     AppState::PlayingMulti {
                         engine,
                         opponents,
-                        opponent_names,
+                        session,
+                        start_time,
+                        clear_flash_timer,
+                        score_flash_timer,
+                        prev_grid,
+                        prev_flash_mask,
+                        prev_half,
+                        spectating,
+                    },
+                    false,
+                )
+            }
+            Message::Tick => {
+                session.input_buffer.advance_tick();
+                if session.input_buffer.should_flush()
+                    && let Some(packet) = session.input_buffer.flush_replay(session.player_id)
+                {
+                    session.push_packet(packet);
+                }
+                (
+                    AppState::PlayingMulti {
+                        engine,
+                        opponents,
+                        session,
                         start_time,
                         clear_flash_timer: clear_flash_timer.saturating_sub(1),
                         score_flash_timer: score_flash_timer.saturating_sub(1),
@@ -372,7 +472,7 @@ fn step(state: AppState, msg: Message) -> (AppState, bool) {
                 AppState::PlayingMulti {
                     engine,
                     opponents,
-                    opponent_names,
+                    session,
                     start_time,
                     clear_flash_timer: clear_flash_timer.saturating_sub(1),
                     score_flash_timer: score_flash_timer.saturating_sub(1),
@@ -385,39 +485,21 @@ fn step(state: AppState, msg: Message) -> (AppState, bool) {
             ),
             Message::Quit => (AppState::Menu { selected: 0 }, true),
             Message::Key(k) => {
-                let action = match k {
-                    KeyCode::Left | KeyCode::Char('a') => Action::MoveLeft,
-                    KeyCode::Right | KeyCode::Char('d') => Action::MoveRight,
-                    KeyCode::Down | KeyCode::Char('s') => Action::SoftDrop,
-                    KeyCode::Up | KeyCode::Char('w') => Action::RotateCW,
-                    KeyCode::Char('z') => Action::RotateCCW,
-                    KeyCode::Char(' ') => Action::HardDrop,
-                    KeyCode::Tab => Action::Hold,
-                    KeyCode::Char('p') => return (AppState::Pause { engine, start_time }, false),
-                    _ => {
-                        return (
-                            AppState::PlayingMulti {
-                                engine,
-                                opponents,
-                                opponent_names,
-                                start_time,
-                                clear_flash_timer,
-                                score_flash_timer,
-                                prev_grid,
-                                prev_flash_mask,
-                                prev_half,
-                                spectating,
-                            },
-                            false,
-                        );
-                    }
-                };
-                engine.handle_action(action);
+                if k == KeyCode::Char('p') {
+                    return (AppState::Pause { engine, start_time }, false);
+                }
+                if k == KeyCode::Esc || k == KeyCode::Char('q') {
+                    session.status = ConnectionStatus::Disconnected;
+                    return (AppState::Menu { selected: 0 }, false);
+                }
+                if let Some(event) = session.input_buffer.push_key(k, true, 0.0) {
+                    apply_input_prediction(&mut engine, &event);
+                }
                 (
                     AppState::PlayingMulti {
                         engine,
                         opponents,
-                        opponent_names,
+                        session,
                         start_time,
                         clear_flash_timer,
                         score_flash_timer,
@@ -548,5 +630,83 @@ mod tests {
         let mut state = AppState::Menu { selected: 0 };
         let quit = update(&mut state, Message::Quit);
         assert!(quit);
+    }
+
+    #[test]
+    fn app_multiplayer_modes() {
+        let (host_lobby, _) = step(AppState::Menu { selected: 1 }, Message::Key(KeyCode::Enter));
+        match host_lobby {
+            AppState::LobbyHost { mode, .. } => {
+                assert!(matches!(mode, MultiplayerMode::HostP2p { .. }))
+            }
+            _ => panic!("expected host lobby"),
+        }
+
+        let (relay_lobby, _) = step(AppState::Menu { selected: 3 }, Message::Key(KeyCode::Enter));
+        match relay_lobby {
+            AppState::LobbyClient { mode, .. } => {
+                assert!(matches!(mode, MultiplayerMode::JoinRelay { .. }));
+            }
+            _ => panic!("expected relay lobby"),
+        }
+    }
+
+    #[test]
+    fn playing_multi_batches_replay() {
+        let mode = MultiplayerMode::join_relay("ws://127.0.0.1:9000/room", "ABCD");
+        let state = start_multiplayer(mode, 1);
+        let (state, _) = step(state, Message::Key(KeyCode::Left));
+        let mut state = state;
+        for _ in 0..30 {
+            let (next, _) = step(state, Message::Tick);
+            state = next;
+        }
+        match state {
+            AppState::PlayingMulti { session, .. } => assert_eq!(session.outbox.len(), 1),
+            _ => panic!("expected multiplayer"),
+        }
+    }
+
+    #[test]
+    fn network_packet_applies_state_hash() {
+        let mode = MultiplayerMode::join_relay("ws://127.0.0.1:9000/room", "ABCD");
+        let mut state = start_multiplayer(mode, 1);
+        if let AppState::PlayingMulti {
+            engine,
+            opponents,
+            session,
+            ..
+        } = &mut state
+        {
+            let packet = crate::multiplayer::make_state_hash_packet(
+                session.player_id,
+                tetris_protocol::newtypes::TickNumber(1),
+                engine.state_hash() ^ 1,
+            );
+            let (next, _) = step(
+                AppState::PlayingMulti {
+                    engine: engine.clone(),
+                    opponents: opponents.clone(),
+                    session: session.clone(),
+                    start_time: Instant::now(),
+                    clear_flash_timer: 0,
+                    score_flash_timer: 0,
+                    prev_grid: [[CellType::Empty; 10]; 20],
+                    prev_flash_mask: 0,
+                    prev_half: false,
+                    spectating: None,
+                },
+                Message::NetworkPacket(packet),
+            );
+            assert!(matches!(
+                next,
+                AppState::PlayingMulti {
+                    session: MultiplayerSession { .. },
+                    ..
+                }
+            ));
+        } else {
+            panic!("expected multiplayer");
+        }
     }
 }

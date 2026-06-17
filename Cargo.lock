@@ -4605,14 +4605,18 @@ name = "tetris-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bincode",
  "crossterm",
  "dirs",
+ "futures-util",
  "ratatui",
  "serde",
  "tetris-core",
  "tetris-net",
+ "tetris-protocol",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-tungstenite",
  "toml 0.8.23",
 ]
 

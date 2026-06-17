@@ -3,6 +3,7 @@ mod config;
 mod error;
 mod game_loop;
 mod input;
+mod multiplayer;
 mod render;
 
 use anyhow::Result;

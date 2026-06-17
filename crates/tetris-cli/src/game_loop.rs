@@ -3,6 +3,7 @@ use std::time::{Duration, Instant};
 use crate::app::{AppState, Message};
 use crate::config::CliConfig;
 use crate::input::InputHandler;
+use crate::multiplayer::CliNetworkRuntime;
 
 pub fn run_game_loop<F, G>(
     mut state: AppState,
@@ -18,6 +19,7 @@ pub fn run_game_loop<F, G>(
     let mut last_tick = Instant::now();
     let mut last_frame = Instant::now();
     let mut input = InputHandler::new(config);
+    let mut network: Option<CliNetworkRuntime> = None;
 
     loop {
         while let Some(msg) = input.poll() {
@@ -32,10 +34,17 @@ pub fn run_game_loop<F, G>(
             }
         }
 
+        if pump_multiplayer_network(&mut state, &mut network, &mut on_update) {
+            return;
+        }
+
         let now = Instant::now();
 
         while now - last_tick >= tick_interval {
             if on_update(&mut state, Message::Tick) {
+                return;
+            }
+            if pump_multiplayer_network(&mut state, &mut network, &mut on_update) {
                 return;
             }
             last_tick += tick_interval;
@@ -51,4 +60,40 @@ pub fn run_game_loop<F, G>(
         // preferred for production; kept for simplicity in terminal environments.
         std::thread::sleep(Duration::from_millis(1));
     }
+}
+
+fn pump_multiplayer_network<F>(
+    state: &mut AppState,
+    network: &mut Option<CliNetworkRuntime>,
+    on_update: &mut F,
+) -> bool
+where
+    F: FnMut(&mut AppState, Message) -> bool,
+{
+    let AppState::PlayingMulti { session, .. } = state else {
+        *network = None;
+        return false;
+    };
+
+    let key = CliNetworkRuntime::mode_key(&session.mode);
+    let needs_connect = network
+        .as_ref()
+        .is_none_or(|runtime| runtime.key() != key.as_str());
+    if needs_connect {
+        *network = CliNetworkRuntime::connect(&session.mode).ok();
+    }
+
+    let inbound = if let Some(runtime) = network {
+        runtime.pump(session)
+    } else {
+        session.status = crate::multiplayer::ConnectionStatus::Disconnected;
+        Vec::new()
+    };
+
+    for packet in inbound {
+        if on_update(state, Message::NetworkPacket(packet)) {
+            return true;
+        }
+    }
+    false
 }

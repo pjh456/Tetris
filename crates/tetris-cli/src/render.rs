@@ -9,6 +9,7 @@ use tetris_core::rules::get_ghost_y;
 use tetris_core::types::Piece;
 
 use crate::app::AppState;
+use crate::multiplayer::{ConnectionStatus, MultiplayerMode, OpponentView};
 
 const PIECE_COLORS: [Color; 7] = [
     Color::Cyan,
@@ -27,10 +28,16 @@ fn piece_color(p: Piece) -> Color {
 pub fn render(state: &mut AppState, frame: &mut Frame) {
     match state {
         AppState::Menu { selected } => render_menu(frame, *selected),
-        AppState::LobbyHost { room_code, players } => render_lobby_host(frame, room_code, players),
-        AppState::LobbyClient { room_code, players } => {
-            render_lobby_client(frame, room_code, players)
-        }
+        AppState::LobbyHost {
+            room_code,
+            players,
+            mode,
+        } => render_lobby_host(frame, room_code, players, mode),
+        AppState::LobbyClient {
+            room_code,
+            players,
+            mode,
+        } => render_lobby_client(frame, room_code, players, mode),
         AppState::Playing {
             engine,
             clear_flash_timer,
@@ -68,7 +75,7 @@ pub fn render(state: &mut AppState, frame: &mut Frame) {
         AppState::PlayingMulti {
             engine,
             opponents,
-            opponent_names,
+            session,
             clear_flash_timer,
             score_flash_timer,
             prev_grid,
@@ -80,7 +87,8 @@ pub fn render(state: &mut AppState, frame: &mut Frame) {
             frame,
             engine,
             opponents,
-            opponent_names,
+            session.status,
+            session.mode_label(),
             *clear_flash_timer,
             *score_flash_timer,
             prev_grid,
@@ -143,13 +151,22 @@ fn render_menu(frame: &mut Frame, selected: usize) {
     frame.render_widget(para, area);
 }
 
-fn render_lobby_host(frame: &mut Frame, room_code: &str, players: &[String]) {
+fn render_lobby_host(
+    frame: &mut Frame,
+    room_code: &str,
+    players: &[String],
+    mode: &MultiplayerMode,
+) {
     let area = frame.area();
     let mut lines = vec![
         Line::from(""),
         Line::from(Span::styled(
             format!("ROOM: {room_code}"),
             Style::default().fg(Color::Cyan).bold(),
+        )),
+        Line::from(Span::styled(
+            format!("MODE: {}", mode_label(mode)),
+            Style::default().fg(Color::Gray),
         )),
         Line::from(""),
     ];
@@ -161,15 +178,28 @@ fn render_lobby_host(frame: &mut Frame, room_code: &str, players: &[String]) {
     }
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
-        "Press R=Ready, T=Chat, Q=Quit",
+        "Enter=Start, Q=Back",
         Style::default().fg(Color::DarkGray),
     )));
     let para = Paragraph::new(lines).alignment(ratatui::layout::Alignment::Center);
     frame.render_widget(para, area);
 }
 
-fn render_lobby_client(frame: &mut Frame, room_code: &str, players: &[String]) {
-    render_lobby_host(frame, room_code, players);
+fn render_lobby_client(
+    frame: &mut Frame,
+    room_code: &str,
+    players: &[String],
+    mode: &MultiplayerMode,
+) {
+    render_lobby_host(frame, room_code, players, mode);
+}
+
+fn mode_label(mode: &MultiplayerMode) -> String {
+    match mode {
+        MultiplayerMode::JoinRelay { url, room_code } => format!("relay {url} room {room_code}"),
+        MultiplayerMode::HostP2p { bind_addr } => format!("p2p host {bind_addr}"),
+        MultiplayerMode::JoinP2p { addr } => format!("p2p join {addr}"),
+    }
 }
 
 fn render_playing(
@@ -521,8 +551,9 @@ fn render_game_over(
 fn render_multi(
     frame: &mut Frame,
     engine: &tetris_core::engine::Engine<10, 20>,
-    opponents: &[tetris_core::engine::Engine<10, 20>],
-    opponent_names: &[String],
+    opponents: &[OpponentView],
+    status: ConnectionStatus,
+    mode_label: String,
     clear_flash_timer: u8,
     score_flash_timer: u8,
     prev_grid: &mut [[crate::app::CellType; 10]; 20],
@@ -554,28 +585,38 @@ fn render_multi(
     ])
     .split(chunks[1]);
 
-    let title = Paragraph::new(vec![Line::from(Span::styled(
-        "OPPONENTS",
-        Style::default().fg(Color::Cyan).bold(),
-    ))]);
+    let title = Paragraph::new(vec![Line::from(vec![
+        Span::styled("OPPONENTS ", Style::default().fg(Color::Cyan).bold()),
+        Span::styled(status.label(), status_style(status)),
+        Span::raw(" "),
+        Span::styled(mode_label, Style::default().fg(Color::DarkGray)),
+    ])]);
     frame.render_widget(title, right[0]);
 
     for (idx, area) in right.iter().skip(1).take(3).enumerate() {
         if idx < opponents.len() {
-            let name = opponent_names.get(idx).map_or("P?", String::as_str);
-            render_opponent_panel(frame, &opponents[idx], name, *area);
+            render_opponent_panel(frame, &opponents[idx], *area);
         }
     }
 }
 
-fn render_opponent_panel(
-    frame: &mut Frame,
-    engine: &tetris_core::engine::Engine<10, 20>,
-    name: &str,
-    area: Rect,
-) {
+fn render_opponent_panel(frame: &mut Frame, opponent: &OpponentView, area: Rect) {
+    let engine = &opponent.engine;
+    let state_text = if opponent.spectating {
+        "spectator"
+    } else if opponent.alive {
+        "alive"
+    } else {
+        "out"
+    };
     let block = Block::default()
-        .title(format!(" {name} "))
+        .title(format!(
+            " {} {} G{} {} ",
+            opponent.name,
+            opponent.status.label(),
+            opponent.incoming_garbage,
+            state_text
+        ))
         .borders(Borders::ALL);
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -601,6 +642,30 @@ fn render_opponent_panel(
     }
 
     frame.render_widget(Paragraph::new(lines), inner);
+}
+
+fn status_style(status: ConnectionStatus) -> Style {
+    match status {
+        ConnectionStatus::Online => Style::default().fg(Color::Green),
+        ConnectionStatus::Slow => Style::default().fg(Color::Yellow),
+        ConnectionStatus::Reconnecting | ConnectionStatus::Resyncing => {
+            Style::default().fg(Color::Cyan)
+        }
+        ConnectionStatus::Disconnected => Style::default().fg(Color::Red),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn render_multi() {
+        let opponent = OpponentView::new("P1", 42);
+        assert_eq!(opponent.name, "P1");
+        assert_eq!(ConnectionStatus::Resyncing.label(), "RESYNCING");
+        assert!(mode_label(&MultiplayerMode::join_relay("ws://x", "ABCD")).contains("relay"));
+    }
 }
 
 fn render_cell_for_state(

@@ -6,12 +6,16 @@ edition.workspace = true
 [dependencies]
 tetris-core = { path = "../tetris-core" }
 tetris-net = { path = "../tetris-net" }
+tetris-protocol = { path = "../tetris-protocol" }
 ratatui = "0.30"
 crossterm = "0.29"
 tokio = { version = "1.52", features = ["full"] }
+tokio-tungstenite = "0.29"
+futures-util = "0.3"
 anyhow.workspace = true
 thiserror.workspace = true
 serde = { workspace = true }
+bincode = "1.3"
 toml = "0.8"
 dirs = "6"
 

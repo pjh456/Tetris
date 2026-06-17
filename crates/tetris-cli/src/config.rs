@@ -1,6 +1,8 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
+const VALID_THEMES: &[&str] = &["cyberpunk", "retro", "minimal"];
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CliConfig {
     pub das_ms: u32,
@@ -38,7 +40,6 @@ pub fn load_config() -> CliConfig {
         };
         cfg.das_ms = cfg.das_ms.clamp(50, 500);
         cfg.arr_ms = cfg.arr_ms.clamp(0, 100);
-        const VALID_THEMES: &[&str] = &["cyberpunk", "retro", "minimal"];
         if !VALID_THEMES.contains(&cfg.theme.as_str()) {
             cfg.theme = "cyberpunk".into();
         }

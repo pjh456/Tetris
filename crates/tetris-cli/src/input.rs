@@ -5,6 +5,8 @@ use std::time::{Duration, Instant};
 use crate::app::Message;
 use crate::config::CliConfig;
 
+const HELD_TIMEOUT_MS: u64 = 30000;
+
 struct KeyState {
     pressed_at: Instant,
     last_repeat: Instant,
@@ -33,9 +35,8 @@ impl InputHandler {
         if !event::poll(Duration::from_millis(1)).unwrap_or(false) {
             return None;
         }
-        let ev = match event::read() {
-            Ok(ev) => ev,
-            Err(_) => return None,
+        let Ok(ev) = event::read() else {
+            return None;
         };
         match ev {
             Event::Key(key) if key.kind == KeyEventKind::Press => {
@@ -62,7 +63,6 @@ impl InputHandler {
     pub fn process_repeats(&mut self) -> Vec<Message> {
         let now = Instant::now();
         // Timeout stale held keys when no Release events (non-enhanced terminals)
-        const HELD_TIMEOUT_MS: u64 = 30000;
         self.held_keys
             .retain(|_, state| ((now - state.pressed_at).as_millis() as u64) < HELD_TIMEOUT_MS);
         let mut msgs = Vec::new();
