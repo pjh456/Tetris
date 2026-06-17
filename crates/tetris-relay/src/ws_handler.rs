@@ -261,6 +261,8 @@ async fn handle_binary_message(
                                 use crate::player_conn::PlayerConnection;
                                 use crate::player_conn::Online;
                                 use tetris_protocol::newtypes::PlayerSlot;
+                                // conn_tx is intentionally a dropped channel — input path goes
+                                // through input_rx from the connection, not PlayerConnection::send_input
                                 let (conn_tx, _) = tokio::sync::mpsc::channel::<InputEvent>(64);
                                 let conn = PlayerConnection::<Online>::new(
                                     PlayerSlot(player_id),
