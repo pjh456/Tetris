@@ -41,6 +41,7 @@ pub fn render(state: &mut AppState, frame: &mut Frame) {
             ..
         } => render_playing(
             frame,
+            frame.area(),
             engine,
             *clear_flash_timer,
             *score_flash_timer,
@@ -173,6 +174,7 @@ fn render_lobby_client(frame: &mut Frame, room_code: &str, players: &[String]) {
 
 fn render_playing(
     frame: &mut Frame,
+    area: ratatui::layout::Rect,
     engine: &tetris_core::engine::Engine<10, 20>,
     clear_flash: u8,
     score_flash: u8,
@@ -180,7 +182,6 @@ fn render_playing(
     prev_flash_mask: &mut u64,
     prev_half: &mut bool,
 ) {
-    let area = frame.area();
     let use_half = area.height < 40;
     let side_w: u16 = 12;
 
@@ -533,7 +534,7 @@ fn render_multi(
     let chunks =
         Layout::horizontal([Constraint::Percentage(70), Constraint::Percentage(30)]).split(area);
 
-    render_playing(frame, engine, clear_flash_timer, score_flash_timer, prev_grid, prev_flash_mask, prev_half);
+    render_playing(frame, chunks[0], engine, clear_flash_timer, score_flash_timer, prev_grid, prev_flash_mask, prev_half);
 
     let right = Layout::vertical([
         Constraint::Length(1),
