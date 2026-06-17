@@ -104,6 +104,7 @@ export class WsClient {
   }
 
   private begin_reconnect() {
+    if (connection_status.value === 'reconnecting') return;
     if (this.reconnect_attempt >= MAX_RECONNECT_ATTEMPTS) {
       connection_status.value = 'disconnected';
       return;
