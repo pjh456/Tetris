@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use bincode::Options;
 use serde::{Deserialize, Serialize};
 use slotmap::{SlotMap, new_key_type};
-use tetris_core::engine::{Action, Engine};
+use tetris_core::engine::Engine;
 
 use crate::error::NetError;
 use crate::network_manager::NetworkManager;
@@ -344,19 +344,6 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
         Some(pkt)
     }
 
-    pub fn send_delta_sync(
-        &mut self,
-        net: &mut NetworkManager,
-        player_key: PlayerKey,
-    ) -> Result<bool, NetError> {
-        if let Some(pkt) = self.delta_encode(player_key, net.local_player_id) {
-            net.send_packet(&pkt, 2)?;
-            Ok(true)
-        } else {
-            Ok(false)
-        }
-    }
-
     pub fn send_resync_request(
         &self,
         net: &mut NetworkManager,
@@ -532,78 +519,12 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
             }
         }
     }
-
-    pub fn send_action(
-        &mut self,
-        net: &mut NetworkManager,
-        action: Action,
-    ) -> Result<(), NetError> {
-        let pkt = PktPlayerAction {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::PlayerAction,
-                player_id: net.local_player_id,
-            },
-            action,
-        };
-        net.send_packet(&pkt, 1)
-    }
-
-    pub fn send_attack(
-        &mut self,
-        net: &mut NetworkManager,
-        lines: u8,
-        hole_x: u8,
-    ) -> Result<(), NetError> {
-        let pkt = PktPlayerAttack {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::PlayerAttack,
-                player_id: net.local_player_id,
-            },
-            lines,
-            hole_x,
-        };
-        net.send_packet(&pkt, 1)
-    }
-
-    pub fn send_state_sync(
-        &mut self,
-        net: &mut NetworkManager,
-        player_key: PlayerKey,
-    ) -> Result<(), NetError> {
-        let engine = self
-            .engines
-            .get(player_key)
-            .ok_or(NetError::Protocol("invalid player key".into()))?;
-        let pkt = PktStateSync {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::StateSync,
-                player_id: net.local_player_id,
-            },
-            board_rows: engine.state.board.rows.to_vec(),
-            piece: engine.state.piece,
-            rot: engine.state.rot,
-            x: engine.state.x,
-            y: engine.state.y,
-            hold: engine.state.hold,
-            hold_used: engine.state.hold_used,
-            next: [
-                engine.state.next[0],
-                engine.state.next[1],
-                engine.state.next[2],
-            ],
-            pending_garbage: engine.state.pending_garbage,
-            rng_state: engine.state.rng,
-        };
-        net.send_packet(&pkt, 2)
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tetris_core::engine::Action;
 
     #[test]
     fn test_send_action_header() {

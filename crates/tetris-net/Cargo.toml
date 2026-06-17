@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 tetris-core = { path = "../tetris-core" }
 tetris-protocol = { path = "../tetris-protocol" }
+tetris-sim = { path = "../tetris-sim" }
 renet = "2.0"
 tokio = { version = "1.52", features = ["full"] }
 serde.workspace = true
