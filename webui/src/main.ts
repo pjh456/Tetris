@@ -57,6 +57,7 @@ function mount_back_button(container: HTMLElement) {
 type CleanableElement = HTMLElement & { _cleanup?: () => void };
 let active_lobby: CleanableElement | null = null;
 let active_game: CleanableElement | null = null;
+let _cleanups: (() => void)[] = [];
 
 effect(() => {
   const current = page.value;
@@ -64,6 +65,8 @@ effect(() => {
   active_lobby = null;
   active_game?._cleanup?.();
   active_game = null;
+  for (const fn of _cleanups) fn();
+  _cleanups = [];
   app.innerHTML = '';
 
   // Reset multiplayer state when leaving multiplayer screens
