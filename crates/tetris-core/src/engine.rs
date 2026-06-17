@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::attack::{AttackResult, calculate_attack};
 use crate::board::Board;
-use crate::lockdelay::LockDelay;
+use crate::lockdelay::{LockDelay, LockDelayTicks};
 use crate::piece::PIECES;
 use crate::rules::{can_place, hard_drop, lock_piece, try_move, try_rotate};
 use crate::scoring::ScoreTracker;
@@ -82,9 +82,7 @@ pub struct Engine<const W: usize, const H: usize> {
     pub has_hold: bool,
     pub scorer: ScoreTracker,
     lock_delay_wall: LockDelay,
-    lock_delay_active: bool,
-    lock_delay_accumulated_ticks: u8,
-    lock_delay_move_resets: u8,
+    lock_delay_ticks: LockDelayTicks,
     bag: [Piece; 7],
     bag_idx: usize,
     soft_drop_cells: u8,
@@ -129,9 +127,7 @@ impl<const W: usize, const H: usize> Engine<W, H> {
             has_hold: false,
             scorer: ScoreTracker::default(),
             lock_delay_wall: LockDelay::new(),
-            lock_delay_active: false,
-            lock_delay_accumulated_ticks: 0,
-            lock_delay_move_resets: 0,
+            lock_delay_ticks: LockDelayTicks::new(),
             bag: [Piece::I; 7],
             bag_idx: 7,
             soft_drop_cells: 0,
@@ -263,6 +259,7 @@ impl<const W: usize, const H: usize> Engine<W, H> {
             self.cancel_pending_garbage(cancel_amount);
         }
 
+        self.lock_delay_ticks.cancel();
         self.spawn();
         attack_res
     }
@@ -296,13 +293,9 @@ impl<const W: usize, const H: usize> Engine<W, H> {
             let grounded = !crate::rules::can_place(
                 &self.state, self.state.x, self.state.y + 1, self.state.rot,
             );
-            if grounded && self.lock_delay_wall.move_reset_count < crate::lockdelay::MAX_MOVE_RESETS {
+            if grounded {
                 self.lock_delay_wall.reset();
-            }
-            if grounded && self.lock_delay_move_resets < crate::lockdelay::MAX_MOVE_RESETS as u8 {
-                self.lock_delay_move_resets += 1;
-                self.lock_delay_accumulated_ticks = 0;
-                self.lock_delay_active = true;
+                self.lock_delay_ticks.reset();
             }
             return true;
         }
@@ -315,13 +308,9 @@ impl<const W: usize, const H: usize> Engine<W, H> {
             let grounded = !crate::rules::can_place(
                 &self.state, self.state.x, self.state.y + 1, self.state.rot,
             );
-            if grounded && self.lock_delay_wall.move_reset_count < crate::lockdelay::MAX_MOVE_RESETS {
+            if grounded {
                 self.lock_delay_wall.reset();
-            }
-            if grounded && self.lock_delay_move_resets < crate::lockdelay::MAX_MOVE_RESETS as u8 {
-                self.lock_delay_move_resets += 1;
-                self.lock_delay_accumulated_ticks = 0;
-                self.lock_delay_active = true;
+                self.lock_delay_ticks.reset();
             }
             return true;
         }
@@ -361,9 +350,7 @@ impl<const W: usize, const H: usize> Engine<W, H> {
         self.scorer.level = start_level.clamp(1, 15);
         self.bag_idx = 7;
         self.lock_delay_wall.cancel();
-        self.lock_delay_active = false;
-        self.lock_delay_accumulated_ticks = 0;
-        self.lock_delay_move_resets = 0;
+        self.lock_delay_ticks.cancel();
         self.soft_drop_cells = 0;
         self.hard_drop_cells = 0;
         self.gravity_accumulator = 0;
@@ -448,9 +435,7 @@ impl<const W: usize, const H: usize> Engine<W, H> {
             Action::Hold => {
                 if !self.state.hold_used {
                     self.lock_delay_wall.cancel();
-                    self.lock_delay_active = false;
-                    self.lock_delay_accumulated_ticks = 0;
-                    self.lock_delay_move_resets = 0;
+                    self.lock_delay_ticks.cancel();
                     if self.has_hold {
                         std::mem::swap(&mut self.state.hold, &mut self.state.piece);
                         self.state.rot = Rot::R0;
@@ -485,13 +470,14 @@ impl<const W: usize, const H: usize> Engine<W, H> {
 
             if try_move(&mut self.state, 0, 1) {
                 self.lock_delay_wall.cancel();
-                self.lock_delay_active = false;
+                self.lock_delay_ticks.cancel();
             } else {
                 self.lock_delay_wall.start();
-                self.lock_delay_active = true;
+                self.lock_delay_ticks.start();
                 if self.lock_delay_wall.update() {
                     result = self.lock_and_spawn();
                 }
+                self.lock_delay_ticks.update();
             }
         }
 
@@ -499,11 +485,11 @@ impl<const W: usize, const H: usize> Engine<W, H> {
     }
 
     pub fn get_lock_timer(&self) -> i32 {
-        if self.lock_delay_active {
-            let rem_ticks = crate::lockdelay::LOCK_DELAY_TICKS.saturating_sub(self.lock_delay_accumulated_ticks);
-            (rem_ticks as i32 * crate::lockdelay::LOCK_DELAY_MS as i32 / crate::lockdelay::LOCK_DELAY_TICKS as i32).max(0)
-        } else {
+        let rem_ticks = self.lock_delay_ticks.remaining_ticks();
+        if rem_ticks == 0 {
             0
+        } else {
+            (rem_ticks as i32 * crate::lockdelay::LOCK_DELAY_MS as i32 / crate::lockdelay::LOCK_DELAY_TICKS as i32).max(0)
         }
     }
 
@@ -533,9 +519,9 @@ impl<const W: usize, const H: usize> Engine<W, H> {
             digest.update(&(*piece as u8).to_le_bytes());
         }
         digest.update(&self.bag_idx.to_le_bytes());
-        digest.update(&[self.lock_delay_active as u8]);
-        digest.update(&self.lock_delay_accumulated_ticks.to_le_bytes());
-        digest.update(&self.lock_delay_move_resets.to_le_bytes());
+        digest.update(&[self.lock_delay_ticks.is_active() as u8]);
+        digest.update(&self.lock_delay_ticks.accumulated_ticks.to_le_bytes());
+        digest.update(&self.lock_delay_ticks.move_reset_count.to_le_bytes());
 
         digest.finalize()
     }
@@ -589,20 +575,13 @@ impl<const W: usize, const H: usize> Engine<W, H> {
             self.gravity_accumulator -= interval;
 
             if try_move(&mut self.state, 0, 1) {
-                self.lock_delay_active = false;
-                self.lock_delay_accumulated_ticks = 0;
-                self.lock_delay_move_resets = 0;
+                self.lock_delay_ticks.cancel();
             } else {
-                self.lock_delay_active = true;
-                self.lock_delay_accumulated_ticks += 1;
-                if self.lock_delay_accumulated_ticks >= crate::lockdelay::LOCK_DELAY_TICKS
-                {
+                self.lock_delay_ticks.start();
+                if self.lock_delay_ticks.update() {
                     let res = self.lock_and_spawn();
                     garbage_detected = res.garbage_inserted;
                     attack_result = Some(res);
-                    self.lock_delay_active = false;
-                    self.lock_delay_accumulated_ticks = 0;
-                    self.lock_delay_move_resets = 0;
                     break;
                 }
             }

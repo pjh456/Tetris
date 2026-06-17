@@ -73,7 +73,7 @@ impl Default for LockDelay {
 pub struct LockDelayTicks {
     active: bool,
     pub move_reset_count: u8,
-    accumulated_ticks: u8,
+    pub accumulated_ticks: u8,
 }
 
 impl LockDelayTicks {
@@ -127,6 +127,10 @@ impl LockDelayTicks {
         self.active = false;
         self.move_reset_count = 0;
         self.accumulated_ticks = 0;
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.active
     }
 
     pub fn remaining_ticks(&self) -> u8 {
