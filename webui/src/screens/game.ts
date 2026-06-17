@@ -532,9 +532,19 @@ function run_countdown(container: HTMLElement): Promise<void> {
   return new Promise((resolve) => {
     const overlay = document.createElement('div');
     overlay.className = 'countdown-overlay';
+
+    const tip_el = document.createElement('div');
+    tip_el.className = 'countdown-tip';
+
+    const num_el = document.createElement('div');
+    num_el.className = 'countdown-num';
+
+    overlay.appendChild(num_el);
+    overlay.appendChild(tip_el);
     container.appendChild(overlay);
 
     const seq = ['3', '2', '1', 'GO!'];
+    const tips = ['Get Ready!', 'Press Space to Drop', 'Clear Lines!', 'Go Go Go!'];
     let i = 0;
 
     function show_next() {
@@ -543,10 +553,11 @@ function run_countdown(container: HTMLElement): Promise<void> {
         resolve();
         return;
       }
-      overlay.textContent = seq[i];
-      overlay.style.animation = 'none';
-      void overlay.offsetHeight;
-      overlay.style.animation = 'countdown-pop 400ms ease-out';
+      num_el.textContent = seq[i];
+      tip_el.textContent = tips[i];
+      num_el.style.animation = 'none';
+      void num_el.offsetHeight;
+      num_el.style.animation = 'countdown-pop 400ms ease-out';
       i++;
       setTimeout(show_next, 500);
     }
