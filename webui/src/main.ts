@@ -103,7 +103,7 @@ effect(() => {
         if (cancelled) {
           destroy();
         }
-      });
+      }).catch(() => {});
       content._cleanup = () => {
         cancelled = true;
       };
