@@ -203,15 +203,19 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
     board_frame.style.transform = 'translateX(0px)';
   }
 
+  let popup_timer: ReturnType<typeof setTimeout> | null = null;
+
   function show_popup(text: string) {
     if (popup_el) popup_el.remove();
+    if (popup_timer) clearTimeout(popup_timer);
     popup_el = document.createElement('div');
     popup_el.className = 'combo-popup';
     popup_el.textContent = text;
     board_frame.appendChild(popup_el);
-    setTimeout(() => {
+    popup_timer = setTimeout(() => {
       popup_el?.remove();
       popup_el = null;
+      popup_timer = null;
     }, 1000);
   }
 
