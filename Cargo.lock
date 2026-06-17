@@ -4669,11 +4669,23 @@ dependencies = [
  "tetris-core",
  "tetris-net",
  "tetris-protocol",
+ "tetris-sim",
  "thiserror 2.0.18",
  "tokio",
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "tetris-sim"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "serde",
+ "tetris-core",
+ "tetris-protocol",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

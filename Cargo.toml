@@ -6,6 +6,7 @@ members = [
     "crates/tetris-wasm",
     "crates/tetris-ai",
     "crates/tetris-protocol",
+    "crates/tetris-sim",
     "crates/tetris-relay",
     "crates/tetris-tauri",
 ]
@@ -16,6 +17,7 @@ default-members = [
     "crates/tetris-wasm",
     "crates/tetris-ai",
     "crates/tetris-protocol",
+    "crates/tetris-sim",
     "crates/tetris-relay",
 ]
 resolver = "2"

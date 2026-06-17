@@ -1,0 +1,15 @@
+[package]
+name = "tetris-sim"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+tetris-core = { path = "../tetris-core" }
+tetris-protocol = { path = "../tetris-protocol" }
+serde = { workspace = true }
+thiserror = { workspace = true }
+bincode = "1.3"
+
+[lints]
+workspace = true

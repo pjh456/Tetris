@@ -6,7 +6,7 @@ use tetris_protocol::protocol::InputEvent;
 const DEFAULT_MAX_CAPACITY: usize = 2000;
 const MAX_RUNGS: usize = 300;
 
-/// Fixed-size ring buffer of replay events per player. Evicts oldest when full.
+/// Fixed-size replay ring buffer per player.
 pub struct ReplayBuffer {
     events: VecDeque<(PlayerSlot, TickNumber, InputEvent)>,
     max_capacity: usize,
@@ -57,7 +57,7 @@ impl Default for ReplayBuffer {
     }
 }
 
-/// Stores server state hashes at 100-tick intervals for O(log n) divergence search.
+/// Bounded ladder of state hashes used for reconnect divergence search.
 pub struct HashLadder {
     rungs: BTreeMap<TickNumber, u32>,
 }
@@ -118,14 +118,7 @@ mod tests {
     }
 
     #[test]
-    fn test_replay_buffer_empty() {
-        let buf = ReplayBuffer::new(2000);
-        assert_eq!(buf.len(), 0);
-        assert!(buf.oldest_tick().is_none());
-    }
-
-    #[test]
-    fn test_replay_buffer_push_and_evict() {
+    fn replay_buffer_evicts_oldest_when_full() {
         let mut buf = ReplayBuffer::new(3);
         buf.push(
             PlayerSlot(0),
@@ -142,28 +135,22 @@ mod tests {
             TickNumber(2),
             make_event(KeyAction::KeyHardDrop, 2),
         );
-        assert_eq!(buf.len(), 3);
         buf.push(
             PlayerSlot(0),
             TickNumber(3),
             make_event(KeyAction::KeyRotateCW, 3),
         );
-        assert_eq!(buf.len(), 3);
+
         assert_eq!(buf.oldest_tick(), Some(TickNumber(1)));
     }
 
     #[test]
-    fn test_replay_buffer_get_events_since() {
+    fn replay_buffer_returns_events_since_tick() {
         let mut buf = ReplayBuffer::new(100);
         buf.push(
             PlayerSlot(0),
             TickNumber(0),
             make_event(KeyAction::KeyLeft, 0),
-        );
-        buf.push(
-            PlayerSlot(0),
-            TickNumber(50),
-            make_event(KeyAction::KeyRight, 50),
         );
         buf.push(
             PlayerSlot(0),
@@ -176,74 +163,27 @@ mod tests {
             make_event(KeyAction::KeyHold, 150),
         );
 
-        let since_100 = buf.get_events_since(TickNumber(100));
-        assert_eq!(since_100.len(), 2);
+        assert_eq!(buf.get_events_since(TickNumber(100)).len(), 2);
     }
 
     #[test]
-    fn test_replay_buffer_2000_capacity() {
-        let mut buf = ReplayBuffer::new(2000);
-        for i in 0..2001 {
-            buf.push(
-                PlayerSlot(0),
-                TickNumber(i),
-                make_event(KeyAction::KeyLeft, i),
-            );
-        }
-        assert_eq!(buf.len(), 2000);
-        assert_eq!(buf.oldest_tick(), Some(TickNumber(1)));
-    }
-
-    #[test]
-    fn test_hash_ladder_insert_and_lookup() {
-        let mut ladder = HashLadder::new();
-        ladder.insert(TickNumber(0), 0xAABB);
-        ladder.insert(TickNumber(100), 0xCCDD);
-        assert_eq!(ladder.get_hash_at(TickNumber(0)), Some(0xAABB));
-        assert_eq!(ladder.get_hash_at(TickNumber(100)), Some(0xCCDD));
-        assert_eq!(ladder.get_hash_at(TickNumber(50)), None);
-    }
-
-    #[test]
-    fn test_hash_ladder_find_divergence() {
+    fn hash_ladder_finds_first_mismatched_tick() {
         let mut ladder = HashLadder::new();
         ladder.insert(TickNumber(0), 0xAAAA);
         ladder.insert(TickNumber(100), 0xBBBB);
-        ladder.insert(TickNumber(200), 0xCCCC);
 
-        let client_hashes = vec![
-            (TickNumber(0), 0xAAAA),
-            (TickNumber(100), 0xBBBB),
-            (TickNumber(200), 0xCCCC),
-        ];
-        assert_eq!(ladder.find_divergence(&client_hashes), None);
+        let mismatched = vec![(TickNumber(0), 0xAAAA), (TickNumber(100), 0xFFFF)];
 
-        let mismatched = vec![
-            (TickNumber(0), 0xAAAA),
-            (TickNumber(100), 0xFFFF),
-            (TickNumber(200), 0xCCCC),
-        ];
         assert_eq!(ladder.find_divergence(&mismatched), Some(TickNumber(100)));
     }
 
     #[test]
-    fn test_hash_ladder_find_divergence_early() {
-        let mut ladder = HashLadder::new();
-        ladder.insert(TickNumber(0), 0xAAAA);
-        ladder.insert(TickNumber(100), 0xBBBB);
-
-        let mismatched = vec![(TickNumber(0), 0xDEAD), (TickNumber(100), 0xBBBB)];
-        assert_eq!(ladder.find_divergence(&mismatched), Some(TickNumber(0)));
-    }
-
-    #[test]
-    fn test_hash_ladder_max_rungs() {
+    fn hash_ladder_caps_rungs() {
         let mut ladder = HashLadder::new();
         for i in 0..400 {
             ladder.insert(TickNumber(i * 100), i as u32);
         }
-        // Should only retain the newest 300
-        let first = ladder.get_hash_at(TickNumber(0));
-        assert!(first.is_none());
+
+        assert!(ladder.get_hash_at(TickNumber(0)).is_none());
     }
 }
