@@ -389,6 +389,34 @@ impl<const W: usize, const H: usize> Engine<W, H> {
         }
     }
 
+    pub fn enumerate_placements(&self) -> Vec<(i8, Rot)> {
+        let mut placements = Vec::with_capacity(W * 4);
+        for rot in [Rot::R0, Rot::R90, Rot::R180, Rot::R270] {
+            for col in -2..=(W as i8 + 1) {
+                if can_place(&self.state, col, self.state.y, rot) {
+                    placements.push((col, rot));
+                }
+            }
+        }
+        placements
+    }
+
+    pub fn apply_placement(&mut self, col: i8, rot: Rot) -> AttackResult {
+        if self.game_over || !can_place(&self.state, col, self.state.y, rot) {
+            return AttackResult::default();
+        }
+        self.state.x = col;
+        self.state.rot = rot;
+        self.state.last_move_was_rotation = false;
+        let start_y = self.state.y;
+        hard_drop(&mut self.state);
+        let end_y = self.state.y;
+        self.record_harddrop(start_y, end_y);
+        self.hard_drop_cells = (end_y - start_y).max(0) as u8;
+        self.lock_delay_wall.cancel();
+        self.lock_and_spawn()
+    }
+
     pub fn handle_action(&mut self, action: Action) -> AttackResult {
         if self.game_over {
             return AttackResult::default();
@@ -1043,5 +1071,49 @@ mod tests {
             engine.state.board.rows, rows_before,
             "board should change after garbage insert"
         );
+    }
+
+    #[test]
+    fn enumerate_placements_returns_legal_options() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset(42);
+        let placements = engine.enumerate_placements();
+        assert!(!placements.is_empty());
+        assert!(placements.iter().all(|(col, rot)| can_place(
+            &engine.state,
+            *col,
+            engine.state.y,
+            *rot
+        )));
+    }
+
+    #[test]
+    fn enumerate_placements_does_not_mutate_state_hash() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset(42);
+        let hash_before = engine.state_hash();
+        let first = engine.enumerate_placements();
+        let second = engine.enumerate_placements();
+        assert_eq!(hash_before, engine.state_hash());
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn apply_placement_spawns_next_piece() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset(42);
+        let piece_before = engine.state.piece;
+        let (col, rot) = engine.enumerate_placements()[0];
+        engine.apply_placement(col, rot);
+        assert_ne!(engine.state.piece, piece_before);
+    }
+
+    #[test]
+    fn apply_placement_records_last_clear_count() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset(42);
+        let (col, rot) = engine.enumerate_placements()[0];
+        engine.apply_placement(col, rot);
+        assert!(engine.state.last_clear_count <= 4);
     }
 }

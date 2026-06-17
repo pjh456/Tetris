@@ -3,7 +3,14 @@ name = "tetris-ai"
 version.workspace = true
 edition.workspace = true
 
+[lib]
+name = "tetris_ai"
+crate-type = ["cdylib", "rlib"]
+
 [lints]
 workspace = true
 
 [dependencies]
+tetris-core = { path = "../tetris-core" }
+numpy = "0.28"
+pyo3 = { version = "0.28", features = ["abi3-py39", "extension-module", "generate-import-lib"] }

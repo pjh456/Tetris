@@ -73,6 +73,63 @@ impl<const W: usize, const H: usize> Board<W, H> {
         self.rows.iter().all(|&r| r == 0)
     }
 
+    pub fn column_heights(&self) -> [u8; W] {
+        let mut heights = [0u8; W];
+        for (col, height) in heights.iter_mut().enumerate() {
+            *height = (0..H)
+                .find(|&row| self.rows[row] & (1u64 << col) != 0)
+                .map_or(0, |row| (H - row) as u8);
+        }
+        heights
+    }
+
+    pub fn holes(&self) -> u32 {
+        let mut holes = 0;
+        for col in 0..W {
+            let mut seen_block = false;
+            for row in 0..H {
+                if self.rows[row] & (1u64 << col) != 0 {
+                    seen_block = true;
+                } else if seen_block {
+                    holes += 1;
+                }
+            }
+        }
+        holes
+    }
+
+    pub fn aggregate_height(&self) -> u32 {
+        self.column_heights()
+            .iter()
+            .map(|&height| u32::from(height))
+            .sum()
+    }
+
+    pub fn bumpiness(&self) -> u32 {
+        self.column_heights()
+            .windows(2)
+            .map(|cols| u32::from(cols[0].abs_diff(cols[1])))
+            .sum()
+    }
+
+    pub fn wells(&self) -> u32 {
+        let heights = self.column_heights();
+        let mut wells = 0;
+        for col in 0..W {
+            let left = if col == 0 { H as u8 } else { heights[col - 1] };
+            let right = if col + 1 == W {
+                H as u8
+            } else {
+                heights[col + 1]
+            };
+            let rim = left.min(right);
+            if rim > heights[col] {
+                wells += u32::from(rim - heights[col]);
+            }
+        }
+        wells
+    }
+
     pub fn clear_lines(&mut self) -> ClearResult {
         let mut write = H;
         let mut cleared: u8 = 0;
@@ -221,5 +278,43 @@ mod tests {
         assert_eq!(board.rows[19], garbage_row);
         assert_eq!(board.rows[18], garbage_row);
         assert_eq!(board.rows[17], garbage_row);
+    }
+
+    #[test]
+    fn column_heights_empty_board_returns_zeroes() {
+        let board = Board::<10, 20>::new();
+        assert_eq!(board.column_heights(), [0; 10]);
+    }
+
+    #[test]
+    fn aggregate_height_full_bottom_row_returns_width() {
+        let mut board = Board::<10, 20>::new();
+        board.rows[19] = Board::<10, 20>::FULL;
+        assert_eq!(board.aggregate_height(), 10);
+    }
+
+    #[test]
+    fn holes_counts_empty_cells_below_first_block() {
+        let mut board = Board::<10, 20>::new();
+        board.rows[17] = 1;
+        board.rows[19] = 1;
+        assert_eq!(board.holes(), 1);
+    }
+
+    #[test]
+    fn bumpiness_sums_adjacent_height_deltas() {
+        let mut board = Board::<10, 20>::new();
+        board.rows[18] = 1;
+        board.rows[19] = 0b11;
+        assert_eq!(board.bumpiness(), 2);
+    }
+
+    #[test]
+    fn wells_counts_depression_depth() {
+        let mut board = Board::<10, 20>::new();
+        board.rows[17] = 0b101;
+        board.rows[18] = 0b101;
+        board.rows[19] = 0b101;
+        assert_eq!(board.wells(), 3);
     }
 }
