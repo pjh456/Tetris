@@ -43,7 +43,9 @@ export function createBoardRenderer(canvas: HTMLCanvasElement): BoardRenderer {
     off_ctx.scale(dpr, dpr);
   }
 
-  const target_ctx = (off_ctx ?? ctx) as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+  const target_ctx = (off_ctx ?? ctx) as
+    | CanvasRenderingContext2D
+    | OffscreenCanvasRenderingContext2D;
   let prev_grid: Uint8Array | null = null;
 
   return {

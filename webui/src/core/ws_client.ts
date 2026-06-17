@@ -82,13 +82,21 @@ export class WsClient {
 
     this.socket.onclose = () => {
       this.stop_heartbeat();
-      if (connection_status.value === 'online' || connection_status.value === 'slow' || connection_status.value === 'reconnecting') {
+      if (
+        connection_status.value === 'online' ||
+        connection_status.value === 'slow' ||
+        connection_status.value === 'reconnecting'
+      ) {
         this.begin_reconnect();
       }
     };
 
     this.socket.onerror = () => {
-      if (connection_status.value === 'online' || connection_status.value === 'slow' || connection_status.value === 'reconnecting') {
+      if (
+        connection_status.value === 'online' ||
+        connection_status.value === 'slow' ||
+        connection_status.value === 'reconnecting'
+      ) {
         this.begin_reconnect();
       }
     };

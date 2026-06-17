@@ -98,12 +98,14 @@ effect(() => {
       content.className = 'content';
       app.appendChild(content);
       let cancelled = false;
-      create_game_screen(content).then((destroy) => {
-        content._cleanup = destroy;
-        if (cancelled) {
-          destroy();
-        }
-      }).catch(() => {});
+      create_game_screen(content)
+        .then((destroy) => {
+          content._cleanup = destroy;
+          if (cancelled) {
+            destroy();
+          }
+        })
+        .catch(() => {});
       content._cleanup = () => {
         cancelled = true;
       };

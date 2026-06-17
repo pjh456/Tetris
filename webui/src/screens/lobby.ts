@@ -16,8 +16,9 @@ const RELAY_URL = 'ws://localhost:9000';
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 
 function gen_room_code(): string {
-  return Array.from({ length: 4 }, () =>
-    CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)],
+  return Array.from(
+    { length: 4 },
+    () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)],
   ).join('');
 }
 
@@ -52,7 +53,11 @@ export function create_lobby_screen(): HTMLElement {
 
   const sidebar = document.createElement('div');
   sidebar.className = 'lobby-sidebar';
-  const { section: chat_section, append_system, append_chat } = build_chat_section((text) => {
+  const {
+    section: chat_section,
+    append_system,
+    append_chat,
+  } = build_chat_section((text) => {
     current_ws.send(make_chat_message_packet(text));
   });
   sidebar.appendChild(chat_section);

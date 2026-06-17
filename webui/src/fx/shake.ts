@@ -13,5 +13,7 @@ export function shake_screen(element: HTMLElement): void {
     }, step_ms * i);
     pending.push(id);
   });
-  setTimeout(() => { pending.length = 0; }, step_ms * offsets.length);
+  setTimeout(() => {
+    pending.length = 0;
+  }, step_ms * offsets.length);
 }

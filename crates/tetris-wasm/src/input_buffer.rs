@@ -5,8 +5,8 @@ use tetris_protocol::protocol::InputEvent;
 const FLUSH_INTERVAL_TICKS: u32 = 30;
 
 /// Client-side input buffer for batching key events per D-04.
-/// Fields and methods used by WebTetris under `#[cfg(target_arch = "wasm32")]`;
-/// native target sees dead_code warnings.
+/// Fields and methods used by `WebTetris` under `#[cfg(target_arch = "wasm32")]`;
+/// native target sees `dead_code` warnings.
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 pub struct ClientInputBuffer {
     events: Vec<InputEvent>,

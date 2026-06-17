@@ -71,7 +71,9 @@ export function create_gameover_screen(): HTMLElement {
   el.querySelector('#go-new')!.addEventListener('click', () => {
     // New Game: force single-player with fresh settings
     page.value = 'home';
-    setTimeout(() => { page.value = 'game'; }, 0);
+    setTimeout(() => {
+      page.value = 'game';
+    }, 0);
   });
   el.querySelector('#go-menu')!.addEventListener('click', () => {
     page.value = 'home';

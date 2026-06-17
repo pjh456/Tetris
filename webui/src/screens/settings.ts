@@ -94,13 +94,19 @@ export function create_settings_screen(): HTMLElement {
   reset_btn.className = 'btn btn-reset';
   reset_btn.textContent = 'Reset to Defaults';
   reset_btn.onclick = () =>
-      show_reset_modal(el, () => {
-      current = reset_settings();
-      settings.value = { ...current };
-      apply_theme(current.theme);
-      overlay_cleanup.fn = null;
-      page.value = 'settings';
-    }, (cleanup) => { overlay_cleanup.fn = cleanup; });
+    show_reset_modal(
+      el,
+      () => {
+        current = reset_settings();
+        settings.value = { ...current };
+        apply_theme(current.theme);
+        overlay_cleanup.fn = null;
+        page.value = 'settings';
+      },
+      (cleanup) => {
+        overlay_cleanup.fn = cleanup;
+      },
+    );
   el.appendChild(reset_btn);
 
   (el as HTMLElement & { _cleanup?: () => void })._cleanup = () => {
@@ -155,12 +161,18 @@ function create_controls_section(
     key_el.className = 'key-bind-label';
     key_el.textContent = key_display(bind.key);
     key_el.onclick = () => {
-      show_rebind_overlay(action, (new_key, new_code) => {
-        s.keymap[action] = { key: new_key, code: new_code };
-        key_el.textContent = key_display(new_key);
-        overlay_cleanup.fn = null;
-        on_save();
-      }, (cleanup) => { overlay_cleanup.fn = cleanup; });
+      show_rebind_overlay(
+        action,
+        (new_key, new_code) => {
+          s.keymap[action] = { key: new_key, code: new_code };
+          key_el.textContent = key_display(new_key);
+          overlay_cleanup.fn = null;
+          on_save();
+        },
+        (cleanup) => {
+          overlay_cleanup.fn = cleanup;
+        },
+      );
     };
 
     row.appendChild(name_el);

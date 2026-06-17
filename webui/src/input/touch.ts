@@ -176,12 +176,12 @@ export function create_touch_overlay(
       if (held >= das) {
         const arr_elapsed = held - das;
         const tick_count = Math.floor(arr_elapsed / arr);
-          if (tick_count > 0) {
-            btn.held_start = now - das;
-            if (DAS_REPEAT_ACTIONS.has(btn.action)) {
-              on_action(btn.action);
-            }
+        if (tick_count > 0) {
+          btn.held_start = now - das;
+          if (DAS_REPEAT_ACTIONS.has(btn.action)) {
+            on_action(btn.action);
           }
+        }
       }
     }
   }, 16);

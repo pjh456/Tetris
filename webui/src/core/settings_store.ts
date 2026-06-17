@@ -112,9 +112,15 @@ export function get_leaderboard(): LeaderboardEntry[] {
   if (_leaderboard_cache !== null) return _leaderboard_cache;
   try {
     const raw = localStorage.getItem(LEADERBOARD_KEY);
-    if (!raw) { _leaderboard_cache = []; return []; }
+    if (!raw) {
+      _leaderboard_cache = [];
+      return [];
+    }
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) { _leaderboard_cache = []; return []; }
+    if (!Array.isArray(parsed)) {
+      _leaderboard_cache = [];
+      return [];
+    }
     _leaderboard_cache = parsed
       .filter(
         (e: unknown) =>
