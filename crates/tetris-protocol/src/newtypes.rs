@@ -45,7 +45,10 @@ impl KeyAction {
             4 => KeyAction::KeyRotateCW,
             5 => KeyAction::KeyRotateCCW,
             6 => KeyAction::KeyHold,
-            _ => KeyAction::KeyLeft,
+            _ => {
+                debug_assert!(false, "invalid KeyAction value: {v}");
+                KeyAction::KeyLeft
+            }
         }
     }
 }
@@ -91,7 +94,6 @@ mod tests {
     fn test_key_action_from_u8() {
         assert_eq!(KeyAction::from_u8(0), KeyAction::KeyLeft);
         assert_eq!(KeyAction::from_u8(6), KeyAction::KeyHold);
-        assert_eq!(KeyAction::from_u8(99), KeyAction::KeyLeft);
     }
 
     #[test]
