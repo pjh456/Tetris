@@ -267,6 +267,9 @@ function show_rebind_overlay(action: string, on_bind: (key: string, code: string
   };
 
   document.addEventListener('keydown', handler, true);
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) cleanup();
+  });
   document.body.appendChild(overlay);
 }
 
