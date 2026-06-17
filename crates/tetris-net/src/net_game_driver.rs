@@ -109,7 +109,8 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
 
     pub fn add_player(&mut self, engine: Engine<W, H>) -> PlayerKey {
         let key = self.engines.insert(engine);
-        let player_id = self.key_by_player_id.len() as u8;
+        let player_id = (0u8..).find(|id| !self.key_by_player_id.contains_key(id))
+            .unwrap_or(self.key_by_player_id.len() as u8);
         self.key_by_player_id.insert(player_id, key);
         self.prev_board_rows.insert(key, vec![0u64; H]);
         key
