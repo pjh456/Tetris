@@ -26,6 +26,7 @@ export function create_spectator_screen(players: SurvivingPlayer[]): HTMLElement
   container.appendChild(status);
 
   container.addEventListener('keydown', (e) => {
+    if (players.length === 0) return;
     if (e.key === 'Tab' || e.key === 'ArrowRight') {
       e.preventDefault();
       const next = e.shiftKey
