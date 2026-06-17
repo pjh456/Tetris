@@ -67,9 +67,16 @@ export function wasm_error_screen(msg: string): HTMLElement {
     <div style="color:var(--color-muted);font-size:14px;max-width:400px;text-align:center;">
       Game engine could not be initialized. Check your connection and try again.
     </div>
-    <div style="color:var(--color-muted);font-size:12px;opacity:0.6;">${msg}</div>
-    <button class="btn" onclick="location.reload()">Retry Loading</button>
   `;
+  const msg_el = document.createElement('div');
+  msg_el.style.cssText = 'color:var(--color-muted);font-size:12px;opacity:0.6;';
+  msg_el.textContent = msg;
+  el.appendChild(msg_el);
+  const btn = document.createElement('button');
+  btn.className = 'btn';
+  btn.textContent = 'Retry Loading';
+  btn.onclick = () => location.reload();
+  el.appendChild(btn);
   return el;
 }
 
