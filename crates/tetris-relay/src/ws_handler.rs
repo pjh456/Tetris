@@ -105,6 +105,9 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
         if let Ok(data) = serialize(&accept) {
             let _ = sender.send(Message::Binary(data.into())).await;
         }
+    } else {
+        warn!("peer_by_id failed for {peer_id} in room {room_code}");
+        return;
     }
 
     info!("client {peer_id} joined room {room_code}");
