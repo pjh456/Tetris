@@ -485,8 +485,10 @@ impl<const W: usize, const H: usize> Engine<W, H> {
 
             if try_move(&mut self.state, 0, 1) {
                 self.lock_delay_wall.cancel();
+                self.lock_delay_active = false;
             } else {
                 self.lock_delay_wall.start();
+                self.lock_delay_active = true;
                 if self.lock_delay_wall.update() {
                     result = self.lock_and_spawn();
                 }
@@ -497,7 +499,12 @@ impl<const W: usize, const H: usize> Engine<W, H> {
     }
 
     pub fn get_lock_timer(&self) -> i32 {
-        self.lock_delay_wall.remaining_ms()
+        if self.lock_delay_active {
+            let rem_ticks = crate::lockdelay::LOCK_DELAY_TICKS.saturating_sub(self.lock_delay_accumulated_ticks);
+            (rem_ticks as i32 * crate::lockdelay::LOCK_DELAY_MS as i32 / crate::lockdelay::LOCK_DELAY_TICKS as i32).max(0)
+        } else {
+            0
+        }
     }
 
     pub fn state_hash(&self) -> u32 {
