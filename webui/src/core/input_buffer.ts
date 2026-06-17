@@ -26,7 +26,7 @@ export class InputBuffer {
 
   flush(): Uint8Array | null {
     const events_js = this.wasm.flush_input_buffer();
-    if (!events_js) return null;
+    if (!Array.isArray(events_js) || events_js.length === 0) return null;
     this.last_flush_tick = this.tick;
     return this.wasm.make_replay_packet(events_js);
   }

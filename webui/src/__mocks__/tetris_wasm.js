@@ -4,6 +4,8 @@ export class WebTetris {
   constructor(seed) {
     this._seed = seed;
     this._game_over = false;
+    this._input_events = [];
+    this._client_tick = 0;
   }
   reset(seed) {
     this._seed = seed;
@@ -61,6 +63,41 @@ export class WebTetris {
       tspin_count: 0,
       total_pieces: 0,
     };
+  }
+  push_input_event(key, pressed, subframe) {
+    this._input_events.push({ key, pressed, tick: this._client_tick, subframe });
+  }
+  advance_client_tick() {
+    this._client_tick += 1;
+  }
+  should_flush_input() {
+    return this._client_tick % 30 === 0;
+  }
+  flush_input_buffer() {
+    const events = this._input_events;
+    this._input_events = [];
+    return events;
+  }
+  make_replay_packet(events) {
+    return events.length === 0 ? new Uint8Array(0) : new Uint8Array([23, events.length]);
+  }
+  make_state_sync_packet() {
+    return new Uint8Array([25]);
+  }
+  get_multiplayer_snapshot() {
+    return { local_player_id: 0, room_code: 'ABCD', countdown: null, players: [], opponents: [] };
+  }
+  opponent_count() {
+    return 0;
+  }
+  get_opponent_grid() {
+    return new Uint8Array(200);
+  }
+  get_opponent_info() {
+    return null;
+  }
+  parse_packet() {
+    return null;
   }
 }
 

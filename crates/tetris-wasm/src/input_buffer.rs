@@ -1,6 +1,7 @@
 use tetris_protocol::newtypes::{KeyAction, TickNumber};
 use tetris_protocol::protocol::InputEvent;
 
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 const FLUSH_INTERVAL_TICKS: u32 = 30;
 
 /// Client-side input buffer for batching key events per D-04.
@@ -13,6 +14,7 @@ pub struct ClientInputBuffer {
     last_flush_tick: TickNumber,
 }
 
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 impl ClientInputBuffer {
     pub fn new() -> Self {
         Self {
@@ -53,5 +55,45 @@ impl ClientInputBuffer {
 impl Default for ClientInputBuffer {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn input_buffer_batches_after_thirty_ticks() {
+        let mut buffer = ClientInputBuffer::new();
+        for _ in 0..29 {
+            buffer.advance_tick();
+        }
+        assert!(!buffer.should_flush());
+
+        buffer.advance_tick();
+
+        assert!(buffer.should_flush());
+    }
+
+    #[test]
+    fn input_buffer_preserves_event_ticks() {
+        let mut buffer = ClientInputBuffer::new();
+        buffer.advance_tick();
+        buffer.push(KeyAction::KeyLeft, true, 0.0);
+
+        let events = buffer.flush();
+
+        assert_eq!(events[0].tick, TickNumber(1));
+    }
+
+    #[test]
+    fn input_buffer_flush_resets_interval() {
+        let mut buffer = ClientInputBuffer::new();
+        for _ in 0..30 {
+            buffer.advance_tick();
+        }
+        let _ = buffer.flush();
+
+        assert!(!buffer.should_flush());
     }
 }

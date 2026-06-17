@@ -4,9 +4,9 @@ import {
   get_grid_view,
   get_multiplayer_snapshot,
   get_opponent_player_grid,
-  make_state_sync_packet,
   type WebTetris,
 } from '../core/wasm';
+import { InputBuffer } from '../core/input_buffer';
 import { is_hud_data, is_hard_drop_info } from '../types/predicates';
 import { page, score, level, combo, b2b_count, lines, settings, is_multiplayer } from '../state';
 import { createBoardRenderer, create_mini_board_renderer } from '../render/board';
@@ -119,7 +119,11 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   // Opponent mini-grids (multiplayer only)
   const opponent_col = document.createElement('div');
   opponent_col.style.cssText = 'display:flex;flex-direction:column;gap:8px;min-width:72px;';
-  const opponent_renderers: Array<{ canvas: HTMLCanvasElement; render: (g: ArrayLike<number>, c: string[]) => void; destroy: () => void }> = [];
+  const opponent_renderers: Array<{
+    canvas: HTMLCanvasElement;
+    render: (g: ArrayLike<number>, c: string[]) => void;
+    destroy: () => void;
+  }> = [];
 
   const mp_ws = is_multiplayer.value ? get_multiplayer_ws() : null;
   const opponent_grids: Map<number, Uint8Array> = new Map();
@@ -171,7 +175,6 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   let logic_timer_id: number | null = null;
   let last_tick = performance.now();
   let last_fx = performance.now();
-  let last_state_sync = 0;
   let cleanup_keyboard: (() => void) | null = null;
   let popup_el: HTMLElement | null = null;
   let edge_active = false;
@@ -179,12 +182,21 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   let is_tearing_down = false;
   let collapse_cancel: (() => void) | null = null;
 
-  function send_state_sync(force = false) {
-    if (!mp_ws) return;
-    const now = performance.now();
-    if (!force && now - last_state_sync < 75) return;
-    mp_ws.send(make_state_sync_packet());
-    last_state_sync = now;
+  const input_buffer = mp_ws ? new InputBuffer(wasm) : null;
+
+  function queue_multiplayer_input(action: number, pressed: boolean) {
+    if (!mp_ws || !input_buffer) return;
+    input_buffer.push(action, pressed);
+  }
+
+  function flush_multiplayer_input_if_ready() {
+    if (!mp_ws || !input_buffer) return;
+    input_buffer.advance_tick();
+    if (!input_buffer.should_flush()) return;
+    const replay = input_buffer.flush();
+    if (replay && replay.byteLength > 0) {
+      mp_ws.send(replay);
+    }
   }
 
   function edge_bump(dir: -1 | 1) {
@@ -258,8 +270,9 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
 
     const prev_level = level.value;
     const prev_lines = lines.value;
-    wasm.tick(delta_ms);
-    send_state_sync();
+    if (!mp_ws) {
+      wasm.tick(delta_ms);
+    }
     last_tick = now;
 
     const hud_after: unknown = wasm.get_hud_data();
@@ -358,6 +371,8 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
     } else if (wasm.is_game_over) {
       finish_game();
       return;
+    } else {
+      flush_multiplayer_input_if_ready();
     }
 
     render_all();
@@ -476,8 +491,8 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
         if (action === Actions.MoveRight && edge_dir === 1) edge_release();
 
         const prev_lines = lines.value;
+        queue_multiplayer_input(action, true);
         wasm.handle_action(action);
-        send_state_sync(true);
 
         if (action === Actions.HardDrop) {
           check_harddrop_fx();
@@ -497,6 +512,7 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
       isGameOver: () => wasm.is_game_over,
       render: render_all,
       onRelease: (action) => {
+        queue_multiplayer_input(action, false);
         if (action === Actions.MoveLeft) edge_release();
         if (action === Actions.MoveRight) edge_release();
       },
@@ -509,15 +525,14 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
 
   const touch_overlay = create_touch_overlay(root, (action_val) => {
     if (!wasm.is_game_over && !paused) {
+      queue_multiplayer_input(action_val, true);
       wasm.handle_action(action_val);
-      send_state_sync(true);
     }
   });
 
   last_tick = performance.now();
   last_fx = performance.now();
   render_all();
-  send_state_sync(true);
   if (mp_ws) {
     logic_timer_id = window.setInterval(() => {
       advance_game(performance.now());

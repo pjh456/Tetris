@@ -824,8 +824,10 @@ impl WebTetris {
                 packet_type: PacketType::Replay,
                 player_id: self.local_player_id,
             },
+            start_tick: events
+                .first()
+                .map_or(self.input_buf.current_tick(), |event| event.tick),
             events,
-            start_tick: self.input_buf.current_tick(),
         };
         packet_to_uint8_array(&pkt)
     }

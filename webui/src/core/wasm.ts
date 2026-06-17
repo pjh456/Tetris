@@ -207,6 +207,31 @@ export function make_chat_message_packet(message: string): Uint8Array {
   return instance.make_chat_message_packet(message, new Date().toISOString());
 }
 
+export function push_input_event(key: number, pressed: boolean, subframe = 0): void {
+  if (!instance) throw new Error('WASM not initialized');
+  instance.push_input_event(key, pressed, subframe);
+}
+
+export function advance_client_tick(): void {
+  if (!instance) throw new Error('WASM not initialized');
+  instance.advance_client_tick();
+}
+
+export function should_flush_input(): boolean {
+  if (!instance) throw new Error('WASM not initialized');
+  return instance.should_flush_input();
+}
+
+export function flush_input_buffer(): unknown {
+  if (!instance) throw new Error('WASM not initialized');
+  return instance.flush_input_buffer();
+}
+
+export function make_replay_packet(events: unknown): Uint8Array {
+  if (!instance) throw new Error('WASM not initialized');
+  return instance.make_replay_packet(events);
+}
+
 export function make_state_sync_packet(): Uint8Array {
   if (!instance) throw new Error('WASM not initialized');
   return instance.make_state_sync_packet();
