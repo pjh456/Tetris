@@ -474,8 +474,8 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
                         engine.state.next[1] = pkt.next[1];
                         engine.state.next[2] = pkt.next[2];
                         // next[3],[4] preserved: legacy PktDeltaSync carries only 3 pieces
-                    }
-                    self.last_remote_seq = pkt.seq;
+                        self.last_remote_seq = pkt.seq;
+                }
             }
             PacketType::ResyncRequest => {}
             PacketType::PlayerStateSync => {
