@@ -126,7 +126,7 @@ export class WsClient {
   send(data: Uint8Array) {
     if (this.socket?.readyState === WebSocket.OPEN) {
       this.socket.send(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
-    } else {
+    } else if (this.message_buffer.length < 256) {
       this.message_buffer.push(data);
     }
   }
