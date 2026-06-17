@@ -4,7 +4,7 @@ use tetris_core::engine::Engine;
 use tetris_protocol::newtypes::{PlayerSlot, Seed, TickNumber};
 use tetris_protocol::protocol::{
     InputEvent, PROTOCOL_VERSION, PacketHeader, PacketType, PktGameOver, PktIncomingGarbage,
-    PktPlayerStateSync, PktReconnectAck, PktServerReplay, PktStateHash, PktStateSnapshot,
+    PktPlayerStatus, PktReconnectAck, PktServerReplay, PktStateHash, PktStateSnapshot,
 };
 
 use crate::replay::{HashLadder, ReplayBuffer};
@@ -502,10 +502,10 @@ impl AuthoritativeSim {
 
     fn player_state_packet(&self, slot: PlayerSlot) -> Result<Vec<u8>, SimError> {
         let idx = slot.0 as usize;
-        let pkt = PktPlayerStateSync {
+        let pkt = PktPlayerStatus {
             header: PacketHeader {
                 version: PROTOCOL_VERSION,
-                packet_type: PacketType::PlayerStateSync,
+                packet_type: PacketType::PlayerStatus,
                 player_id: 0,
             },
             target_player_id: slot.0,

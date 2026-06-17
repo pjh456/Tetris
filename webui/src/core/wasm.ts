@@ -251,8 +251,3 @@ export function make_reconnect_packet(): Uint8Array {
   if (!instance) throw new Error('WASM not initialized');
   return instance.make_reconnect_packet();
 }
-
-export function make_state_sync_packet(): Uint8Array {
-  if (!instance) throw new Error('WASM not initialized');
-  return instance.make_state_sync_packet();
-}

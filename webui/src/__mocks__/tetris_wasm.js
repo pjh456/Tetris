@@ -95,9 +95,6 @@ export class WebTetris {
   make_reconnect_packet() {
     return new Uint8Array([27]);
   }
-  make_state_sync_packet() {
-    return new Uint8Array([25]);
-  }
   get_multiplayer_snapshot() {
     return this._snapshot;
   }

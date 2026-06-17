@@ -395,31 +395,6 @@ impl WebTetris {
         packet_to_uint8_array(&pkt)
     }
 
-    pub fn make_state_sync_packet(&self) -> js_sys::Uint8Array {
-        let pkt = PktStateSync {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::StateSync,
-                player_id: self.local_player_id.unwrap_or(0),
-            },
-            board_rows: self.engine.state.board.rows.to_vec(),
-            piece: self.engine.state.piece,
-            rot: self.engine.state.rot,
-            x: self.engine.state.x,
-            y: self.engine.state.y,
-            hold: self.engine.state.hold,
-            hold_used: self.engine.state.hold_used,
-            next: [
-                self.engine.state.next[0],
-                self.engine.state.next[1],
-                self.engine.state.next[2],
-            ],
-            pending_garbage: self.engine.state.pending_garbage,
-            rng_state: self.engine.state.rng,
-        };
-        packet_to_uint8_array(&pkt)
-    }
-
     pub fn get_opponent_grid(&self, player_id: u8) -> js_sys::Uint8Array {
         let idx = player_id as usize;
         if idx >= self.opponent_grid_bufs.len() {
@@ -799,8 +774,8 @@ impl WebTetris {
                 event.incoming_garbage_lines = Some(pkt.incoming_lines);
                 event
             }
-            PacketType::PlayerStateSync => {
-                let pkt: PktPlayerStateSync = deser(data).ok()?;
+            PacketType::PlayerStatus => {
+                let pkt: PktPlayerStatus = deser(data).ok()?;
                 if let Some(info) = self
                     .opponent_infos
                     .iter_mut()
