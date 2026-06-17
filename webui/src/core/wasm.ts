@@ -242,6 +242,16 @@ export function make_replay_packet(events: unknown): Uint8Array {
   return instance.make_replay_packet(events);
 }
 
+export function make_resume_packet(socket_id: string, resume_token: string): Uint8Array {
+  if (!instance) throw new Error('WASM not initialized');
+  return instance.make_resume_packet(socket_id, resume_token);
+}
+
+export function make_reconnect_packet(): Uint8Array {
+  if (!instance) throw new Error('WASM not initialized');
+  return instance.make_reconnect_packet();
+}
+
 export function make_state_sync_packet(): Uint8Array {
   if (!instance) throw new Error('WASM not initialized');
   return instance.make_state_sync_packet();

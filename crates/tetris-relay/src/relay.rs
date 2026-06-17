@@ -8,6 +8,7 @@ use tetris_protocol::protocol::{
 use tokio::sync::{Mutex, RwLock, broadcast};
 
 use crate::error::RelayError;
+use crate::room_actor::RoomCommand;
 
 pub type RoomCode = String;
 
@@ -28,6 +29,7 @@ pub struct RoomState {
     pub peers: Mutex<Vec<PeerInfo>>,
     pub countdown_active: AtomicUsize,
     pub cancel_tx: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+    pub actor_tx: Mutex<Option<tokio::sync::mpsc::Sender<RoomCommand>>>,
 }
 
 #[derive(Clone)]
@@ -269,6 +271,7 @@ impl RoomManager {
             peers: Mutex::new(vec![]),
             countdown_active: AtomicUsize::new(0),
             cancel_tx: Mutex::new(None),
+            actor_tx: Mutex::new(None),
         });
         rooms.insert(code.clone(), state);
         Ok(code)
@@ -350,6 +353,7 @@ impl RoomManager {
             peers: Mutex::new(vec![]),
             countdown_active: AtomicUsize::new(0),
             cancel_tx: Mutex::new(None),
+            actor_tx: Mutex::new(None),
         });
         rooms.insert(code.to_string(), state);
         Ok(code.to_string())
@@ -366,6 +370,30 @@ impl RoomManager {
             .ok_or_else(|| RelayError::RoomNotFound(code.into()))?;
         *room.cancel_tx.lock().await = Some(tx);
         Ok(())
+    }
+
+    pub async fn store_actor_tx(
+        &self,
+        code: &str,
+        tx: tokio::sync::mpsc::Sender<RoomCommand>,
+    ) -> Result<(), RelayError> {
+        let rooms = self.rooms.read().await;
+        let room = rooms
+            .get(code)
+            .ok_or_else(|| RelayError::RoomNotFound(code.into()))?;
+        *room.actor_tx.lock().await = Some(tx);
+        Ok(())
+    }
+
+    pub async fn actor_tx(
+        &self,
+        code: &str,
+    ) -> Result<Option<tokio::sync::mpsc::Sender<RoomCommand>>, RelayError> {
+        let rooms = self.rooms.read().await;
+        let room = rooms
+            .get(code)
+            .ok_or_else(|| RelayError::RoomNotFound(code.into()))?;
+        Ok(room.actor_tx.lock().await.clone())
     }
 }
 

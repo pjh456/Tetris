@@ -25,6 +25,12 @@ pub enum RelayRoomMode {
 
 /// Commands sent to a `RoomActor` from `ws_handler`.
 pub enum RoomCommand {
+    ResumePlayer {
+        slot: PlayerSlot,
+        input_rx: mpsc::Receiver<InputEvent>,
+        conn: PlayerConnection<Online>,
+        outbound_tx: mpsc::Sender<Vec<u8>>,
+    },
     PlayerInput {
         slot: PlayerSlot,
         event: InputEvent,
@@ -101,6 +107,27 @@ impl RoomActor {
         self.outbound_txs[idx] = Some(outbound_tx);
     }
 
+    fn resume_player(
+        &mut self,
+        slot: PlayerSlot,
+        input_rx: mpsc::Receiver<InputEvent>,
+        conn: PlayerConnection<Online>,
+        outbound_tx: mpsc::Sender<Vec<u8>>,
+    ) {
+        let idx = slot.0 as usize;
+        if self.input_rxs.len() <= idx {
+            self.input_rxs.resize_with(idx + 1, || None);
+            self.connections.resize_with(idx + 1, || None);
+            self.outbound_txs.resize_with(idx + 1, || None);
+        }
+        if self.sim.engine(slot).is_none() {
+            self.sim.add_player(slot);
+        }
+        self.input_rxs[idx] = Some(input_rx);
+        self.connections[idx] = Some(conn);
+        self.outbound_txs[idx] = Some(outbound_tx);
+    }
+
     pub fn remove_player(&mut self, slot: PlayerSlot) {
         let idx = slot.0 as usize;
         if idx < self.input_rxs.len() {
@@ -171,6 +198,13 @@ impl RoomActor {
         self.sim.handle_reconnect(slot, client_hashes)
     }
 
+    fn send_reconnect_ack(&self, slot: PlayerSlot, client_hashes: &[(TickNumber, u32)]) {
+        let ack = self.sim.handle_reconnect(slot, client_hashes);
+        if let Ok(data) = bincode::serialize(&ack) {
+            self.send_to_player(slot, data);
+        }
+    }
+
     pub fn replay_broadcast(&self, source_slot: PlayerSlot, events: &[InputEvent]) {
         if let Ok(outbound) = self.sim.replay_broadcast(source_slot, events) {
             self.dispatch_outbound(outbound);
@@ -210,7 +244,11 @@ impl RoomActor {
         }
     }
 
-    pub async fn run(mut self, mut cancel_rx: tokio::sync::oneshot::Receiver<()>) {
+    pub async fn run(
+        mut self,
+        mut cancel_rx: tokio::sync::oneshot::Receiver<()>,
+        mut command_rx: mpsc::Receiver<RoomCommand>,
+    ) {
         let mut tick_timer = interval(Duration::from_micros(16667));
 
         loop {
@@ -220,6 +258,21 @@ impl RoomActor {
                         break;
                     }
                     self.run_one_tick();
+                }
+                command = command_rx.recv() => {
+                    match command {
+                        Some(RoomCommand::ResumePlayer { slot, input_rx, conn, outbound_tx }) => {
+                            self.resume_player(slot, input_rx, conn, outbound_tx);
+                        }
+                        Some(RoomCommand::Reconnect { slot, client_hashes }) => {
+                            self.send_reconnect_ack(slot, &client_hashes);
+                        }
+                        Some(RoomCommand::PlayerInput { slot, event }) => {
+                            self.sim.enqueue_input(slot, event);
+                        }
+                        Some(RoomCommand::PlayerReady { .. } | RoomCommand::PlayerLeave { .. }) => {}
+                        Some(RoomCommand::Shutdown) | None => break,
+                    }
                 }
                 _ = &mut cancel_rx => {
                     break;

@@ -1059,6 +1059,18 @@ html {
   padding: var(--space-sm);
 }
 
+.opponent-connection-dim {
+  opacity: 0.45;
+  filter: grayscale(0.7);
+}
+
+.opponent-connection-dim::after {
+  content: 'GRAVITY ONLY';
+  font-size: 9px;
+  color: var(--color-muted);
+  letter-spacing: 1px;
+}
+
 .opponent-name {
   font-size: 11px;
   color: var(--color-muted);
@@ -1238,6 +1250,37 @@ html {
 
 .status-offline {
   background: #666;
+}
+
+.connection-badge {
+  position: absolute;
+  top: var(--space-sm);
+  left: var(--space-sm);
+  z-index: 6;
+  min-width: 112px;
+  padding: 4px 8px;
+  border: 1px solid var(--color-panel-border);
+  background: var(--color-panel);
+  color: var(--color-text);
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-align: center;
+}
+
+.connection-online {
+  color: #4f4;
+}
+
+.connection-slow,
+.connection-reconnecting,
+.connection-resyncing,
+.connection-connecting {
+  color: #ff0;
+}
+
+.connection-disconnected,
+.connection-offline {
+  color: #f44;
 }
 
 @keyframes pulse-status {

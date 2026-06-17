@@ -140,7 +140,10 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   const mp_ws = is_multiplayer.value ? get_multiplayer_ws() : null;
   const opponent_grids: Map<number, Uint8Array> = new Map();
   const opponent_labels: HTMLElement[] = [];
+  const opponent_slots: HTMLElement[] = [];
   const replay_players: Map<number, OpponentReplayPlayer> = new Map();
+  const connection_badge = document.createElement('div');
+  connection_badge.className = 'connection-badge connection-offline';
 
   if (mp_ws) {
     const opp_label = document.createElement('div');
@@ -152,6 +155,7 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
     for (let i = 0; i < 3; i++) {
       const slot = document.createElement('div');
       slot.className = 'opponent-panel';
+      opponent_slots.push(slot);
       const name_el = document.createElement('div');
       name_el.className = 'opponent-name';
       name_el.textContent = `P${i + 2}`;
@@ -171,6 +175,7 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   layout.appendChild(right_col);
   if (mp_ws) layout.appendChild(opponent_col);
   wrapper.appendChild(layout);
+  if (mp_ws) wrapper.appendChild(connection_badge);
   root.appendChild(wrapper);
 
   const renderer = createBoardRenderer(board_canvas);
@@ -217,7 +222,7 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
     }
     if (event.kind === 'state_hash' && typeof event.tick === 'number') {
       for (const player of replay_players.values()) player.apply_tick(event.tick);
-      if (connection_status.value === 'resyncing') connection_status.value = 'online';
+      finish_ws_resync();
       return;
     }
     if (event.kind === 'resync_required') {
@@ -225,11 +230,23 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
       return;
     }
     if (event.kind === 'state_snapshot') {
-      if (connection_status.value === 'resyncing') connection_status.value = 'online';
+      finish_ws_resync();
+      return;
+    }
+    if (event.kind === 'reconnect_ack') {
+      finish_ws_resync();
       return;
     }
     if (event.kind === 'game_over') {
       finish_game();
+    }
+  }
+
+  function finish_ws_resync() {
+    if (mp_ws && 'finish_resync' in mp_ws && typeof mp_ws.finish_resync === 'function') {
+      mp_ws.finish_resync();
+    } else if (connection_status.value === 'resyncing') {
+      connection_status.value = 'online';
     }
   }
 
@@ -356,16 +373,27 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
         const player = remote_players[i];
         const renderer = opponent_renderers[i];
         const label = opponent_labels[i];
+        const slot = opponent_slots[i];
         if (!player || label === undefined) {
           renderer.canvas.style.display = 'none';
           continue;
         }
         label.textContent = `${player.name}${player.away ? ' (AWAY)' : player.alive ? '' : ' (KO)'}`;
+        if (slot) {
+          slot.classList.toggle(
+            'opponent-connection-dim',
+            connection_status.value === 'slow' || connection_status.value === 'disconnected',
+          );
+        }
         replay_player_for(player.player_id);
         const grid = get_opponent_player_grid(player.player_id);
         opponent_grids.set(i, grid);
         renderer.canvas.style.display = '';
       }
+    }
+
+    if (mp_ws) {
+      update_connection_badge(connection_badge, connection_status.value);
     }
 
     for (const [idx, grid] of opponent_grids) {
@@ -384,7 +412,7 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
       ctx.fillRect(0, 720 - bar_h, 360 * pct, bar_h);
     }
 
-    const clear_mask = wasm.get_last_clear_mask();
+    const clear_mask = Number(wasm.get_last_clear_mask());
     if (clear_mask) {
       for (let row = 0; row < 20; row++) {
         if (clear_mask & (1 << row)) {
@@ -596,6 +624,20 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   raf_id = requestAnimationFrame(game_loop);
 
   return _destroy;
+}
+
+function update_connection_badge(el: HTMLElement, status: string) {
+  const labels: Record<string, string> = {
+    online: 'ONLINE',
+    slow: 'SLOW',
+    reconnecting: 'RECONNECTING',
+    disconnected: 'DISCONNECTED',
+    resyncing: 'RESYNCING',
+    connecting: 'CONNECTING',
+    offline: 'OFFLINE',
+  };
+  el.textContent = labels[status] ?? 'OFFLINE';
+  el.className = `connection-badge connection-${status}`;
 }
 
 function run_countdown(container: HTMLElement): Promise<void> {

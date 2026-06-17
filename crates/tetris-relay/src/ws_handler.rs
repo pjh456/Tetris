@@ -9,15 +9,16 @@ use bincode::serialize;
 use futures_util::{SinkExt, StreamExt};
 use tetris_protocol::protocol::{
     InputEvent, PROTOCOL_VERSION, PacketHeader, PacketType, PktChatMessage, PktGameStart,
-    PktJoinRoom, PktPlayerReady, PktReplay, PktServerAccept, PktStartCountdown,
+    PktJoinRoom, PktPlayerReady, PktReconnect, PktReplay, PktResume, PktServerAccept,
+    PktStartCountdown,
 };
 use tokio::sync::Mutex;
 use tokio::time::interval;
 use tracing::{info, warn};
 
 use crate::relay::RoomManager;
-use crate::room_actor::RoomActor;
-use tetris_protocol::newtypes::Seed;
+use crate::room_actor::{RoomActor, RoomCommand};
+use tetris_protocol::newtypes::{PlayerSlot, Seed};
 use tetris_sim::RoomMode;
 
 use std::collections::HashMap;
@@ -93,8 +94,18 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
     let (outbound_tx, outbound_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
 
     if let Ok(peer) = state.room_manager.peer_by_id(&room_code, peer_id).await {
-        // Store input_rx + outbound_tx for RoomActor when game starts
-        {
+        let actor_tx = state.room_manager.actor_tx(&room_code).await.ok().flatten();
+        if let Some(actor_tx) = actor_tx {
+            let conn = make_player_connection(peer.player_id, input_tx.clone());
+            let _ = actor_tx
+                .send(RoomCommand::ResumePlayer {
+                    slot: PlayerSlot(peer.player_id),
+                    input_rx,
+                    conn,
+                    outbound_tx,
+                })
+                .await;
+        } else {
             let mut pending = state.pending_inputs.lock().await;
             pending.entry(room_code.clone()).or_default().push((
                 peer.player_id,
@@ -309,17 +320,8 @@ async fn handle_binary_message(
                             let mut actor =
                                 RoomActor::new(room_code_owned.clone(), Seed(random_seed as i32));
                             for (player_id, input_rx, outbound_tx) in player_channels {
-                                use crate::player_conn::Online;
-                                use crate::player_conn::PlayerConnection;
-                                use tetris_protocol::newtypes::PlayerSlot;
-                                // conn_tx is intentionally a dropped channel — input path goes
-                                // through input_rx from the connection, not PlayerConnection::send_input
                                 let (conn_tx, _) = tokio::sync::mpsc::channel::<InputEvent>(64);
-                                let conn = PlayerConnection::<Online>::new(
-                                    PlayerSlot(player_id),
-                                    conn_tx,
-                                    format!("Player {}", player_id + 1),
-                                );
+                                let conn = make_player_connection(player_id, conn_tx);
                                 actor.add_player(
                                     PlayerSlot(player_id),
                                     input_rx,
@@ -329,7 +331,13 @@ async fn handle_binary_message(
                             }
                             actor.set_room_mode(RoomMode::Playing);
                             let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
-                            tokio::spawn(actor.run(cancel_rx));
+                            let (command_tx, command_rx) =
+                                tokio::sync::mpsc::channel::<RoomCommand>(64);
+                            let _ = state
+                                .room_manager
+                                .store_actor_tx(&room_code_owned, command_tx)
+                                .await;
+                            tokio::spawn(actor.run(cancel_rx, command_rx));
                             // cancel_tx stored in RoomState for lifecycle; currently only
                             // dropped by room removal — no explicit RoomActor shutdown call site.
                             let _ = state
@@ -389,14 +397,54 @@ async fn handle_binary_message(
                 }
             }
         }
+        PacketType::Resume => {
+            let Ok(pkt) = deser::<PktResume>(&data) else {
+                return;
+            };
+            let Ok(peer) = state.room_manager.peer_by_id(room_code, peer_id).await else {
+                return;
+            };
+            let expected = peer.player_id.to_string();
+            if pkt.socket_id != expected || pkt.resume_token != expected {
+                return;
+            }
+        }
+        PacketType::Reconnect => {
+            let Ok(pkt) = deser::<PktReconnect>(&data) else {
+                return;
+            };
+            let Ok(peer) = state.room_manager.peer_by_id(room_code, peer_id).await else {
+                return;
+            };
+            if let Ok(Some(actor_tx)) = state.room_manager.actor_tx(room_code).await {
+                let _ = actor_tx
+                    .send(RoomCommand::Reconnect {
+                        slot: PlayerSlot(peer.player_id),
+                        client_hashes: pkt.client_hashes,
+                    })
+                    .await;
+            }
+        }
         _ => {}
     }
+}
+
+fn make_player_connection(
+    player_id: u8,
+    tx: tokio::sync::mpsc::Sender<InputEvent>,
+) -> crate::player_conn::PlayerConnection<crate::player_conn::Online> {
+    crate::player_conn::PlayerConnection::<crate::player_conn::Online>::new(
+        PlayerSlot(player_id),
+        tx,
+        format!("Player {}", player_id + 1),
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use tetris_protocol::newtypes::{KeyAction, TickNumber};
+    use tetris_protocol::protocol::PktReconnectAck;
 
     fn make_replay(player_id: u8, events: Vec<InputEvent>) -> PktReplay {
         PktReplay {
@@ -435,6 +483,62 @@ mod tests {
 
         let received = input_rx.try_recv().unwrap();
         assert_eq!(received.key, KeyAction::KeyHardDrop);
+    }
+
+    #[tokio::test]
+    async fn reconnect_routes_to_sim() {
+        let manager = Arc::new(RoomManager::new(4));
+        manager.get_or_create_room("ABCD").await.unwrap();
+        let peer_id = RoomManager::alloc_peer_id();
+        manager.join_room("ABCD").await.unwrap();
+        manager.add_peer("ABCD", peer_id).await.unwrap();
+        let state = Arc::new(AppState {
+            room_manager: Arc::clone(&manager),
+            pending_inputs: Arc::new(Mutex::new(HashMap::new())),
+        });
+
+        let mut actor = RoomActor::new("ABCD".into(), Seed(42));
+        let (conn_tx, input_rx) = tokio::sync::mpsc::channel::<InputEvent>(64);
+        let conn = make_player_connection(0, conn_tx);
+        let (out_tx, mut out_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
+        actor.add_player(PlayerSlot(0), input_rx, conn, out_tx);
+        for _ in 0..100 {
+            actor.run_one_tick();
+        }
+        let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
+        let (command_tx, command_rx) = tokio::sync::mpsc::channel::<RoomCommand>(64);
+        manager.store_actor_tx("ABCD", command_tx).await.unwrap();
+        let actor_task = tokio::spawn(actor.run(cancel_rx, command_rx));
+
+        let pkt = PktReconnect {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::Reconnect,
+                player_id: 0,
+            },
+            last_good_tick: TickNumber(100),
+            client_hashes: vec![(TickNumber(100), 0xDEAD_BEEF)],
+        };
+        let data = serialize(&pkt).unwrap();
+        let (input_tx, _input_rx) = tokio::sync::mpsc::channel::<InputEvent>(4);
+
+        handle_binary_message(&state, "ABCD", peer_id, &input_tx, data).await;
+
+        let ack = tokio::time::timeout(Duration::from_millis(100), async {
+            loop {
+                let bytes = out_rx.recv().await.unwrap();
+                let header: PacketHeader = deser(&bytes).unwrap();
+                if header.packet_type == PacketType::ReconnectAck {
+                    break deser::<PktReconnectAck>(&bytes).unwrap();
+                }
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(ack.divergence_tick, TickNumber(100));
+
+        let _ = cancel_tx.send(());
+        let _ = actor_task.await;
     }
 
     #[test]

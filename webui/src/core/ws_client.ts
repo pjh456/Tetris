@@ -19,6 +19,7 @@ export class WsClient {
   private _resume_token: string | null = null;
   private _socket_id: string | null = null;
   private message_buffer: Uint8Array[] = [];
+  private was_reconnecting = false;
 
   onpacket: ((event: MultiplayerEvent | null) => void) | null = null;
   onopen: (() => void) | null = null;
@@ -49,11 +50,16 @@ export class WsClient {
         clearTimeout(this.reconnect_timeout);
         this.reconnect_timeout = null;
       }
-      connection_status.value = 'online';
+      const should_resume = this.was_reconnecting && this.can_resume();
+      connection_status.value = should_resume ? 'resyncing' : 'online';
       this.reconnect_attempt = 0;
       this.last_pong_time = Date.now();
       this.start_heartbeat();
-      this.flush_buffer();
+      if (should_resume) {
+        this.send_resume_packets();
+      } else {
+        this.flush_buffer();
+      }
       this.onopen?.();
     };
 
@@ -63,6 +69,10 @@ export class WsClient {
       if (this.wasm) {
         try {
           const parsed = this.wasm.parse_packet(data) as MultiplayerEvent | null;
+          if (parsed?.kind === 'server_accept' && typeof parsed.player_id === 'number') {
+            const token = String(parsed.player_id);
+            this.set_resume_token(token, token);
+          }
           this.onpacket?.(parsed);
         } catch {
           // skip corrupt packet
@@ -113,6 +123,7 @@ export class WsClient {
       return;
     }
     connection_status.value = 'reconnecting';
+    this.was_reconnecting = true;
     this.reconnect_timeout = setTimeout(() => {
       connection_status.value = 'disconnected';
     }, DISCONNECT_TIMEOUT_MS);
@@ -128,6 +139,10 @@ export class WsClient {
   }
 
   send(data: Uint8Array) {
+    if (connection_status.value === 'resyncing') {
+      if (this.message_buffer.length < 256) this.message_buffer.push(data.slice());
+      return;
+    }
     if (this.socket?.readyState === WebSocket.OPEN) {
       this.socket.send(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
     } else if (this.message_buffer.length < 256) {
@@ -152,6 +167,32 @@ export class WsClient {
     return this._resume_token !== null && this._socket_id !== null;
   }
 
+  private send_resume_packets() {
+    if (!this.wasm || !this._resume_token || !this._socket_id) return;
+    const resume_packet = this.wasm.make_resume_packet(this._socket_id, this._resume_token);
+    const reconnect_packet = this.wasm.make_reconnect_packet();
+    this.socket?.send(
+      resume_packet.buffer.slice(
+        resume_packet.byteOffset,
+        resume_packet.byteOffset + resume_packet.byteLength,
+      ),
+    );
+    this.socket?.send(
+      reconnect_packet.buffer.slice(
+        reconnect_packet.byteOffset,
+        reconnect_packet.byteOffset + reconnect_packet.byteLength,
+      ),
+    );
+  }
+
+  finish_resync() {
+    if (connection_status.value === 'resyncing') {
+      connection_status.value = 'online';
+      this.was_reconnecting = false;
+      this.flush_buffer();
+    }
+  }
+
   close() {
     this.stop_heartbeat();
     if (this.reconnect_timeout) {
@@ -162,6 +203,7 @@ export class WsClient {
     }
     this.socket?.close();
     this.reconnect_attempt = 0;
+    this.was_reconnecting = false;
     connection_status.value = 'offline';
   }
 }

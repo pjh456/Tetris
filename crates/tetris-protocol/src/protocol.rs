@@ -308,6 +308,7 @@ pub struct PktReconnectAck {
     pub header: PacketHeader,
     pub divergence_tick: TickNumber,
     pub replay_events: Vec<PktServerReplay>,
+    pub snapshot: Option<PktStateSnapshot>,
 }
 
 /// Resume connection with stored session state. Per D-10.
@@ -787,6 +788,7 @@ mod tests {
             },
             divergence_tick: TickNumber(99),
             replay_events: vec![],
+            snapshot: None,
         };
         bincode_round_trip(&pkt);
     }

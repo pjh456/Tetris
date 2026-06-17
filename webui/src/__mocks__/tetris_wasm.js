@@ -89,6 +89,12 @@ export class WebTetris {
   make_replay_packet(events) {
     return events.length === 0 ? new Uint8Array(0) : new Uint8Array([23, events.length]);
   }
+  make_resume_packet() {
+    return new Uint8Array([29]);
+  }
+  make_reconnect_packet() {
+    return new Uint8Array([27]);
+  }
   make_state_sync_packet() {
     return new Uint8Array([25]);
   }

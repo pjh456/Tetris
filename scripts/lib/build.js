@@ -29,7 +29,6 @@ export async function wasmPackBuild() {
         '--out-dir', PKG,
         '--out-name', 'tetris_wasm',
         '--target', 'web',
-        '--no-typescript',
         join(ROOT, 'target', 'wasm32-unknown-unknown', 'release', 'tetris_wasm.wasm'),
     ], { cwd: ROOT });
     if (!r2.ok) process.exit(r2.code);

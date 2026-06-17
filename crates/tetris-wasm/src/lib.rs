@@ -480,6 +480,46 @@ impl WebTetris {
         };
         packet_to_uint8_array(&pkt)
     }
+
+    pub fn make_resume_packet(
+        &self,
+        socket_id: String,
+        resume_token: String,
+    ) -> js_sys::Uint8Array {
+        let pkt = PktResume {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::Resume,
+                player_id: self.local_player_id.unwrap_or(0),
+            },
+            socket_id,
+            resume_token,
+        };
+        packet_to_uint8_array(&pkt)
+    }
+
+    pub fn make_reconnect_packet(&self) -> js_sys::Uint8Array {
+        let mut client_hashes = Vec::new();
+        if let Some((tick, hash)) = self.last_state_hash {
+            client_hashes.push((tick, hash));
+        }
+        client_hashes.push((
+            tetris_protocol::newtypes::TickNumber(0),
+            self.engine.state_hash(),
+        ));
+        let pkt = PktReconnect {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::Reconnect,
+                player_id: self.local_player_id.unwrap_or(0),
+            },
+            last_good_tick: client_hashes
+                .last()
+                .map_or(tetris_protocol::newtypes::TickNumber(0), |(tick, _)| *tick),
+            client_hashes,
+        };
+        packet_to_uint8_array(&pkt)
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -739,6 +779,9 @@ impl WebTetris {
                 let replay_count = pkt.replay_events.len();
                 for replay in &pkt.replay_events {
                     self.apply_server_replay(replay);
+                }
+                if let Some(snapshot) = &pkt.snapshot {
+                    self.apply_local_state_snapshot(snapshot);
                 }
                 let mut event =
                     MultiplayerEvent::new("reconnect_ack", self.room_code.clone(), self.countdown);

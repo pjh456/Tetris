@@ -174,6 +174,7 @@ impl AuthoritativeSim {
                 },
                 divergence_tick: TickNumber(0),
                 replay_events: vec![],
+                snapshot: None,
             };
         };
 
@@ -198,6 +199,12 @@ impl AuthoritativeSim {
             }
         }
 
+        let snapshot = if replay_events.is_empty() {
+            self.build_snapshot_for_player(slot)
+        } else {
+            None
+        };
+
         PktReconnectAck {
             header: PacketHeader {
                 version: PROTOCOL_VERSION,
@@ -206,6 +213,7 @@ impl AuthoritativeSim {
             },
             divergence_tick,
             replay_events,
+            snapshot,
         }
     }
 
@@ -600,9 +608,60 @@ mod tests {
         for _ in 0..100 {
             sim.tick().unwrap();
         }
+        let ack = sim.handle_reconnect(PlayerSlot(0), &[(TickNumber(0), 0xDEAD_BEEF)]);
+
+        assert_eq!(ack.divergence_tick, TickNumber(0));
+    }
+
+    #[test]
+    fn reconnect_replay_snapshot_fallback_returns_replay_when_buffer_covers_divergence() {
+        let mut sim = AuthoritativeSim::new(Seed(42));
+        sim.add_player(PlayerSlot(0));
+        for _ in 0..100 {
+            sim.tick().unwrap();
+        }
+        sim.enqueue_input(PlayerSlot(0), make_event(KeyAction::KeyLeft, true));
+        sim.tick().unwrap();
+
         let ack = sim.handle_reconnect(PlayerSlot(0), &[(TickNumber(100), 0xDEAD_BEEF)]);
 
         assert_eq!(ack.divergence_tick, TickNumber(100));
+        assert!(ack.snapshot.is_none());
+        assert_eq!(ack.replay_events.len(), 1);
+    }
+
+    #[test]
+    fn reconnect_replay_snapshot_fallback_returns_snapshot_when_replay_too_old() {
+        let mut sim = AuthoritativeSim::new(Seed(42));
+        sim.add_player(PlayerSlot(0));
+        for tick in 0..2002 {
+            let mut event = make_event(KeyAction::KeyLeft, true);
+            event.tick = TickNumber(tick);
+            sim.enqueue_input(PlayerSlot(0), event);
+            sim.tick().unwrap();
+        }
+
+        let ack = sim.handle_reconnect(PlayerSlot(0), &[(TickNumber(0), 0xDEAD_BEEF)]);
+
+        assert_eq!(ack.divergence_tick, TickNumber(0));
+        assert!(ack.replay_events.is_empty());
+        assert!(ack.snapshot.is_some());
+    }
+
+    #[test]
+    fn reconnect_replay_snapshot_fallback_returns_noop_when_hashes_match() {
+        let mut sim = AuthoritativeSim::new(Seed(42));
+        sim.add_player(PlayerSlot(0));
+        for _ in 0..100 {
+            sim.tick().unwrap();
+        }
+        let hash = sim.hash_at(TickNumber(100)).unwrap();
+
+        let ack = sim.handle_reconnect(PlayerSlot(0), &[(TickNumber(100), hash)]);
+
+        assert_eq!(ack.divergence_tick, TickNumber(0));
+        assert!(ack.replay_events.is_empty());
+        assert!(ack.snapshot.is_none());
     }
 
     #[test]
