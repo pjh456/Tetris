@@ -17,13 +17,18 @@ fn main() -> Result<()> {
     let mut terminal = ratatui::init();
     let cfg = config::load_config();
     let state = app::AppState::Menu { selected: 0 };
+    let mut draw_errors: Vec<String> = Vec::new();
 
     game_loop::run_game_loop(state, &cfg, app::update, |st| {
-        if let Err(e) = terminal.draw(|frame| render::render(st, frame)) {
-            eprintln!("terminal draw error: {e}");
+        match terminal.draw(|frame| render::render(st, frame)) {
+            Ok(_) => {}
+            Err(e) => draw_errors.push(e.to_string()),
         }
     });
 
     ratatui::restore();
+    for err in &draw_errors {
+        eprintln!("terminal draw error: {err}");
+    }
     Ok(())
 }
