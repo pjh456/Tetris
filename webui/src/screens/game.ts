@@ -430,9 +430,7 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
     // Prevents BGM restart when tab returns after manual pause.
   }
 
-  let _destroy: () => void = () => {};
-
-  // ... later replaced by the real destroy ...
+  let _destroy: () => void;
 
   function destroy() {
     collapse_cancel?.();
@@ -444,6 +442,7 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
     renderer.destroy();
     for (const r of opponent_renderers) r.destroy();
   }
+  // eslint-disable-next-line prefer-const
   _destroy = destroy;
 
   const kbd_config: KeyboardConfig = {

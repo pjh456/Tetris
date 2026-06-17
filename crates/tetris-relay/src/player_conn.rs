@@ -86,7 +86,8 @@ impl PlayerConnection<Reconnecting> {
     }
 
     pub fn elapsed(&self) -> Option<Duration> {
-        self.disconnected_at.map(|since| Instant::now().duration_since(since))
+        self.disconnected_at
+            .map(|since| Instant::now().duration_since(since))
     }
 
     pub fn timed_out(&self) -> bool {

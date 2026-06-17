@@ -294,7 +294,7 @@ impl WebTetris {
         )
     }
 
-    pub fn get_last_clear_mask(&mut self) -> u32 {
+    pub fn get_last_clear_mask(&mut self) -> u64 {
         let mask = self.engine.state.last_clear_mask;
         self.engine.state.last_clear_mask = 0;
         mask
@@ -621,7 +621,8 @@ impl WebTetris {
                     Ok(p) => p,
                     Err(_) => return JsValue::NULL,
                 };
-                if let Some(info) = self.opponent_infos
+                if let Some(info) = self
+                    .opponent_infos
                     .iter_mut()
                     .find(|p| p.player_id == pkt.target_player_id)
                 {

@@ -1,12 +1,9 @@
-use tetris_core::engine::{Engine, InputEvent};
 use proptest::prelude::*;
 use proptest::test_runner::Config;
+use tetris_core::engine::{Engine, InputEvent};
 
 fn make_input_event(key: u8) -> InputEvent {
-    InputEvent {
-        key,
-        pressed: true,
-    }
+    InputEvent { key, pressed: true }
 }
 
 proptest! {
@@ -43,9 +40,8 @@ proptest! {
         engine_a.reset(seed_a);
         engine_b.reset(seed_b);
 
-        // Apply the same sequence and verify divergence
         let inputs: Vec<InputEvent> = (0..50)
-            .map(|_| make_input_event(3)) // HardDrop × 50
+            .map(|_| make_input_event(3))
             .collect();
 
         engine_a.fixed_tick(&inputs);
@@ -53,31 +49,22 @@ proptest! {
 
         prop_assert_ne!(engine_a.state_hash(), engine_b.state_hash());
     }
+}
 
-    #[test]
-    fn different_input_different_hash(
-        seed in 0u32..1_000_000,
-        extra_actions in proptest::collection::vec(0u8..7u8, 1..50),
-    ) {
-        let mut engine_a = Engine::<10, 20>::new();
-        let mut engine_b = Engine::<10, 20>::new();
-        engine_a.reset(seed);
-        engine_b.reset(seed);
-
-        // Engine_A: no extra actions, just gravity
-        for _ in 0..10 {
-            engine_a.fixed_tick(&[]);
-        }
-
-        // Engine_B: same ticks but with extra actions mixed in
-        for action_chunk in extra_actions.chunks(5) {
-            let inputs: Vec<InputEvent> = action_chunk
-                .iter()
-                .map(|&a| make_input_event(a))
-                .collect();
-            engine_b.fixed_tick(&inputs);
-        }
-
-        prop_assert_ne!(engine_a.state_hash(), engine_b.state_hash());
-    }
+// WR-21 grounded-only lock delay: in-air actions (including cancelling pairs like
+// MoveLeft+MoveRight) produce identical state. Different inputs CAN produce same hash
+// — correct behavior, not a bug. The property "different input -> different hash"
+// does not hold in general with grounded-only lock delay.
+#[test]
+fn different_input_same_hash_is_expected() {
+    let mut engine_a = Engine::<10, 20>::new();
+    let mut engine_b = Engine::<10, 20>::new();
+    engine_a.reset(0);
+    engine_b.reset(0);
+    // MoveLeft then MoveRight at spawn = no net change, same state
+    engine_a.fixed_tick(&[make_input_event(0), make_input_event(1)]);
+    engine_a.fixed_tick(&[]);
+    engine_b.fixed_tick(&[]);
+    engine_b.fixed_tick(&[]);
+    assert_eq!(engine_a.state_hash(), engine_b.state_hash());
 }

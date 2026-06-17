@@ -74,7 +74,10 @@ impl RoomManager {
             }
         }
         // unwrap_or is dead code: len() check guarantees an unused slot exists.
-        let player_id = used.iter().position(|u| !u).map(|i| i as u8)
+        let player_id = used
+            .iter()
+            .position(|u| !u)
+            .map(|i| i as u8)
             .unwrap_or(MAX_PLAYERS_PER_ROOM as u8 - 1);
         let name = format!("Player {}", player_id + 1);
         peers.push(PeerInfo {
@@ -87,8 +90,7 @@ impl RoomManager {
         if room.host_peer_id.read().await.is_none() {
             *room.host_peer_id.write().await = Some(id);
         }
-        room.player_count
-            .store(peers.len(), Ordering::SeqCst);
+        room.player_count.store(peers.len(), Ordering::SeqCst);
         Ok(peers.clone())
     }
 
@@ -154,8 +156,7 @@ impl RoomManager {
             if host_peer_id.as_ref().is_some_and(|host_id| *host_id == id) {
                 *host_peer_id = peers.first().map(|peer| peer.id);
             }
-            room.player_count
-                .store(peers.len(), Ordering::SeqCst);
+            room.player_count.store(peers.len(), Ordering::SeqCst);
             peers.clone()
         } else {
             vec![]
@@ -286,11 +287,11 @@ impl RoomManager {
         let should_remove = {
             let rooms = self.rooms.read().await;
             if let Some(room) = rooms.get(code) {
-                let prev = room.player_count.fetch_update(
-                    Ordering::SeqCst,
-                    Ordering::SeqCst,
-                    |p| if p > 0 { Some(p - 1) } else { Some(0) },
-                );
+                let prev =
+                    room.player_count
+                        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |p| {
+                            if p > 0 { Some(p - 1) } else { Some(0) }
+                        });
                 prev.map_or(true, |p| p <= 1)
             } else {
                 false

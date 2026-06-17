@@ -27,7 +27,10 @@ impl ReplayBuffer {
         self.events.push_back((slot, tick, event));
     }
 
-    pub fn get_events_since(&self, since_tick: TickNumber) -> Vec<(PlayerSlot, TickNumber, InputEvent)> {
+    pub fn get_events_since(
+        &self,
+        since_tick: TickNumber,
+    ) -> Vec<(PlayerSlot, TickNumber, InputEvent)> {
         self.events
             .iter()
             .filter(|(_, tick, _)| tick >= &since_tick)
@@ -124,11 +127,27 @@ mod tests {
     #[test]
     fn test_replay_buffer_push_and_evict() {
         let mut buf = ReplayBuffer::new(3);
-        buf.push(PlayerSlot(0), TickNumber(0), make_event(KeyAction::KeyLeft, 0));
-        buf.push(PlayerSlot(0), TickNumber(1), make_event(KeyAction::KeyRight, 1));
-        buf.push(PlayerSlot(0), TickNumber(2), make_event(KeyAction::KeyHardDrop, 2));
+        buf.push(
+            PlayerSlot(0),
+            TickNumber(0),
+            make_event(KeyAction::KeyLeft, 0),
+        );
+        buf.push(
+            PlayerSlot(0),
+            TickNumber(1),
+            make_event(KeyAction::KeyRight, 1),
+        );
+        buf.push(
+            PlayerSlot(0),
+            TickNumber(2),
+            make_event(KeyAction::KeyHardDrop, 2),
+        );
         assert_eq!(buf.len(), 3);
-        buf.push(PlayerSlot(0), TickNumber(3), make_event(KeyAction::KeyRotateCW, 3));
+        buf.push(
+            PlayerSlot(0),
+            TickNumber(3),
+            make_event(KeyAction::KeyRotateCW, 3),
+        );
         assert_eq!(buf.len(), 3);
         assert_eq!(buf.oldest_tick(), Some(TickNumber(1)));
     }
@@ -136,10 +155,26 @@ mod tests {
     #[test]
     fn test_replay_buffer_get_events_since() {
         let mut buf = ReplayBuffer::new(100);
-        buf.push(PlayerSlot(0), TickNumber(0), make_event(KeyAction::KeyLeft, 0));
-        buf.push(PlayerSlot(0), TickNumber(50), make_event(KeyAction::KeyRight, 50));
-        buf.push(PlayerSlot(0), TickNumber(100), make_event(KeyAction::KeyHardDrop, 100));
-        buf.push(PlayerSlot(0), TickNumber(150), make_event(KeyAction::KeyHold, 150));
+        buf.push(
+            PlayerSlot(0),
+            TickNumber(0),
+            make_event(KeyAction::KeyLeft, 0),
+        );
+        buf.push(
+            PlayerSlot(0),
+            TickNumber(50),
+            make_event(KeyAction::KeyRight, 50),
+        );
+        buf.push(
+            PlayerSlot(0),
+            TickNumber(100),
+            make_event(KeyAction::KeyHardDrop, 100),
+        );
+        buf.push(
+            PlayerSlot(0),
+            TickNumber(150),
+            make_event(KeyAction::KeyHold, 150),
+        );
 
         let since_100 = buf.get_events_since(TickNumber(100));
         assert_eq!(since_100.len(), 2);
@@ -149,7 +184,11 @@ mod tests {
     fn test_replay_buffer_2000_capacity() {
         let mut buf = ReplayBuffer::new(2000);
         for i in 0..2001 {
-            buf.push(PlayerSlot(0), TickNumber(i), make_event(KeyAction::KeyLeft, i));
+            buf.push(
+                PlayerSlot(0),
+                TickNumber(i),
+                make_event(KeyAction::KeyLeft, i),
+            );
         }
         assert_eq!(buf.len(), 2000);
         assert_eq!(buf.oldest_tick(), Some(TickNumber(1)));

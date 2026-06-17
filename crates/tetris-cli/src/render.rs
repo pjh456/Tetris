@@ -534,7 +534,16 @@ fn render_multi(
     let chunks =
         Layout::horizontal([Constraint::Percentage(70), Constraint::Percentage(30)]).split(area);
 
-    render_playing(frame, chunks[0], engine, clear_flash_timer, score_flash_timer, prev_grid, prev_flash_mask, prev_half);
+    render_playing(
+        frame,
+        chunks[0],
+        engine,
+        clear_flash_timer,
+        score_flash_timer,
+        prev_grid,
+        prev_flash_mask,
+        prev_half,
+    );
 
     let right = Layout::vertical([
         Constraint::Length(1),

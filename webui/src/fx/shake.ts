@@ -1,4 +1,4 @@
-let pending: ReturnType<typeof setTimeout>[] = [];
+const pending: ReturnType<typeof setTimeout>[] = [];
 
 export function shake_screen(element: HTMLElement): void {
   for (const id of pending) clearTimeout(id);

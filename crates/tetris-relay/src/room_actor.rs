@@ -4,9 +4,9 @@ use serde::{Deserialize, Serialize};
 use tetris_core::engine::Engine;
 use tetris_protocol::newtypes::{PlayerSlot, Seed, TickNumber};
 use tetris_protocol::protocol::{
-    InputEvent, PacketHeader, PacketType, PktGameOver, PktIncomingGarbage, PktPlayerStateSync,
-    PktReconnectAck, PktRoomSnapshot, PktServerReplay, PktStateHash,
-    PktStateSnapshot, RoomPlayerSnapshot, PROTOCOL_VERSION,
+    InputEvent, PROTOCOL_VERSION, PacketHeader, PacketType, PktGameOver, PktIncomingGarbage,
+    PktPlayerStateSync, PktReconnectAck, PktRoomSnapshot, PktServerReplay, PktStateHash,
+    PktStateSnapshot, RoomPlayerSnapshot,
 };
 use tokio::sync::mpsc;
 use tokio::time::{Duration, interval};
@@ -118,8 +118,7 @@ impl RoomActor {
         self.input_rxs[idx] = Some(input_rx);
         self.connections[idx] = Some(conn);
         self.outbound_txs[idx] = Some(outbound_tx);
-        self.replay_buffers
-            .insert(slot, ReplayBuffer::default());
+        self.replay_buffers.insert(slot, ReplayBuffer::default());
     }
 
     pub fn remove_player(&mut self, slot: PlayerSlot) {
@@ -255,8 +254,7 @@ impl RoomActor {
                 continue;
             };
             while let Ok(event) = rx.try_recv() {
-                self.pending_inputs
-                    .push((PlayerSlot(idx as u8), event));
+                self.pending_inputs.push((PlayerSlot(idx as u8), event));
             }
         }
     }
@@ -353,9 +351,7 @@ impl RoomActor {
                     .engines
                     .iter()
                     .enumerate()
-                    .find(|(i, e)| {
-                        e.as_ref().map_or(false, |eng| !eng.game_over) && *i != idx
-                    })
+                    .find(|(i, e)| e.as_ref().map_or(false, |eng| !eng.game_over) && *i != idx)
                     .map(|(i, _)| PlayerSlot(i as u8));
                 self.player_spectating[idx] = spec_target;
                 self.broadcast_player_state(*slot);
@@ -585,7 +581,15 @@ mod tests {
         }
     }
 
-    fn make_conn(slot: u8, name: &str) -> (PlayerConnection<Online>, mpsc::Receiver<InputEvent>, mpsc::Sender<Vec<u8>>, mpsc::Receiver<Vec<u8>>) {
+    fn make_conn(
+        slot: u8,
+        name: &str,
+    ) -> (
+        PlayerConnection<Online>,
+        mpsc::Receiver<InputEvent>,
+        mpsc::Sender<Vec<u8>>,
+        mpsc::Receiver<Vec<u8>>,
+    ) {
         let (tx, rx) = mpsc::channel::<InputEvent>(64);
         let (out_tx, out_rx) = mpsc::channel::<Vec<u8>>(64);
         let conn = PlayerConnection::<Online>::new(PlayerSlot(slot), tx, name.into());
@@ -640,7 +644,8 @@ mod tests {
         let (out_tx, _out_rx) = mpsc::channel::<Vec<u8>>(64);
         let conn = PlayerConnection::<Online>::new(PlayerSlot(0), tx.clone(), "A".into());
 
-        tx.try_send(make_event(KeyAction::KeyHardDrop, true)).unwrap();
+        tx.try_send(make_event(KeyAction::KeyHardDrop, true))
+            .unwrap();
         actor.add_player(PlayerSlot(0), rx, conn, out_tx);
 
         let piece_before = actor.engines[0].as_ref().unwrap().state.piece;
@@ -736,7 +741,8 @@ mod tests {
         let (out_tx, _out_rx) = mpsc::channel::<Vec<u8>>(64);
         let conn = PlayerConnection::<Online>::new(PlayerSlot(0), tx.clone(), "A".into());
 
-        tx.try_send(make_event(KeyAction::KeyHardDrop, true)).unwrap();
+        tx.try_send(make_event(KeyAction::KeyHardDrop, true))
+            .unwrap();
         actor.add_player(PlayerSlot(0), rx, conn, out_tx);
         actor.run_one_tick();
 

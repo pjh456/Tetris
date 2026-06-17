@@ -1,4 +1,4 @@
-use crc::{Crc, CRC_32_ISO_HDLC};
+use crc::{CRC_32_ISO_HDLC, Crc};
 use serde::{Deserialize, Serialize};
 
 use crate::attack::{AttackResult, calculate_attack};
@@ -71,7 +71,9 @@ pub struct PendingGarbageEntry {
 pub fn gravity_interval_ms(level: u32) -> u32 {
     // Pre-computed integer table: floor((0.8 - (n-1)*0.007)^n * 1000), n=1..15.
     // powf not bit-identical across x86/WASM — table guarantees determinism.
-    const TABLE: [u32; 16] = [0, 800, 628, 485, 368, 274, 200, 143, 101, 69, 47, 31, 20, 12, 8, 4];
+    const TABLE: [u32; 16] = [
+        0, 800, 628, 485, 368, 274, 200, 143, 101, 69, 47, 31, 20, 12, 8, 4,
+    ];
     TABLE[level.clamp(1, 15) as usize]
 }
 
@@ -291,7 +293,10 @@ impl<const W: usize, const H: usize> Engine<W, H> {
         if try_move(&mut self.state, dx, dy) {
             self.state.last_move_was_rotation = false;
             let grounded = !crate::rules::can_place(
-                &self.state, self.state.x, self.state.y + 1, self.state.rot,
+                &self.state,
+                self.state.x,
+                self.state.y + 1,
+                self.state.rot,
             );
             if grounded {
                 self.lock_delay_wall.reset();
@@ -306,7 +311,10 @@ impl<const W: usize, const H: usize> Engine<W, H> {
         if try_rotate(&mut self.state, to) {
             self.state.last_move_was_rotation = true;
             let grounded = !crate::rules::can_place(
-                &self.state, self.state.x, self.state.y + 1, self.state.rot,
+                &self.state,
+                self.state.x,
+                self.state.y + 1,
+                self.state.rot,
             );
             if grounded {
                 self.lock_delay_wall.reset();
@@ -489,7 +497,9 @@ impl<const W: usize, const H: usize> Engine<W, H> {
         if rem_ticks == 0 {
             0
         } else {
-            (rem_ticks as i32 * crate::lockdelay::LOCK_DELAY_MS as i32 / crate::lockdelay::LOCK_DELAY_TICKS as i32).max(0)
+            (rem_ticks as i32 * crate::lockdelay::LOCK_DELAY_MS as i32
+                / crate::lockdelay::LOCK_DELAY_TICKS as i32)
+                .max(0)
         }
     }
 
@@ -997,7 +1007,10 @@ mod tests {
         // If lines were cleared, queue should be reduced/cancelled
         if result.damage > 0 {
             let total: u8 = engine.pending_garbage_queue.iter().map(|e| e.lines).sum();
-            assert!(total < 5, "pending queue should be reduced after line clear");
+            assert!(
+                total < 5,
+                "pending queue should be reduced after line clear"
+            );
         }
     }
 
@@ -1009,8 +1022,10 @@ mod tests {
         engine.garbage_hole_x = 4;
         // HardDrop triggers lock_and_spawn — no lines on empty board, garbage inserts
         engine.handle_action(Action::HardDrop);
-        assert_eq!(engine.state.pending_garbage, 0,
-            "pending_garbage should be consumed by insert_garbage after HardDrop lock");
+        assert_eq!(
+            engine.state.pending_garbage, 0,
+            "pending_garbage should be consumed by insert_garbage after HardDrop lock"
+        );
     }
 
     #[test]
@@ -1024,7 +1039,9 @@ mod tests {
         let rows_before = engine.state.board.rows;
         engine.handle_action(Action::HardDrop);
         assert_eq!(engine.state.pending_garbage, 0);
-        assert_ne!(engine.state.board.rows, rows_before,
-            "board should change after garbage insert");
+        assert_ne!(
+            engine.state.board.rows, rows_before,
+            "board should change after garbage insert"
+        );
     }
 }

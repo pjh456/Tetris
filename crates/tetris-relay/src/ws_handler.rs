@@ -4,12 +4,12 @@ use std::time::Duration;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, State};
 use axum::response::IntoResponse;
-use bincode::serialize;
 use bincode::Options;
+use bincode::serialize;
 use futures_util::{SinkExt, StreamExt};
 use tetris_protocol::protocol::{
-    PROTOCOL_VERSION, PacketHeader, PacketType, PktChatMessage, PktGameStart, PktJoinRoom,
-    PktPlayerReady, PktReplay, PktServerAccept, PktStartCountdown, InputEvent,
+    InputEvent, PROTOCOL_VERSION, PacketHeader, PacketType, PktChatMessage, PktGameStart,
+    PktJoinRoom, PktPlayerReady, PktReplay, PktServerAccept, PktStartCountdown,
 };
 use tokio::sync::Mutex;
 use tokio::time::interval;
@@ -31,7 +31,11 @@ fn deser<'de, T: serde::Deserialize<'de>>(data: &'de [u8]) -> Result<T, bincode:
         .deserialize::<T>(data)
 }
 
-type PlayerChannel = (u8, tokio::sync::mpsc::Receiver<InputEvent>, tokio::sync::mpsc::Sender<Vec<u8>>);
+type PlayerChannel = (
+    u8,
+    tokio::sync::mpsc::Receiver<InputEvent>,
+    tokio::sync::mpsc::Sender<Vec<u8>>,
+);
 
 pub struct AppState {
     pub room_manager: Arc<RoomManager>,
@@ -87,10 +91,11 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
         // Store input_rx + outbound_tx for RoomActor when game starts
         {
             let mut pending = state.pending_inputs.lock().await;
-            pending
-                .entry(room_code.clone())
-                .or_default()
-                .push((peer.player_id, input_rx, outbound_tx));
+            pending.entry(room_code.clone()).or_default().push((
+                peer.player_id,
+                input_rx,
+                outbound_tx,
+            ));
         }
 
         let accept = PktServerAccept {
@@ -258,13 +263,11 @@ async fn handle_binary_message(
                             pending.remove(&room_code_owned).unwrap_or_default()
                         };
                         if !player_channels.is_empty() {
-                            let mut actor = RoomActor::new(
-                                room_code_owned.clone(),
-                                Seed(random_seed as i32),
-                            );
+                            let mut actor =
+                                RoomActor::new(room_code_owned.clone(), Seed(random_seed as i32));
                             for (player_id, input_rx, outbound_tx) in player_channels {
-                                use crate::player_conn::PlayerConnection;
                                 use crate::player_conn::Online;
+                                use crate::player_conn::PlayerConnection;
                                 use tetris_protocol::newtypes::PlayerSlot;
                                 // conn_tx is intentionally a dropped channel — input path goes
                                 // through input_rx from the connection, not PlayerConnection::send_input
@@ -274,7 +277,12 @@ async fn handle_binary_message(
                                     conn_tx,
                                     format!("Player {}", player_id + 1),
                                 );
-                                actor.add_player(PlayerSlot(player_id), input_rx, conn, outbound_tx);
+                                actor.add_player(
+                                    PlayerSlot(player_id),
+                                    input_rx,
+                                    conn,
+                                    outbound_tx,
+                                );
                             }
                             let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
                             tokio::spawn(actor.run(cancel_rx));
@@ -286,8 +294,10 @@ async fn handle_binary_message(
                                 .await;
                         }
 
-                        if let Ok(reset_peers) =
-                            state.room_manager.reset_ready_states(&room_code_owned).await
+                        if let Ok(reset_peers) = state
+                            .room_manager
+                            .reset_ready_states(&room_code_owned)
+                            .await
                         {
                             let _ = state
                                 .room_manager

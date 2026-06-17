@@ -24,10 +24,15 @@ impl<'de, const W: usize, const H: usize> Deserialize<'de> for Board<W, H> {
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
                 formatter.write_str(&format!("a tuple of {H} u64s"))
             }
-            fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+            fn visit_seq<A: serde::de::SeqAccess<'de>>(
+                self,
+                mut seq: A,
+            ) -> Result<Self::Value, A::Error> {
                 let mut rows = [0u64; H];
                 for (i, row) in rows.iter_mut().enumerate() {
-                    *row = seq.next_element()?.ok_or_else(|| serde::de::Error::invalid_length(i, &self))?;
+                    *row = seq
+                        .next_element()?
+                        .ok_or_else(|| serde::de::Error::invalid_length(i, &self))?;
                 }
                 Ok(Board { rows })
             }

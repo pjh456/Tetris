@@ -9,7 +9,11 @@ pub fn can_place<const W: usize, const H: usize>(st: &State<W, H>, x: i8, y: i8,
     let shape = &PIECES[st.piece as usize].rot[rot as usize];
 
     let mut wall_mask: u16 = 0;
-    let signed_shift = if x == i8::MIN { 15u16 } else { (-x).min(15) as u16 };
+    let signed_shift = if x == i8::MIN {
+        15u16
+    } else {
+        (-x).min(15) as u16
+    };
     if x < 0 {
         wall_mask |= (1u16 << signed_shift) - 1;
     }

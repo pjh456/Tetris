@@ -32,7 +32,7 @@ export function create_lobby_screen(): HTMLElement {
   const wasm = get_wasm();
   let current_ws = new WsClient(`${RELAY_URL}/room/${room_code.value}`, wasm);
   let peers: MultiplayerPlayer[] = [];
-  let my_name = `Guest-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+  const my_name = `Guest-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
   let is_ready = false;
   let last_room_sync_count: number | null = null;
 

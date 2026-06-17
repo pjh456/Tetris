@@ -28,8 +28,12 @@ fn golden_seed_12345_mixed_actions() {
     a.reset(12345);
     b.reset(12345);
     let seq = [
-        Action::HardDrop, Action::MoveLeft, Action::HardDrop,
-        Action::MoveRight, Action::RotateCW, Action::HardDrop,
+        Action::HardDrop,
+        Action::MoveLeft,
+        Action::HardDrop,
+        Action::MoveRight,
+        Action::RotateCW,
+        Action::HardDrop,
     ];
     for &action in &seq {
         let inp = make_input(action as u8);

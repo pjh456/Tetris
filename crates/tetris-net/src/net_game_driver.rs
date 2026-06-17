@@ -109,7 +109,8 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
 
     pub fn add_player(&mut self, engine: Engine<W, H>) -> PlayerKey {
         let key = self.engines.insert(engine);
-        let player_id = (0u8..).find(|id| !self.key_by_player_id.contains_key(id))
+        let player_id = (0u8..)
+            .find(|id| !self.key_by_player_id.contains_key(id))
             .unwrap_or(self.key_by_player_id.len() as u8);
         self.key_by_player_id.insert(player_id, key);
         self.prev_board_rows.insert(key, vec![0u64; H]);
@@ -120,7 +121,8 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
         self.engines.remove(key);
         self.prev_board_rows.remove(&key);
         self.key_by_player_id.retain(|_, &mut v| v != key);
-        self.player_infos.retain(|p| self.key_by_player_id.contains_key(&p.player_id));
+        self.player_infos
+            .retain(|p| self.key_by_player_id.contains_key(&p.player_id));
     }
 
     pub fn player_key_from_id(&self, player_id: u8) -> Option<PlayerKey> {
@@ -372,8 +374,7 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
     }
 
     pub fn handle_packet(&mut self, data: &[u8]) -> Result<(), NetError> {
-        let header: PacketHeader =
-            deser(data).map_err(|e| NetError::Decode(e.to_string()))?;
+        let header: PacketHeader = deser(data).map_err(|e| NetError::Decode(e.to_string()))?;
 
         if header.version != PROTOCOL_VERSION {
             return Err(NetError::Protocol(format!(
@@ -384,15 +385,13 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
 
         match header.packet_type {
             PacketType::Batch => {
-                let batch: PktBatch =
-                    deser(data).map_err(|e| NetError::Decode(e.to_string()))?;
+                let batch: PktBatch = deser(data).map_err(|e| NetError::Decode(e.to_string()))?;
                 for inner in &batch.packets {
                     self.handle_packet(inner)?;
                 }
             }
             PacketType::GameStart => {
-                let pkt: PktGameStart =
-                    deser(data).map_err(|e| NetError::Decode(e.to_string()))?;
+                let pkt: PktGameStart = deser(data).map_err(|e| NetError::Decode(e.to_string()))?;
                 if let Some(cb) = self.on_game_start.take() {
                     cb(pkt.random_seed);
                 }
@@ -412,12 +411,12 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
                 if let Some(key) = self.player_key_from_id(header.player_id)
                     && let Some(engine) = self.engines.get_mut(key)
                 {
-                    engine.state.pending_garbage = engine.state.pending_garbage.saturating_add(pkt.lines);
+                    engine.state.pending_garbage =
+                        engine.state.pending_garbage.saturating_add(pkt.lines);
                 }
             }
             PacketType::StateSync => {
-                let pkt: PktStateSync =
-                    deser(data).map_err(|e| NetError::Decode(e.to_string()))?;
+                let pkt: PktStateSync = deser(data).map_err(|e| NetError::Decode(e.to_string()))?;
                 if let Some(key) = self.player_key_from_id(header.player_id) {
                     if let Some(engine) = self.engines.get_mut(key) {
                         for (i, &val) in pkt.board_rows.iter().enumerate() {
@@ -447,8 +446,7 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
                 }
             }
             PacketType::DeltaSync => {
-                let pkt: PktDeltaSync =
-                    deser(data).map_err(|e| NetError::Decode(e.to_string()))?;
+                let pkt: PktDeltaSync = deser(data).map_err(|e| NetError::Decode(e.to_string()))?;
                 let expected_seq = self.last_remote_seq + 1;
                 if self.last_remote_seq == 0 && pkt.seq == 0 {
                 } else if pkt.seq != expected_seq {
@@ -471,11 +469,11 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
                     engine.state.y = pkt.y;
                     engine.state.hold = pkt.hold;
                     engine.state.hold_used = pkt.hold_used;
-                        engine.state.next[0] = pkt.next[0];
-                        engine.state.next[1] = pkt.next[1];
-                        engine.state.next[2] = pkt.next[2];
-                        // next[3],[4] preserved: legacy PktDeltaSync carries only 3 pieces
-                        self.last_remote_seq = pkt.seq;
+                    engine.state.next[0] = pkt.next[0];
+                    engine.state.next[1] = pkt.next[1];
+                    engine.state.next[2] = pkt.next[2];
+                    // next[3],[4] preserved: legacy PktDeltaSync carries only 3 pieces
+                    self.last_remote_seq = pkt.seq;
                 }
             }
             PacketType::ResyncRequest => {}
@@ -492,8 +490,7 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
                 }
             }
             PacketType::GameOver => {
-                let pkt: PktGameOver =
-                    deser(data).map_err(|e| NetError::Decode(e.to_string()))?;
+                let pkt: PktGameOver = deser(data).map_err(|e| NetError::Decode(e.to_string()))?;
                 self.room_mode = RoomMode::GameOver;
                 self.player_infos.iter_mut().for_each(|p| {
                     if p.player_id != pkt.winner_player_id {
@@ -502,8 +499,7 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
                 });
             }
             PacketType::Reconnect => {
-                let pkt: PktReconnect =
-                    deser(data).map_err(|e| NetError::Decode(e.to_string()))?;
+                let pkt: PktReconnect = deser(data).map_err(|e| NetError::Decode(e.to_string()))?;
                 if let Some(key) = self.player_key_from_id(header.player_id) {
                     self.prev_board_rows.remove(&key);
                     self.prev_board_rows.insert(key, vec![0u64; H]);
