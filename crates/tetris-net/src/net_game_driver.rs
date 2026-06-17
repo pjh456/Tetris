@@ -120,6 +120,7 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
         self.engines.remove(key);
         self.prev_board_rows.remove(&key);
         self.key_by_player_id.retain(|_, &mut v| v != key);
+        self.player_infos.retain(|p| self.key_by_player_id.contains_key(&p.player_id));
     }
 
     pub fn player_key_from_id(&self, player_id: u8) -> Option<PlayerKey> {
