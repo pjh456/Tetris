@@ -177,6 +177,7 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   let edge_active = false;
   let edge_dir = 0;
   let is_tearing_down = false;
+  let collapse_cancel: (() => void) | null = null;
 
   function send_state_sync(force = false) {
     if (!mp_ws) return;
@@ -231,7 +232,8 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
     is_tearing_down = true;
     cleanup_runtime();
     audio_manager.stop_bgm();
-    run_collapse_animation(board_canvas, () => {
+    collapse_cancel = run_collapse_animation(board_canvas, () => {
+      collapse_cancel = null;
       destroy();
       page.value = 'gameover';
     });
@@ -429,6 +431,8 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   // ... later replaced by the real destroy ...
 
   function destroy() {
+    collapse_cancel?.();
+    collapse_cancel = null;
     cleanup_runtime();
     touch_overlay.destroy();
     document.removeEventListener('visibilitychange', on_visibility_change);

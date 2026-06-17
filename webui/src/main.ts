@@ -115,13 +115,17 @@ effect(() => {
       mount_topbar(app);
       const content = document.createElement('div');
       content.className = 'content';
-      content.appendChild(create_settings_screen());
+      const settings_el = create_settings_screen() as CleanableElement;
+      content.appendChild(settings_el);
       app.appendChild(content);
+      _cleanups.push(() => settings_el._cleanup?.());
       break;
     }
     case 'gameover': {
-      app.appendChild(create_gameover_screen());
+      const go_el = create_gameover_screen() as CleanableElement;
+      app.appendChild(go_el);
       mount_back_button(app);
+      _cleanups.push(() => go_el._cleanup?.());
       break;
     }
     case 'leaderboard': {
@@ -151,8 +155,10 @@ effect(() => {
       break;
     }
     case 'spectator': {
-      app.appendChild(create_spectator_screen([{ id: 1, name: 'Player 1' }]));
+      const sp_el = create_spectator_screen([{ id: 1, name: 'Player 1' }]) as CleanableElement;
+      app.appendChild(sp_el);
       mount_back_button(app);
+      _cleanups.push(() => sp_el._cleanup?.());
       break;
     }
   }

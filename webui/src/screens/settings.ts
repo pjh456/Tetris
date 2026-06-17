@@ -66,6 +66,7 @@ function create_slider(
 
 export function create_settings_screen(): HTMLElement {
   let current = load_settings();
+  const overlay_cleanup: { fn: (() => void) | null } = { fn: null };
 
   const el = document.createElement('div');
   el.className = 'settings-page glass';
@@ -85,7 +86,7 @@ export function create_settings_screen(): HTMLElement {
   header.appendChild(title);
   el.appendChild(header);
 
-  el.appendChild(create_controls_section(current, () => auto_save(current)));
+  el.appendChild(create_controls_section(current, () => auto_save(current), overlay_cleanup));
   el.appendChild(create_audio_section(current, () => auto_save(current)));
   el.appendChild(create_display_section(current, () => auto_save(current)));
 
@@ -93,18 +94,28 @@ export function create_settings_screen(): HTMLElement {
   reset_btn.className = 'btn btn-reset';
   reset_btn.textContent = 'Reset to Defaults';
   reset_btn.onclick = () =>
-    show_reset_modal(el, () => {
+      show_reset_modal(el, () => {
       current = reset_settings();
       settings.value = { ...current };
       apply_theme(current.theme);
+      overlay_cleanup.fn = null;
       page.value = 'settings';
-    });
+    }, (cleanup) => { overlay_cleanup.fn = cleanup; });
   el.appendChild(reset_btn);
+
+  (el as HTMLElement & { _cleanup?: () => void })._cleanup = () => {
+    overlay_cleanup.fn?.();
+    overlay_cleanup.fn = null;
+  };
 
   return el;
 }
 
-function create_controls_section(s: Settings, on_save: () => void): HTMLElement {
+function create_controls_section(
+  s: Settings,
+  on_save: () => void,
+  overlay_cleanup: { fn: (() => void) | null },
+): HTMLElement {
   const section = document.createElement('section');
   section.className = 'settings-section';
   const h3 = document.createElement('h3');
@@ -147,8 +158,9 @@ function create_controls_section(s: Settings, on_save: () => void): HTMLElement 
       show_rebind_overlay(action, (new_key, new_code) => {
         s.keymap[action] = { key: new_key, code: new_code };
         key_el.textContent = key_display(new_key);
+        overlay_cleanup.fn = null;
         on_save();
-      });
+      }, (cleanup) => { overlay_cleanup.fn = cleanup; });
     };
 
     row.appendChild(name_el);
@@ -234,7 +246,11 @@ function create_display_section(s: Settings, on_save: () => void): HTMLElement {
   return section;
 }
 
-function show_rebind_overlay(action: string, on_bind: (key: string, code: string) => void) {
+function show_rebind_overlay(
+  action: string,
+  on_bind: (key: string, code: string) => void,
+  store_cleanup: (cleanup: () => void) => void,
+) {
   const overlay = document.createElement('div');
   overlay.className = 'key-rebind-overlay';
   overlay.innerHTML = `
@@ -265,6 +281,7 @@ function show_rebind_overlay(action: string, on_bind: (key: string, code: string
     document.removeEventListener('keydown', handler, true);
     overlay.remove();
   };
+  store_cleanup(cleanup);
 
   document.addEventListener('keydown', handler, true);
   overlay.addEventListener('click', (e) => {
@@ -273,7 +290,11 @@ function show_rebind_overlay(action: string, on_bind: (key: string, code: string
   document.body.appendChild(overlay);
 }
 
-function show_reset_modal(_parent: HTMLElement, on_reset: () => void) {
+function show_reset_modal(
+  _parent: HTMLElement,
+  on_reset: () => void,
+  store_cleanup: (cleanup: () => void) => void,
+) {
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.innerHTML = `
@@ -299,5 +320,6 @@ function show_reset_modal(_parent: HTMLElement, on_reset: () => void) {
     if (e.target === overlay) overlay.remove();
   });
 
+  store_cleanup(() => overlay.remove());
   document.body.appendChild(overlay);
 }

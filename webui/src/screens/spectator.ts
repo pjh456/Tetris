@@ -42,9 +42,11 @@ export function create_spectator_screen(players: SurvivingPlayer[]): HTMLElement
   });
 
   container.setAttribute('tabindex', '0');
-  setTimeout(() => container.focus(), 0);
+  const focus_timer = setTimeout(() => container.focus(), 0);
 
-  return container;
+  const el = container as HTMLElement & { _cleanup?: () => void };
+  el._cleanup = () => clearTimeout(focus_timer);
+  return el;
 }
 
 function build_tabs(
