@@ -5,6 +5,7 @@ use crate::state::State;
 use crate::types::Rot;
 
 pub fn can_place<const W: usize, const H: usize>(st: &State<W, H>, x: i8, y: i8, rot: Rot) -> bool {
+    debug_assert!(W <= 16, "can_place only supports W <= 16");
     let shape = &PIECES[st.piece as usize].rot[rot as usize];
 
     let mut wall_mask: u16 = 0;

@@ -268,6 +268,7 @@ impl<const W: usize, const H: usize> Engine<W, H> {
     }
 
     fn record_harddrop(&mut self, start_y: i8, end_y: i8) {
+        debug_assert!(W <= 16, "record_harddrop only supports W <= 16");
         let shape = &PIECES[self.state.piece as usize].rot[self.state.rot as usize];
         let mut mask: u16 = 0;
         for i in 0..4 {
