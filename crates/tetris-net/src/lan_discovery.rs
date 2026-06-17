@@ -72,6 +72,7 @@ impl LanDiscovery {
                         .map(|v| v.val_str().to_string())
                         .unwrap_or_default();
 
+                    // NOTE: mDNS data from LAN is inherently untrusted — display after sanitization.
                     for addr in info.get_addresses() {
                         hosts.push(DiscoveredHost {
                             name: info.get_fullname().to_string(),

@@ -342,6 +342,8 @@ impl WebTetris {
         serde_wasm_bindgen::to_value(&data).unwrap_or(JsValue::NULL)
     }
 
+    /// NOTE: deserialization failures return JsValue::NULL silently (12 call sites).
+    /// This is intentional for WASM FFI simplicity; JS side tolerates null events.
     pub fn parse_packet(&mut self, data: &[u8]) -> JsValue {
         let header: PacketHeader = match deser(data) {
             Ok(h) => h,
@@ -398,6 +400,8 @@ impl WebTetris {
                         spectating: false,
                     })
                     .collect();
+                // NOTE: if RoomSnapshot arrives before ServerAccept, local_player_id
+                // defaults to 0 — opponent filter may incorrectly include self.
                 self.opponent_infos = self
                     .room_player_infos
                     .iter()

@@ -172,6 +172,8 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
     }
 }
 
+/// NOTE: each packet is deserialized twice — first as PacketHeader for dispatch,
+/// then as the typed packet. Acceptable for relay; would optimize for hot path.
 async fn handle_binary_message(
     state: &Arc<AppState>,
     room_code: &str,
@@ -276,6 +278,8 @@ async fn handle_binary_message(
                             }
                             let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
                             tokio::spawn(actor.run(cancel_rx));
+                            // cancel_tx stored in RoomState for lifecycle; currently only
+                            // dropped by room removal — no explicit RoomActor shutdown call site.
                             let _ = state
                                 .room_manager
                                 .store_cancel_tx(&room_code_owned, cancel_tx)

@@ -526,6 +526,8 @@ impl<const W: usize, const H: usize> NetGameDriver<W, H> {
     }
 
     pub fn process_network(&mut self, net: &mut NetworkManager) {
+        // renet channels 0-2 correspond to reliable/unreliable/broadcast;
+        // channel 3 is unused and iterated only for future extension.
         for channel in 0..3 {
             for data in net.receive_messages(channel) {
                 if let Err(e) = self.handle_packet(&data) {

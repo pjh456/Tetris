@@ -21,6 +21,8 @@ static NEXT_PEER_ID: AtomicU64 = AtomicU64::new(1);
 pub struct RoomState {
     pub code: RoomCode,
     pub tx: broadcast::Sender<Vec<u8>>,
+    /// player_count is used two ways: join/leave CAS for capacity gating,
+    /// add_peer/remove_peer overwrite from peers.len() for consistency.
     pub player_count: AtomicUsize,
     pub host_peer_id: RwLock<Option<u64>>,
     pub peers: Mutex<Vec<PeerInfo>>,
@@ -71,6 +73,7 @@ impl RoomManager {
                 used[p.player_id as usize] = true;
             }
         }
+        // unwrap_or is dead code: len() check guarantees an unused slot exists.
         let player_id = used.iter().position(|u| !u).map(|i| i as u8)
             .unwrap_or(MAX_PLAYERS_PER_ROOM as u8 - 1);
         let name = format!("Player {}", player_id + 1);

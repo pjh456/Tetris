@@ -78,6 +78,7 @@ impl NetworkManager {
         Ok(())
     }
 
+    /// NOTE: _ip/_port are unused — transport layer is established externally.
     pub fn connect_to_server(&mut self, _ip: &str, _port: u16) -> Result<(), NetError> {
         let client = RenetClient::new(connection_config());
         self.client = Some(client);
