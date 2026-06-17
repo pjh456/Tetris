@@ -12,6 +12,7 @@ pub struct AttackResult {
     pub is_mini: bool,
     pub is_b2b: bool,
     pub perfect_clear: bool,
+    pub garbage_inserted: bool,
 }
 
 pub const TSPIN_DMG: [i32; 5] = [0, 2, 4, 6, 8];

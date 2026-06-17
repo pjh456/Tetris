@@ -255,6 +255,7 @@ impl<const W: usize, const H: usize> Engine<W, H> {
             self.state.pending_garbage = 0;
             self.garbage_hole_x = 0;
             self.pending_garbage_queue.clear();
+            attack_res.garbage_inserted = true;
         }
 
         if lines_cleared > 0 && !self.pending_garbage_queue.is_empty() {
@@ -588,15 +589,12 @@ impl<const W: usize, const H: usize> Engine<W, H> {
                 self.lock_delay_accumulated_ticks += 1;
                 if self.lock_delay_accumulated_ticks >= crate::lockdelay::LOCK_DELAY_TICKS
                 {
-                    let garbage_before = self.state.pending_garbage;
                     let res = self.lock_and_spawn();
-                    let garbage_inserted = garbage_before > 0 && self.state.pending_garbage == 0
-                        && res.damage == 0;
+                    garbage_detected = res.garbage_inserted;
                     attack_result = Some(res);
                     self.lock_delay_active = false;
                     self.lock_delay_accumulated_ticks = 0;
                     self.lock_delay_move_resets = 0;
-                    garbage_detected = garbage_inserted;
                     break;
                 }
             }
