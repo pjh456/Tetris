@@ -261,8 +261,7 @@ impl RoomActor {
         }
     }
 
-    fn forward_state_hashes(&self) {
-        let hashes = self.broadcast_state_hashes();
+    fn forward_state_hashes(&self, hashes: &[(PlayerSlot, u32)]) {
         for (idx, outbound_opt) in self.outbound_txs.iter().enumerate() {
             let Some(tx) = outbound_opt else {
                 continue;
@@ -431,7 +430,7 @@ impl RoomActor {
                 self.tick.0,
                 hashes.len()
             );
-            self.forward_state_hashes();
+            self.forward_state_hashes(&hashes);
         }
     }
 
