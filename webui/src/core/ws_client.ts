@@ -1,5 +1,6 @@
 import type { WebTetris } from '../../wasm/tetris_wasm.js';
 import { connection_status } from '../state';
+import type { ConnectionState } from '../state';
 import type { MultiplayerEvent } from './wasm';
 
 const HEARTBEAT_MS = 1000;
@@ -92,6 +93,8 @@ export class WsClient {
       const elapsed = Date.now() - this.last_pong_time;
       if (elapsed > 500) {
         connection_status.value = 'slow';
+      } else if ((connection_status.value as ConnectionState) === 'slow') {
+        connection_status.value = 'online';
       }
     }, HEARTBEAT_MS);
   }
@@ -128,7 +131,7 @@ export class WsClient {
     if (this.socket?.readyState === WebSocket.OPEN) {
       this.socket.send(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
     } else if (this.message_buffer.length < 256) {
-      this.message_buffer.push(data);
+      this.message_buffer.push(data.slice());
     }
   }
 
