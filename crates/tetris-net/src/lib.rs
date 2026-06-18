@@ -1,3 +1,4 @@
+pub mod bot;
 pub mod error;
 pub mod host_adapter;
 pub mod lan_discovery;

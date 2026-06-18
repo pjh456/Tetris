@@ -4797,6 +4797,7 @@ dependencies = [
  "rstest",
  "serde",
  "tetris-core",
+ "tetris-infer",
  "tetris-protocol",
  "tetris-sim",
  "thiserror 2.0.18",

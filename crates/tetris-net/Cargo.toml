@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 tetris-core = { path = "../tetris-core" }
+tetris-infer = { path = "../tetris-infer" }
 tetris-protocol = { path = "../tetris-protocol" }
 tetris-sim = { path = "../tetris-sim" }
 renet = "2.0"

@@ -1,3 +1,5 @@
+use std::collections::{HashSet, VecDeque};
+
 use crc::{CRC_32_ISO_HDLC, Crc};
 use serde::{Deserialize, Serialize};
 
@@ -415,6 +417,62 @@ impl<const W: usize, const H: usize> Engine<W, H> {
         self.hard_drop_cells = (end_y - start_y).max(0) as u8;
         self.lock_delay_wall.cancel();
         self.lock_and_spawn()
+    }
+
+    pub fn placement_to_actions(&self, col: i8, rot: Rot) -> Vec<Action> {
+        if self.game_over || !can_place(&self.state, col, self.state.y, rot) {
+            return Vec::new();
+        }
+
+        let mut target = self.clone();
+        target.apply_placement(col, rot);
+        let target_hash = target.state_hash();
+
+        let mut queue = VecDeque::from([(self.clone(), Vec::<Action>::new())]);
+        let mut visited = HashSet::from([(
+            self.state.x,
+            self.state.y,
+            self.state.rot as u8,
+            self.state.last_move_was_rotation,
+        )]);
+        let moves = [
+            Action::RotateCW,
+            Action::RotateCCW,
+            Action::MoveLeft,
+            Action::MoveRight,
+        ];
+
+        while let Some((candidate, sequence)) = queue.pop_front() {
+            let mut dropped = candidate.clone();
+            dropped.handle_action(Action::HardDrop);
+            if dropped.state_hash() == target_hash {
+                let mut result = sequence;
+                result.push(Action::HardDrop);
+                return result;
+            }
+
+            if sequence.len() > W * 8 {
+                continue;
+            }
+
+            for action in moves {
+                let mut next = candidate.clone();
+                next.handle_action(action);
+                let key = (
+                    next.state.x,
+                    next.state.y,
+                    next.state.rot as u8,
+                    next.state.last_move_was_rotation,
+                );
+                if visited.insert(key) {
+                    let mut next_sequence = sequence.clone();
+                    next_sequence.push(action);
+                    queue.push_back((next, next_sequence));
+                }
+            }
+        }
+
+        Vec::new()
     }
 
     pub fn handle_action(&mut self, action: Action) -> AttackResult {
@@ -1115,5 +1173,41 @@ mod tests {
         let (col, rot) = engine.enumerate_placements()[0];
         engine.apply_placement(col, rot);
         assert!(engine.state.last_clear_count <= 4);
+    }
+
+    #[test]
+    fn placement_to_actions_matches_apply_placement_for_all_enumerated_targets() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset(42);
+
+        for (col, rot) in engine.enumerate_placements() {
+            let actions = engine.placement_to_actions(col, rot);
+            assert!(!actions.is_empty(), "missing sequence for {col},{rot:?}");
+            assert_eq!(actions.last(), Some(&Action::HardDrop));
+            assert!(actions.iter().all(|action| matches!(
+                action,
+                Action::RotateCW
+                    | Action::RotateCCW
+                    | Action::MoveLeft
+                    | Action::MoveRight
+                    | Action::HardDrop
+            )));
+
+            let mut via_actions = engine.clone();
+            for action in actions {
+                via_actions.handle_action(action);
+            }
+
+            let mut via_placement = engine.clone();
+            via_placement.apply_placement(col, rot);
+            assert_eq!(via_actions.state_hash(), via_placement.state_hash());
+        }
+    }
+
+    #[test]
+    fn placement_to_actions_returns_empty_for_illegal_target() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset(42);
+        assert!(engine.placement_to_actions(100, Rot::R0).is_empty());
     }
 }
