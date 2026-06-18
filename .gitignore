@@ -17,6 +17,7 @@ models/
 ppo_tetris_logs/
 crates/tetris-ai/python/models/
 crates/tetris-ai/python/ppo_tetris_logs/
+crates/tetris-infer/tests/fixtures/parity.json
 
 # Python
 __pycache__/
