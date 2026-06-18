@@ -2,8 +2,8 @@ use numpy::PyArray1;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use tetris_core::Engine;
+use tetris_core::rl::{ACTION_SPACE_SIZE, action_mask, action_to_placement, encode_obs};
 
-use crate::obs::{ACTION_SPACE_SIZE, action_mask, action_to_placement, encode_obs};
 use crate::reward::{RewardConfig, compute_reward};
 
 type PyStepResult<'py> = PyResult<(
@@ -236,8 +236,8 @@ impl EnvInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::obs::OBS_DIM;
     use tetris_core::Board;
+    use tetris_core::rl::OBS_DIM;
 
     fn env() -> TetrisEnv {
         TetrisEnv::new_with_config(10_000, RewardConfig::default())

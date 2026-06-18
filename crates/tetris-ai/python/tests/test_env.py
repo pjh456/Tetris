@@ -26,7 +26,7 @@ def test_action_space(env):
 
 def test_observation_space(env):
     assert isinstance(env.observation_space, gym.spaces.Box)
-    assert env.observation_space.shape == (244,)
+    assert env.observation_space.shape == (tetris_env.OBS_DIM,)
     assert env.observation_space.dtype == np.float32
     assert np.all(env.observation_space.low == 0.0)
     assert np.all(env.observation_space.high == 1.0)
@@ -34,7 +34,7 @@ def test_observation_space(env):
 
 def test_reset_obs_shape(env):
     obs, _ = env.reset(seed=42)
-    assert obs.shape == (244,)
+    assert obs.shape == (tetris_env.OBS_DIM,)
 
 
 def test_reset_info(env):
@@ -53,7 +53,7 @@ def test_step_returns(env):
 def test_step_obs_shape(env):
     env.reset(seed=42)
     obs, *_ = env.step(0)
-    assert obs.shape == (244,)
+    assert obs.shape == (tetris_env.OBS_DIM,)
 
 
 def test_step_reward_is_float(env):

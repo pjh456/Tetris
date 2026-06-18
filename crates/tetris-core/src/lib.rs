@@ -6,6 +6,7 @@ pub mod engine;
 pub mod error;
 pub mod lockdelay;
 pub mod piece;
+pub mod rl;
 pub mod rng;
 pub mod rules;
 pub mod scoring;

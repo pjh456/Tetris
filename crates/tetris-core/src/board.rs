@@ -130,6 +130,44 @@ impl<const W: usize, const H: usize> Board<W, H> {
         wells
     }
 
+    pub fn row_transitions(&self) -> u32 {
+        let mut transitions = 0;
+        for row in self.rows {
+            if row == 0 {
+                continue;
+            }
+
+            let mut previous_filled = true;
+            for col in 0..W {
+                let filled = row & (1u64 << col) != 0;
+                if filled != previous_filled {
+                    transitions += 1;
+                }
+                previous_filled = filled;
+            }
+
+            if !previous_filled {
+                transitions += 1;
+            }
+        }
+        transitions
+    }
+
+    pub fn covered_holes(&self) -> u32 {
+        let mut covered = 0;
+        for col in 0..W {
+            let mut filled_above = 0;
+            for row in 0..H {
+                if self.rows[row] & (1u64 << col) != 0 {
+                    filled_above += 1;
+                } else if filled_above > 0 {
+                    covered += filled_above;
+                }
+            }
+        }
+        covered
+    }
+
     pub fn clear_lines(&mut self) -> ClearResult {
         let mut write = H;
         let mut cleared: u8 = 0;
@@ -316,5 +354,33 @@ mod tests {
         board.rows[18] = 0b101;
         board.rows[19] = 0b101;
         assert_eq!(board.wells(), 3);
+    }
+
+    #[test]
+    fn row_transitions_empty_board_returns_zero() {
+        let board = Board::<10, 20>::new();
+        assert_eq!(board.row_transitions(), 0);
+    }
+
+    #[test]
+    fn row_transitions_counts_single_mid_row_cell_with_walls() {
+        let mut board = Board::<10, 20>::new();
+        board.rows[19] = 1u64 << 4;
+        assert_eq!(board.row_transitions(), 4);
+    }
+
+    #[test]
+    fn covered_holes_empty_board_returns_zero() {
+        let board = Board::<10, 20>::new();
+        assert_eq!(board.covered_holes(), 0);
+    }
+
+    #[test]
+    fn covered_holes_counts_blocks_above_hole() {
+        let mut board = Board::<10, 20>::new();
+        board.rows[16] = 1;
+        board.rows[17] = 1;
+        board.rows[18] = 1;
+        assert_eq!(board.covered_holes(), 3);
     }
 }

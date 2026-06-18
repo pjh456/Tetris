@@ -1,7 +1,6 @@
 #![forbid(unsafe_code)]
 
 pub mod env;
-pub mod obs;
 pub mod reward;
 
 use pyo3::prelude::*;
