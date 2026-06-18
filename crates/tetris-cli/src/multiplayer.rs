@@ -1,22 +1,29 @@
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::Arc;
 use std::thread;
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use crossterm::event::KeyCode;
 use futures_util::{SinkExt, StreamExt};
 use tetris_core::engine::{Action, Engine};
+use tetris_infer::MlpPolicy;
+use tetris_net::bot::AiBot;
 use tetris_net::host_adapter::RenetHostAdapter;
 use tetris_net::network_manager::{MODEL_B_CHANNEL, NetworkManager};
 use tetris_protocol::newtypes::{KeyAction, PlayerSlot, Seed, TickNumber};
 use tetris_protocol::protocol::{
     InputEvent, PROTOCOL_VERSION, PacketHeader, PacketType, PktIncomingGarbage, PktReplay,
-    PktServerReplay, PktStateHash, PktStateSnapshot,
+    PktServerAccept, PktServerReplay, PktStateHash, PktStateSnapshot,
 };
 
 const FLUSH_TICK_INTERVAL: u64 = 30;
 const MAX_BATCH_EVENTS: usize = 64;
 const MAX_PLAYERS: u8 = 4;
+const DEFAULT_WEIGHTS_PATH: &str = "models/weights.json";
+const BOT_TICK_MS: u64 = 16;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MultiplayerMode {
@@ -199,6 +206,13 @@ impl CliNetworkRuntime {
         &self.key
     }
 
+    pub fn p2p_server_addr(&self) -> Option<SocketAddr> {
+        match &self.kind {
+            CliNetworkKind::P2pHost { net, .. } => net.server_addr(),
+            _ => None,
+        }
+    }
+
     pub fn pump(&mut self, session: &mut MultiplayerSession) -> Vec<Vec<u8>> {
         let outbound = std::mem::take(&mut session.outbox);
         let now = Instant::now();
@@ -301,6 +315,171 @@ fn spawn_relay_thread(url: String, outbound_rx: Receiver<Vec<u8>>, inbound_tx: S
             }
         });
     });
+}
+
+pub struct AiOpponentHandle {
+    join: Option<JoinHandle<()>>,
+    stop: Arc<AtomicBool>,
+    sent_replays: Arc<AtomicUsize>,
+}
+
+impl AiOpponentHandle {
+    pub fn stop(mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+        if let Some(join) = self.join.take() {
+            let _ = join.join();
+        }
+    }
+
+    pub fn sent_replay_count(&self) -> usize {
+        self.sent_replays.load(Ordering::SeqCst)
+    }
+}
+
+impl Drop for AiOpponentHandle {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+        if let Some(join) = self.join.take() {
+            let _ = join.join();
+        }
+    }
+}
+
+pub fn spawn_ai_opponent(
+    mode: &MultiplayerMode,
+    temperature: f32,
+) -> Result<AiOpponentHandle, crate::error::CliError> {
+    let policy = load_ai_opponent_policy()?;
+    let connect_mode = bot_connect_mode(mode)?;
+    let seed = default_seed_for_mode(mode);
+    spawn_ai_opponent_with_policy(connect_mode, seed, policy, temperature)
+}
+
+pub fn spawn_ai_opponent_for_runtime(
+    mode: &MultiplayerMode,
+    runtime: &CliNetworkRuntime,
+    temperature: f32,
+) -> Result<AiOpponentHandle, crate::error::CliError> {
+    let policy = load_ai_opponent_policy()?;
+    spawn_ai_opponent_for_runtime_with_policy(mode, runtime, policy, temperature)
+}
+
+pub fn validate_ai_opponent_weights() -> Result<(), crate::error::CliError> {
+    load_ai_opponent_policy().map(|_| ())
+}
+
+fn load_ai_opponent_policy() -> Result<MlpPolicy, crate::error::CliError> {
+    let path = weights_path();
+    let weights = std::fs::read(&path).map_err(|e| {
+        crate::error::CliError::Network(format!("failed to read {path}: {e}"))
+    })?;
+    MlpPolicy::load_from_slice(&weights).map_err(|e| {
+        crate::error::CliError::Network(format!("failed to load {path}: {e}"))
+    })
+}
+
+fn spawn_ai_opponent_for_runtime_with_policy(
+    mode: &MultiplayerMode,
+    runtime: &CliNetworkRuntime,
+    policy: MlpPolicy,
+    temperature: f32,
+) -> Result<AiOpponentHandle, crate::error::CliError> {
+    let connect_mode = bot_connect_mode_for_runtime(mode, runtime)?;
+    let seed = default_seed_for_mode(mode);
+    spawn_ai_opponent_with_policy(connect_mode, seed, policy, temperature)
+}
+
+fn weights_path() -> String {
+    std::env::var("TETRIS_WEIGHTS_PATH").unwrap_or_else(|_| DEFAULT_WEIGHTS_PATH.into())
+}
+
+fn spawn_ai_opponent_with_policy(
+    connect_mode: MultiplayerMode,
+    seed: Seed,
+    policy: MlpPolicy,
+    temperature: f32,
+) -> Result<AiOpponentHandle, crate::error::CliError> {
+    let mut runtime = CliNetworkRuntime::connect(&connect_mode)?;
+    let mut session = MultiplayerSession::new(connect_mode, 0);
+    let mut bot = AiBot::new(policy, seed.0 as u32, temperature);
+    let stop = Arc::new(AtomicBool::new(false));
+    let sent_replays = Arc::new(AtomicUsize::new(0));
+    let thread_stop = Arc::clone(&stop);
+    let thread_sent_replays = Arc::clone(&sent_replays);
+
+    let join = thread::spawn(move || {
+        while !thread_stop.load(Ordering::SeqCst) {
+            if let Some(replay) = bot.next_replay(session.player_id)
+                && let Ok(packet) = bincode::serialize(&replay)
+            {
+                session.push_packet(packet);
+                thread_sent_replays.fetch_add(1, Ordering::SeqCst);
+            }
+
+            for packet in runtime.pump(&mut session) {
+                observe_ai_packet(&mut bot, &mut session, &packet);
+            }
+            thread::sleep(Duration::from_millis(BOT_TICK_MS));
+        }
+    });
+
+    Ok(AiOpponentHandle {
+        join: Some(join),
+        stop,
+        sent_replays,
+    })
+}
+
+fn bot_connect_mode(mode: &MultiplayerMode) -> Result<MultiplayerMode, crate::error::CliError> {
+    match mode {
+        MultiplayerMode::HostP2p { bind_addr } => {
+            if bind_addr.port() == 0 {
+                return Err(crate::error::CliError::Network(
+                    "cannot spawn AI opponent before p2p host has a bound port".into(),
+                ));
+            }
+            Ok(MultiplayerMode::JoinP2p { addr: *bind_addr })
+        }
+        MultiplayerMode::JoinP2p { .. } | MultiplayerMode::JoinRelay { .. } => Ok(mode.clone()),
+    }
+}
+
+fn bot_connect_mode_for_runtime(
+    mode: &MultiplayerMode,
+    runtime: &CliNetworkRuntime,
+) -> Result<MultiplayerMode, crate::error::CliError> {
+    match mode {
+        MultiplayerMode::HostP2p { .. } => {
+            let Some(addr) = runtime.p2p_server_addr() else {
+                return Err(crate::error::CliError::Network(
+                    "p2p host runtime has no bound server address".into(),
+                ));
+            };
+            Ok(MultiplayerMode::JoinP2p { addr })
+        }
+        MultiplayerMode::JoinP2p { .. } | MultiplayerMode::JoinRelay { .. } => Ok(mode.clone()),
+    }
+}
+
+fn observe_ai_packet(bot: &mut AiBot, session: &mut MultiplayerSession, data: &[u8]) {
+    let Ok(header) = bincode::deserialize::<PacketHeader>(data) else {
+        return;
+    };
+    match header.packet_type {
+        PacketType::StateSnapshot => {
+            if let Ok(pkt) = bincode::deserialize::<PktStateSnapshot>(data) {
+                let mut engine = Engine::<10, 20>::new();
+                apply_state_snapshot(&mut engine, &pkt);
+                bot.observe_engine(engine);
+            }
+        }
+        PacketType::ServerAccept => {
+            if let Ok(pkt) = bincode::deserialize::<PktServerAccept>(data) {
+                session.player_id = pkt.assigned_player_id;
+            }
+        }
+        _ => {}
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -526,7 +705,20 @@ fn parse_socket_addr(value: &str) -> Result<SocketAddr, crate::error::CliError> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tetris_core::rl;
+    use tetris_infer::Layer;
     use tetris_protocol::protocol::{PktServerReplay, PktStateSnapshot};
+
+    fn zero_policy() -> MlpPolicy {
+        MlpPolicy::new(
+            rl::OBS_DIM,
+            rl::ACTION_SPACE_SIZE,
+            vec![Layer {
+                weight: vec![vec![0.0; rl::OBS_DIM]; rl::ACTION_SPACE_SIZE],
+                bias: vec![0.0; rl::ACTION_SPACE_SIZE],
+            }],
+        )
+    }
 
     #[test]
     fn relay_client_parse() {
@@ -636,5 +828,27 @@ mod tests {
         let pkt: PktStateHash = bincode::deserialize(&bytes).unwrap();
         assert_eq!(pkt.hash, 0xdead_beef);
         assert_eq!(pkt.tick, TickNumber(5));
+    }
+
+    #[test]
+    fn spawn_ai_opponent_sends_replay_after_spawn() {
+        let host_mode = MultiplayerMode::host_p2p("127.0.0.1:0").unwrap();
+        let mut host_runtime = CliNetworkRuntime::connect(&host_mode).unwrap();
+        let host_addr = host_runtime.p2p_server_addr().unwrap();
+        let bot_mode = MultiplayerMode::JoinP2p { addr: host_addr };
+        let handle =
+            spawn_ai_opponent_with_policy(bot_mode, Seed(42), zero_policy(), 0.0).unwrap();
+        let mut host_session = MultiplayerSession::new(host_mode, 0);
+
+        for _ in 0..64 {
+            let _ = host_runtime.pump(&mut host_session);
+            if handle.sent_replay_count() > 0 {
+                break;
+            }
+            thread::sleep(Duration::from_millis(BOT_TICK_MS));
+        }
+
+        assert!(handle.sent_replay_count() > 0);
+        handle.stop();
     }
 }

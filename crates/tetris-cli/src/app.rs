@@ -77,6 +77,12 @@ impl Default for AppState {
     }
 }
 
+impl AppState {
+    pub fn playing_multiplayer(mode: MultiplayerMode, player_id: u8) -> Self {
+        start_multiplayer(mode, player_id)
+    }
+}
+
 pub enum Message {
     Key(KeyCode),
     Tick,

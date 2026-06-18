@@ -4756,6 +4756,7 @@ dependencies = [
  "ratatui",
  "serde",
  "tetris-core",
+ "tetris-infer",
  "tetris-net",
  "tetris-protocol",
  "thiserror 2.0.18",
