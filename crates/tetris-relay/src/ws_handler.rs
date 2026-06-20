@@ -313,6 +313,29 @@ async fn handle_binary_message(
                                     .await;
                                 return;
                             }
+                            // 先取 pending channels 并判断是否已有运行中的 actor（第二局复用）。
+                            let player_channels: Vec<PlayerChannel> = {
+                                let mut pending = state.pending_inputs.lock().await;
+                                pending.remove(&room_code_owned).unwrap_or_default()
+                            };
+                            let actor_exists = matches!(
+                                state.room_manager.actor_tx(&room_code_owned).await,
+                                Ok(Some(_))
+                            );
+                            // 无连接通道且无运行中 actor → 无法建局：取消倒计时回 lobby，
+                            // 避免客户端收到 GameStart 却永久卡死（无 gamestate）。
+                            if player_channels.is_empty() && !actor_exists {
+                                state
+                                    .room_manager
+                                    .cancel_and_broadcast_countdown(&room_code_owned)
+                                    .await;
+                                state
+                                    .room_manager
+                                    .broadcast_room_snapshot(&room_code_owned)
+                                    .await;
+                                return;
+                            }
+
                             let random_seed = rand::random::<u32>();
                             let game_start = PktGameStart {
                                 header: PacketHeader::new(PacketType::GameStart, 0),
@@ -321,12 +344,21 @@ async fn handle_binary_message(
                             if let Ok(data) = serialize(&game_start) {
                                 let _ = state.room_manager.broadcast(&room_code_owned, data).await;
                             }
-                            // Retrieve pending channels and spawn RoomActor
-                            let player_channels: Vec<PlayerChannel> = {
-                                let mut pending = state.pending_inputs.lock().await;
-                                pending.remove(&room_code_owned).unwrap_or_default()
-                            };
-                            if !player_channels.is_empty() {
+
+                            if player_channels.is_empty() {
+                                // 第二局+：actor 仍在运行（GameOver 后未销毁），发 StartGame
+                                // 重置 sim 并重新开局，无需重建 actor / 通道。
+                                if let Ok(Some(actor_tx)) =
+                                    state.room_manager.actor_tx(&room_code_owned).await
+                                {
+                                    let _ = actor_tx
+                                        .send(RoomCommand::StartGame {
+                                            seed: Seed(random_seed as i32),
+                                        })
+                                        .await;
+                                }
+                            } else {
+                                // 第一局：新建 RoomActor。
                                 let mut actor = RoomActor::new(
                                     room_code_owned.clone(),
                                     Seed(random_seed as i32),

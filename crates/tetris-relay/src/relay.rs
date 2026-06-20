@@ -22,9 +22,6 @@ static NEXT_PEER_ID: AtomicU64 = AtomicU64::new(1);
 pub struct RoomState {
     pub code: RoomCode,
     pub tx: broadcast::Sender<Vec<u8>>,
-    /// `player_count` is used two ways: join/leave CAS for capacity gating,
-    /// `add_peer`/`remove_peer` overwrite from `peers.len()` for consistency.
-    pub player_count: AtomicUsize,
     pub host_peer_id: RwLock<Option<u64>>,
     pub peers: Mutex<Vec<PeerInfo>>,
     pub countdown_active: AtomicUsize,
@@ -101,7 +98,6 @@ impl RoomManager {
         if room.host_peer_id.read().await.is_none() {
             *room.host_peer_id.write().await = Some(id);
         }
-        room.player_count.store(peers.len(), Ordering::SeqCst);
         Ok(peers.clone())
     }
 
@@ -127,7 +123,6 @@ impl RoomManager {
             temperature,
         };
         peers.push(peer.clone());
-        room.player_count.store(peers.len(), Ordering::SeqCst);
         Ok(peer)
     }
 
@@ -206,7 +201,6 @@ impl RoomManager {
             if host_peer_id.as_ref().is_some_and(|host_id| *host_id == id) {
                 *host_peer_id = peers.first().map(|peer| peer.id);
             }
-            room.player_count.store(peers.len(), Ordering::SeqCst);
             room.countdown_active.store(0, Ordering::SeqCst);
             room.countdown_generation.fetch_add(1, Ordering::SeqCst);
             peers.clone()
@@ -341,7 +335,6 @@ impl RoomManager {
         let state = Arc::new(RoomState {
             code: code.clone(),
             tx,
-            player_count: AtomicUsize::new(0),
             host_peer_id: RwLock::new(None),
             peers: Mutex::new(vec![]),
             countdown_active: AtomicUsize::new(0),
@@ -358,36 +351,27 @@ impl RoomManager {
         let room = rooms
             .get(code)
             .ok_or_else(|| RelayError::RoomNotFound(code.into()))?;
-        room.player_count
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
-                if count >= MAX_PLAYERS_PER_ROOM {
-                    None
-                } else {
-                    Some(count + 1)
-                }
-            })
-            .map_err(|_| RelayError::RoomFull(code.into()))?;
+        // 容量闸以 peers.len() 为唯一记账源（add_peer 同样校验，双重防护）。
+        if room.peers.lock().await.len() >= MAX_PLAYERS_PER_ROOM {
+            return Err(RelayError::RoomFull(code.into()));
+        }
         Ok(room.tx.subscribe())
     }
 
     pub async fn leave_room(&self, code: &str) {
+        // 房间删除仅依据 peers 是否为空（单一记账源），不再用独立 counter，
+        // 避免与 remove_peer 双轨叠加导致 2 人房一人离开误删整间房。
         let should_remove = {
             let rooms = self.rooms.read().await;
-            if let Some(room) = rooms.get(code) {
-                let prev =
-                    room.player_count
-                        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |p| {
-                            if p > 0 { Some(p - 1) } else { Some(0) }
-                        });
-                prev.map_or(true, |p| p <= 1)
-            } else {
-                false
+            match rooms.get(code) {
+                Some(room) => room.peers.lock().await.is_empty(),
+                None => false,
             }
         };
         if should_remove {
             let mut rooms = self.rooms.write().await;
             if let Some(room) = rooms.get(code)
-                && room.player_count.load(Ordering::SeqCst) == 0
+                && room.peers.lock().await.is_empty()
             {
                 if let Some(cancel_tx) = room.cancel_tx.lock().await.take() {
                     let _ = cancel_tx.send(());
@@ -426,7 +410,6 @@ impl RoomManager {
         let state = Arc::new(RoomState {
             code: code.to_string(),
             tx,
-            player_count: AtomicUsize::new(0),
             host_peer_id: RwLock::new(None),
             peers: Mutex::new(vec![]),
             countdown_active: AtomicUsize::new(0),
@@ -496,6 +479,26 @@ fn generate_room_code(existing: &HashMap<RoomCode, Arc<RoomState>>) -> RoomCode 
 mod tests {
     use super::*;
     use tokio::time::{Duration, timeout};
+
+    #[tokio::test]
+    async fn two_player_room_survives_one_leave() {
+        let manager = RoomManager::new(4);
+        manager.get_or_create_room("ABCD").await.unwrap();
+        let id1 = RoomManager::alloc_peer_id();
+        let id2 = RoomManager::alloc_peer_id();
+        manager.join_room("ABCD").await.unwrap();
+        manager.add_peer("ABCD", id1).await.unwrap();
+        manager.join_room("ABCD").await.unwrap();
+        manager.add_peer("ABCD", id2).await.unwrap();
+
+        // 一人离开：remove_peer 后 leave_room 不应误删整间房。
+        let remaining = manager.remove_peer("ABCD", id1).await;
+        manager.leave_room("ABCD").await;
+
+        assert_eq!(remaining.len(), 1);
+        let peers = manager.room_peers("ABCD").await.unwrap();
+        assert_eq!(peers.len(), 1);
+    }
 
     #[tokio::test]
     async fn lifecycle_game_over_and_cancel() {

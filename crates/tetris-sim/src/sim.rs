@@ -362,12 +362,14 @@ impl AuthoritativeSim {
 
             let alive_count = self.player_alive.iter().filter(|&&alive| alive).count();
             if alive_count <= 1 && !newly_dead.is_empty() {
+                // 同 tick 全死（alive_count==0）时用 sentinel u8::MAX 表平局，
+                // 不再把已死的 player 0 误判为赢家。
                 let winner_id = self
                     .player_alive
                     .iter()
                     .enumerate()
                     .find(|(_, alive)| **alive)
-                    .map_or(0, |(idx, _)| idx as u8);
+                    .map_or(u8::MAX, |(idx, _)| idx as u8);
                 self.room_mode = RoomMode::GameOver;
                 self.game_over_countdown = 180;
                 outbound.push(SimOutbound::Broadcast(Self::game_over_packet(winner_id)?));
@@ -499,6 +501,25 @@ impl AuthoritativeSim {
             winner_player_id: winner_id,
         };
         serialize_packet(&pkt)
+    }
+
+    /// 复用 sim 开启新一局：重置所有引擎到新 seed、清存活/旁观/哈希/输入，进入 Playing。
+    pub fn restart_game(&mut self, seed: Seed) {
+        self.seed = seed;
+        self.tick = TickNumber(0);
+        self.hash_ladder.clear();
+        self.pending_inputs.clear();
+        for engine in self.engines.iter_mut().flatten() {
+            engine.reset(seed.0 as u32);
+        }
+        for alive in &mut self.player_alive {
+            *alive = true;
+        }
+        for spec in &mut self.player_spectating {
+            *spec = None;
+        }
+        self.game_over_countdown = 0;
+        self.room_mode = RoomMode::Playing;
     }
 
     fn reset_to_lobby(&mut self) {
@@ -714,5 +735,36 @@ mod tests {
                 assert_ne!(target, PlayerSlot(1), "已移除的玩家不应被选为攻击目标");
             }
         }
+    }
+
+    #[test]
+    fn double_death_winner_is_draw_sentinel() {
+        let mut sim = AuthoritativeSim::new(Seed(42));
+        sim.add_player(PlayerSlot(0));
+        sim.add_player(PlayerSlot(1));
+        sim.set_room_mode(RoomMode::Playing);
+        sim.engine_mut(PlayerSlot(0)).unwrap().game_over = true;
+        sim.engine_mut(PlayerSlot(1)).unwrap().game_over = true;
+
+        let outbound = sim.tick().unwrap();
+
+        assert!(outbound.iter().any(|event| {
+            let SimOutbound::Broadcast(data) = event else {
+                return false;
+            };
+            bincode::deserialize::<PktGameOver>(data)
+                .is_ok_and(|pkt| pkt.winner_player_id == u8::MAX)
+        }));
+    }
+
+    #[test]
+    fn restart_game_resets_engines_and_seed() {
+        let mut sim = AuthoritativeSim::new(Seed(42));
+        sim.add_player(PlayerSlot(0));
+        sim.set_room_mode(RoomMode::Playing);
+        sim.engine_mut(PlayerSlot(0)).unwrap().game_over = true;
+        sim.restart_game(Seed(99));
+        assert_eq!(sim.seed.0, 99);
+        assert!(!sim.engine(PlayerSlot(0)).unwrap().game_over);
     }
 }

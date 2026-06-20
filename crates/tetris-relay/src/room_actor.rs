@@ -46,6 +46,9 @@ pub enum RoomCommand {
     PlayerLeave {
         slot: PlayerSlot,
     },
+    StartGame {
+        seed: Seed,
+    },
     Reconnect {
         slot: PlayerSlot,
         client_hashes: Vec<(TickNumber, u32)>,
@@ -314,6 +317,7 @@ impl RoomActor {
                             self.sim.enqueue_input(slot, event);
                         }
                         Some(RoomCommand::PlayerLeave { slot }) => self.remove_player(slot),
+                        Some(RoomCommand::StartGame { seed }) => self.sim.restart_game(seed),
                         Some(RoomCommand::PlayerReady { .. }) => {}
                         Some(RoomCommand::Shutdown) | None => break,
                     }
