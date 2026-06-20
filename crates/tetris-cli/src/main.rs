@@ -22,12 +22,16 @@ fn main() -> Result<()> {
     let mut terminal = ratatui::init();
     let mut draw_errors: Vec<String> = Vec::new();
 
-    run_game_loop(state, &cfg, ai_opponent, tetris_cli::app::update, |st| {
-        match terminal.draw(|frame| tetris_cli::render::render(st, frame)) {
+    run_game_loop(
+        state,
+        &cfg,
+        ai_opponent,
+        tetris_cli::app::update,
+        |st| match terminal.draw(|frame| tetris_cli::render::render(st, frame)) {
             Ok(_) => {}
             Err(e) => draw_errors.push(e.to_string()),
-        }
-    });
+        },
+    );
 
     ratatui::restore();
     for err in &draw_errors {
@@ -141,8 +145,14 @@ mod tests {
 
     #[test]
     fn ai_opponent_accepts_temperature_with_host_mode() {
-        let args = parse(&["--host-p2p", "127.0.0.1:5000", "--ai-opponent", "--ai-temp", "0.5"])
-            .unwrap();
+        let args = parse(&[
+            "--host-p2p",
+            "127.0.0.1:5000",
+            "--ai-opponent",
+            "--ai-temp",
+            "0.5",
+        ])
+        .unwrap();
         let config = args.ai_opponent_config().unwrap().unwrap();
         assert_eq!(config.count, 1);
         assert_eq!(config.temperature, 0.5);

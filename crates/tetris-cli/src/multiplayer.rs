@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::Arc;
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -370,12 +370,10 @@ pub fn validate_ai_opponent_weights() -> Result<(), crate::error::CliError> {
 
 fn load_ai_opponent_policy() -> Result<MlpPolicy, crate::error::CliError> {
     let path = weights_path();
-    let weights = std::fs::read(&path).map_err(|e| {
-        crate::error::CliError::Network(format!("failed to read {path}: {e}"))
-    })?;
-    MlpPolicy::load_from_slice(&weights).map_err(|e| {
-        crate::error::CliError::Network(format!("failed to load {path}: {e}"))
-    })
+    let weights = std::fs::read(&path)
+        .map_err(|e| crate::error::CliError::Network(format!("failed to read {path}: {e}")))?;
+    MlpPolicy::load_from_slice(&weights)
+        .map_err(|e| crate::error::CliError::Network(format!("failed to load {path}: {e}")))
 }
 
 fn spawn_ai_opponent_for_runtime_with_policy(
@@ -836,8 +834,7 @@ mod tests {
         let mut host_runtime = CliNetworkRuntime::connect(&host_mode).unwrap();
         let host_addr = host_runtime.p2p_server_addr().unwrap();
         let bot_mode = MultiplayerMode::JoinP2p { addr: host_addr };
-        let handle =
-            spawn_ai_opponent_with_policy(bot_mode, Seed(42), zero_policy(), 0.0).unwrap();
+        let handle = spawn_ai_opponent_with_policy(bot_mode, Seed(42), zero_policy(), 0.0).unwrap();
         let mut host_session = MultiplayerSession::new(host_mode, 0);
 
         for _ in 0..64 {
