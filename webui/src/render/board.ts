@@ -1,4 +1,5 @@
 import { get_theme_colors } from './colors';
+import { setup_canvas_ctx } from './canvas';
 
 type BoardRenderer = {
   render: (grid: ArrayLike<number>, colors?: string[]) => void;
@@ -27,10 +28,7 @@ function draw_cell(
 }
 
 export function createBoardRenderer(canvas: HTMLCanvasElement): BoardRenderer {
-  const ctx = canvas.getContext('2d')!;
-  const dpr = window.devicePixelRatio || 1;
-  const css_w = parseFloat(canvas.style.width) || canvas.width / dpr;
-  const css_h = parseFloat(canvas.style.height) || canvas.height / dpr;
+  const { ctx, css_w, css_h, dpr } = setup_canvas_ctx(canvas);
   const cell = Math.min(css_w / 10, css_h / 20);
 
   const supports_offscreen = typeof OffscreenCanvas !== 'undefined';

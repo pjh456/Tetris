@@ -26,6 +26,7 @@ import {
 } from '../render/board';
 import { createPreviewRenderer, createNextStackRenderer } from '../render/preview';
 import { create_hud_overlay } from '../render/hud';
+import { setup_hidpi_canvas } from '../render/canvas';
 import { get_theme_colors } from '../render/colors';
 import { LineFx } from '../fx/line_fx';
 import { HardDropFx } from '../fx/harddrop_fx';
@@ -46,21 +47,6 @@ import {
   reset_local_ai_opponent,
   tick_ai_opponent,
 } from '../core/ai_opponent';
-
-function setup_hidpi(
-  canvas: HTMLCanvasElement,
-  css_w: number,
-  css_h: number,
-): CanvasRenderingContext2D {
-  const dpr = window.devicePixelRatio || 1;
-  canvas.width = css_w * dpr;
-  canvas.height = css_h * dpr;
-  canvas.style.width = `${css_w}px`;
-  canvas.style.height = `${css_h}px`;
-  const ctx = canvas.getContext('2d')!;
-  ctx.scale(dpr, dpr);
-  return ctx;
-}
 
 export async function create_game_screen(root: HTMLElement): Promise<() => void> {
   root.innerHTML = '';
@@ -106,7 +92,7 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   hold_label.style.cssText =
     'color:var(--color-text);font-size:var(--text-body);letter-spacing:2px;';
   const hold_canvas = document.createElement('canvas');
-  setup_hidpi(hold_canvas, 140, 140);
+  setup_hidpi_canvas(hold_canvas, 140, 140);
   hold_canvas.style.border = '2px solid var(--color-panel-border)';
   hold_canvas.style.background = 'var(--color-panel)';
   hold_col.appendChild(hold_label);
@@ -116,12 +102,12 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   board_frame.style.cssText =
     'position:relative;display:inline-block;border:3px solid var(--color-panel-border);background:var(--color-bg);box-shadow:0 0 20px var(--color-panel-shadow);';
   const board_canvas = document.createElement('canvas');
-  setup_hidpi(board_canvas, board_css_w, board_css_h);
+  setup_hidpi_canvas(board_canvas, board_css_w, board_css_h);
   const fx_canvas = document.createElement('canvas');
   fx_canvas.style.position = 'absolute';
   fx_canvas.style.inset = '0';
   fx_canvas.style.pointerEvents = 'none';
-  setup_hidpi(fx_canvas, board_css_w, board_css_h);
+  setup_hidpi_canvas(fx_canvas, board_css_w, board_css_h);
   board_frame.appendChild(board_canvas);
   board_frame.appendChild(fx_canvas);
 
@@ -132,7 +118,7 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   next_label.style.cssText =
     'color:var(--color-text);font-size:var(--text-body);letter-spacing:2px;text-align:center;background:var(--color-panel);border:1px solid var(--color-panel-border);padding:4px 0;';
   const next_canvas = document.createElement('canvas');
-  setup_hidpi(next_canvas, 180, 480);
+  setup_hidpi_canvas(next_canvas, 180, 480);
   next_canvas.style.border = '1px solid var(--color-panel-border)';
   next_canvas.style.background = 'var(--color-panel)';
   right_col.appendChild(next_label);

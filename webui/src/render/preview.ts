@@ -1,4 +1,5 @@
 import { get_theme_colors } from './colors';
+import { setup_canvas_ctx } from './canvas';
 
 const SHAPES: number[][][] = [
   [
@@ -61,7 +62,7 @@ export function createPreviewRenderer(
   canvas: HTMLCanvasElement,
   options: PreviewOptions = {},
 ): PreviewRenderer {
-  const ctx = canvas.getContext('2d')!;
+  const { ctx } = setup_canvas_ctx(canvas);
   const showGrid = options.showGrid !== false;
 
   return {
@@ -98,7 +99,7 @@ export function createPreviewRenderer(
 }
 
 export function createNextStackRenderer(canvas: HTMLCanvasElement): NextStackRenderer {
-  const ctx = canvas.getContext('2d')!;
+  const { ctx } = setup_canvas_ctx(canvas);
 
   return {
     render(pieces: number[]) {
