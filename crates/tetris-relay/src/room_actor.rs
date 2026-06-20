@@ -313,7 +313,8 @@ impl RoomActor {
                         Some(RoomCommand::PlayerInput { slot, event }) => {
                             self.sim.enqueue_input(slot, event);
                         }
-                        Some(RoomCommand::PlayerReady { .. } | RoomCommand::PlayerLeave { .. }) => {}
+                        Some(RoomCommand::PlayerLeave { slot }) => self.remove_player(slot),
+                        Some(RoomCommand::PlayerReady { .. }) => {}
                         Some(RoomCommand::Shutdown) | None => break,
                     }
                 }
@@ -401,7 +402,7 @@ mod tests {
             actor.run_one_tick();
         }
 
-        assert!(actor.sim.hash_at(TickNumber(100)).is_some());
+        assert!(actor.sim.hash_at(PlayerSlot(0), TickNumber(100)).is_some());
     }
 
     #[test]

@@ -51,7 +51,7 @@ pub struct AuthoritativeSim {
     config: SimConfig,
     engines: Vec<Option<Engine<10, 20>>>,
     replay_buffers: HashMap<PlayerSlot, ReplayBuffer>,
-    hash_ladder: HashLadder,
+    hash_ladder: HashMap<PlayerSlot, HashLadder>,
     pending_inputs: Vec<(PlayerSlot, InputEvent)>,
     player_alive: Vec<bool>,
     player_spectating: Vec<Option<PlayerSlot>>,
@@ -71,7 +71,7 @@ impl AuthoritativeSim {
             config,
             engines: Vec::new(),
             replay_buffers: HashMap::new(),
-            hash_ladder: HashLadder::new(),
+            hash_ladder: HashMap::new(),
             pending_inputs: Vec::new(),
             player_alive: Vec::new(),
             player_spectating: Vec::new(),
@@ -137,8 +137,8 @@ impl AuthoritativeSim {
         self.replay_buffers.get(&slot)
     }
 
-    pub fn hash_at(&self, tick: TickNumber) -> Option<u32> {
-        self.hash_ladder.get_hash_at(tick)
+    pub fn hash_at(&self, slot: PlayerSlot, tick: TickNumber) -> Option<u32> {
+        self.hash_ladder.get(&slot)?.get_hash_at(tick)
     }
 
     pub fn build_snapshot_for_player(&self, slot: PlayerSlot) -> Option<PktStateSnapshot> {
@@ -163,7 +163,10 @@ impl AuthoritativeSim {
         slot: PlayerSlot,
         client_hashes: &[(TickNumber, u32)],
     ) -> PktReconnectAck {
-        let divergence = self.hash_ladder.find_divergence(client_hashes);
+        let divergence = match self.hash_ladder.get(&slot) {
+            Some(ladder) => ladder.find_divergence(client_hashes),
+            None => client_hashes.first().map(|(tick, _)| *tick),
+        };
 
         let Some(divergence_tick) = divergence else {
             return PktReconnectAck {
@@ -219,8 +222,11 @@ impl AuthoritativeSim {
 
         if self.tick.0.is_multiple_of(self.config.state_hash_interval) {
             let hashes = self.broadcast_state_hashes();
-            for (_slot, hash) in &hashes {
-                self.hash_ladder.insert(self.tick, *hash);
+            for (slot, hash) in &hashes {
+                self.hash_ladder
+                    .entry(*slot)
+                    .or_default()
+                    .insert(self.tick, *hash);
             }
             outbound.extend(self.state_hash_outbound(&hashes)?);
             outbound.extend(self.state_snapshot_outbound()?);
@@ -619,7 +625,7 @@ mod tests {
         for _ in 0..100 {
             sim.tick().unwrap();
         }
-        let hash = sim.hash_at(TickNumber(100)).unwrap();
+        let hash = sim.hash_at(PlayerSlot(0), TickNumber(100)).unwrap();
 
         let ack = sim.handle_reconnect(PlayerSlot(0), &[(TickNumber(100), hash)]);
 
@@ -679,5 +685,34 @@ mod tests {
             };
             bincode::deserialize::<PktGameOver>(data).is_ok_and(|pkt| pkt.winner_player_id == 0)
         }));
+    }
+
+    #[test]
+    fn hash_ladder_stores_per_player_without_overwrite() {
+        let mut sim = AuthoritativeSim::new(Seed(42));
+        sim.add_player(PlayerSlot(0));
+        sim.add_player(PlayerSlot(1));
+        // 让 p0 落子使其状态偏离 p1，确保同 tick 哈希不同。
+        sim.enqueue_input(PlayerSlot(0), make_event(KeyAction::KeyHardDrop, true));
+        for _ in 0..100 {
+            sim.tick().unwrap();
+        }
+        let h0 = sim.hash_at(PlayerSlot(0), TickNumber(100)).unwrap();
+        let h1 = sim.hash_at(PlayerSlot(1), TickNumber(100)).unwrap();
+        assert_ne!(h0, h1, "同 tick 的多玩家哈希必须各自保留，不互相覆盖");
+    }
+
+    #[test]
+    fn removed_player_not_attack_target() {
+        let mut sim = AuthoritativeSim::new(Seed(42));
+        sim.add_player(PlayerSlot(0));
+        sim.add_player(PlayerSlot(1));
+        sim.add_player(PlayerSlot(2));
+        sim.remove_player(PlayerSlot(1));
+        for _ in 0..20 {
+            if let Some(target) = sim.route_attack_target(PlayerSlot(0)) {
+                assert_ne!(target, PlayerSlot(1), "已移除的玩家不应被选为攻击目标");
+            }
+        }
     }
 }

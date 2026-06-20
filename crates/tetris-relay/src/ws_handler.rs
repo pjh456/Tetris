@@ -169,9 +169,19 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
 
     // Remove pending_inputs entry for this peer to avoid ghost player in RoomActor
     if let Ok(peer) = state.room_manager.peer_by_id(&room_code, peer_id).await {
-        let mut pending = state.pending_inputs.lock().await;
-        if let Some(entries) = pending.get_mut(&room_code) {
-            entries.retain(|(pid, _, _)| *pid != peer.player_id);
+        {
+            let mut pending = state.pending_inputs.lock().await;
+            if let Some(entries) = pending.get_mut(&room_code) {
+                entries.retain(|(pid, _, _)| *pid != peer.player_id);
+            }
+        }
+        // 通知 RoomActor 该 slot 离场，移除僵尸引擎（不再被 tick/选为攻击目标）。
+        if let Ok(Some(actor_tx)) = state.room_manager.actor_tx(&room_code).await {
+            let _ = actor_tx
+                .send(RoomCommand::PlayerLeave {
+                    slot: PlayerSlot(peer.player_id),
+                })
+                .await;
         }
     }
 

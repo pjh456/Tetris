@@ -110,6 +110,7 @@ pub struct WebTetris {
     last_event: Option<MultiplayerEvent>,
     input_buf: input_buffer::ClientInputBuffer,
     last_state_hash: Option<(tetris_protocol::newtypes::TickNumber, u32)>,
+    mp_seed: u32,
 }
 
 // 纯 Rust 逻辑 + 私有 helper：对 wasm 导出，对 native 普通方法（tests 可见）。
@@ -135,15 +136,18 @@ impl WebTetris {
             last_event: None,
             input_buf: input_buffer::ClientInputBuffer::new(),
             last_state_hash: None,
+            mp_seed: 0,
         }
     }
 
-    fn reset_common(&mut self, seed: u32, level: u32, clear_opponents: bool) {
+    fn reset_common(&mut self, seed: u32, level: u32, clear_opponents: bool, clear_room: bool) {
         self.has_hold = false;
         self.engine.reset_with_level(seed, level);
         if clear_opponents {
             self.opponent_engines.clear();
             self.opponent_grid_bufs.clear();
+        }
+        if clear_room {
             self.room_player_infos.clear();
             self.opponent_infos.clear();
         }
@@ -154,15 +158,16 @@ impl WebTetris {
     }
 
     pub fn reset(&mut self, seed: u32) {
-        self.reset_common(seed, 1, true);
+        self.reset_common(seed, 1, true, true);
     }
 
     pub fn reset_multiplayer_game(&mut self, seed: u32) {
-        self.reset_common(seed, 1, false);
+        // 清对手引擎/网格（杜绝跨局 stale），保留房间名册（由 snapshot 重建）。
+        self.reset_common(seed, 1, true, false);
     }
 
     pub fn reset_with_level(&mut self, seed: u32, start_level: u32) {
-        self.reset_common(seed, start_level.clamp(1, 15), true);
+        self.reset_common(seed, start_level.clamp(1, 15), true, true);
     }
 
     fn ensure_opponent_slot(&mut self, player_id: u8) -> Option<usize> {
@@ -177,7 +182,10 @@ impl WebTetris {
             return None;
         }
         while self.opponent_engines.len() <= idx {
-            self.opponent_engines.push(Engine::<10, 20>::new());
+            // 必须 reset 脱离 Engine::new 的 game_over=true，否则 handle_action 被静默丢弃。
+            let mut engine = Engine::<10, 20>::new();
+            engine.reset(self.mp_seed);
+            self.opponent_engines.push(engine);
             self.opponent_grid_bufs.push(vec![0u8; OPPONENT_GRID_LEN]);
         }
         Some(idx)
@@ -608,6 +616,7 @@ impl WebTetris {
             }
             PacketType::GameStart => {
                 let pkt: PktGameStart = deser(data).ok()?;
+                self.mp_seed = pkt.random_seed;
                 self.countdown = None;
                 let mut event = MultiplayerEvent::new("game_start", self.room_code.clone(), None);
                 event.random_seed = Some(pkt.random_seed);
@@ -943,5 +952,53 @@ mod tests {
         assert_eq!(event.event_count, Some(1));
         assert_eq!(event.incoming_garbage_lines, Some(2));
         assert_eq!(wt.opponent_engines[1].state.pending_garbage, 2);
+    }
+
+    #[test]
+    fn opponent_engine_not_game_over_after_game_start_replay() {
+        let mut wt = WebTetris::new(42);
+        wt.local_player_id = Some(0);
+        let start = PktGameStart {
+            header: PacketHeader::new(PacketType::GameStart, 0),
+            random_seed: 7,
+        };
+        wt.apply_packet(&packet_bytes(&start)).unwrap();
+        let replay = PktServerReplay {
+            header: PacketHeader::new(PacketType::ServerReplay, 0),
+            source_player: PlayerSlot(1),
+            events: vec![InputEvent {
+                key: KeyAction::KeyHardDrop,
+                pressed: true,
+                tick: TickNumber(1),
+                subframe: 0.0,
+            }],
+            ige_garbage_lines: 0,
+            ige_hole_x: 0,
+        };
+        wt.apply_packet(&packet_bytes(&replay)).unwrap();
+        // 对手引擎已脱离 Engine::new 的 game_over=true，操作不再被静默丢弃。
+        assert!(!wt.opponent_engines[1].game_over);
+    }
+
+    #[test]
+    fn reset_multiplayer_game_clears_opponent_engines() {
+        let mut wt = WebTetris::new(42);
+        wt.local_player_id = Some(0);
+        let start = PktGameStart {
+            header: PacketHeader::new(PacketType::GameStart, 0),
+            random_seed: 5,
+        };
+        wt.apply_packet(&packet_bytes(&start)).unwrap();
+        let replay = PktServerReplay {
+            header: PacketHeader::new(PacketType::ServerReplay, 0),
+            source_player: PlayerSlot(1),
+            events: vec![],
+            ige_garbage_lines: 0,
+            ige_hole_x: 0,
+        };
+        wt.apply_packet(&packet_bytes(&replay)).unwrap();
+        assert!(!wt.opponent_engines.is_empty());
+        wt.reset_multiplayer_game(99);
+        assert!(wt.opponent_engines.is_empty());
     }
 }
