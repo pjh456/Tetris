@@ -158,6 +158,10 @@ export class WsClient {
     }
   }
 
+  is_open(): boolean {
+    return this.socket?.readyState === WebSocket.OPEN;
+  }
+
   private flush_buffer() {
     const buf = this.message_buffer;
     this.message_buffer = [];

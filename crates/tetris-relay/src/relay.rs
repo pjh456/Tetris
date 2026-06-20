@@ -40,6 +40,8 @@ pub struct PeerInfo {
     pub name: String,
     pub ready: bool,
     pub away: bool,
+    pub is_bot: bool,
+    pub temperature: f32,
 }
 
 pub struct RoomManager {
@@ -88,12 +90,49 @@ impl RoomManager {
             name,
             ready: false,
             away: false,
+            is_bot: false,
+            temperature: 0.0,
         });
         if room.host_peer_id.read().await.is_none() {
             *room.host_peer_id.write().await = Some(id);
         }
         room.player_count.store(peers.len(), Ordering::SeqCst);
         Ok(peers.clone())
+    }
+
+    pub async fn add_bot_peer(&self, code: &str, temperature: f32) -> Result<PeerInfo, RelayError> {
+        let rooms = self.rooms.read().await;
+        let room = rooms
+            .get(code)
+            .ok_or_else(|| RelayError::RoomNotFound(code.into()))?;
+        let mut peers = room.peers.lock().await;
+        if peers.len() >= MAX_PLAYERS_PER_ROOM {
+            return Err(RelayError::RoomFull("too many players".into()));
+        }
+        let mut used = [false; MAX_PLAYERS_PER_ROOM];
+        for p in peers.iter() {
+            if (p.player_id as usize) < MAX_PLAYERS_PER_ROOM {
+                used[p.player_id as usize] = true;
+            }
+        }
+        let player_id = used
+            .iter()
+            .position(|u| !u)
+            .map_or(MAX_PLAYERS_PER_ROOM as u8 - 1, |i| i as u8);
+        let id = Self::alloc_peer_id();
+        let bot_count = peers.iter().filter(|peer| peer.is_bot).count() + 1;
+        let peer = PeerInfo {
+            id,
+            player_id,
+            name: format!("AI {bot_count}"),
+            ready: true,
+            away: false,
+            is_bot: true,
+            temperature,
+        };
+        peers.push(peer.clone());
+        room.player_count.store(peers.len(), Ordering::SeqCst);
+        Ok(peer)
     }
 
     pub async fn rename_peer(
@@ -508,5 +547,23 @@ mod tests {
         let mut slots: Vec<_> = peers.iter().map(|peer| peer.player_id).collect();
         slots.sort_unstable();
         assert_eq!(slots, vec![0, 1]);
+    }
+
+    #[tokio::test]
+    async fn add_bot_peer_uses_normal_room_slot() {
+        let manager = RoomManager::new(4);
+        manager.get_or_create_room("ABCD").await.unwrap();
+        manager.join_room("ABCD").await.unwrap();
+        let human_id = RoomManager::alloc_peer_id();
+        manager.add_peer("ABCD", human_id).await.unwrap();
+
+        let bot = manager.add_bot_peer("ABCD", 0.5).await.unwrap();
+        let peers = manager.room_peers("ABCD").await.unwrap();
+
+        assert_eq!(bot.player_id, 1);
+        assert!(bot.is_bot);
+        assert!(bot.ready);
+        assert_eq!(bot.temperature, 0.5);
+        assert_eq!(peers.len(), 2);
     }
 }

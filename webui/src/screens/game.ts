@@ -34,6 +34,13 @@ import { create_touch_overlay } from '../input/touch';
 import { get_multiplayer_ws } from '../core/multiplayer';
 import { OpponentReplayPlayer } from '../core/replay_player';
 import type { MultiplayerEvent } from '../core/wasm';
+import {
+  add_ai_opponent,
+  get_ai_opponent_grid,
+  has_local_ai_opponent,
+  reset_local_ai_opponent,
+  tick_ai_opponent,
+} from '../core/ai_opponent';
 
 function setup_hidpi(
   canvas: HTMLCanvasElement,
@@ -127,6 +134,13 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   right_col.appendChild(next_canvas);
 
   const hud = create_hud_overlay(right_col);
+  const add_ai_btn = document.createElement('button');
+  add_ai_btn.className = 'btn';
+  add_ai_btn.textContent = '加 AI';
+  add_ai_btn.setAttribute('aria-label', '加 AI 对手');
+  if (!is_multiplayer.value) {
+    right_col.appendChild(add_ai_btn);
+  }
 
   // Opponent mini-grids (multiplayer only)
   const opponent_col = document.createElement('div');
@@ -145,20 +159,46 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   const connection_badge = document.createElement('div');
   connection_badge.className = 'connection-badge connection-offline';
 
-  if (mp_ws) {
+  function ensure_local_ai_panel() {
+    if (opponent_renderers.length > 0) return;
+
     const opp_label = document.createElement('div');
     opp_label.className = 'lobby-label';
-    opp_label.textContent = 'OTHERS';
+    opp_label.textContent = 'AI';
+    opponent_col.appendChild(opp_label);
+
+    const slot = document.createElement('div');
+    slot.className = 'opponent-panel';
+    opponent_slots.push(slot);
+    const name_el = document.createElement('div');
+    name_el.className = 'opponent-name';
+    name_el.textContent = 'AI';
+    opponent_labels.push(name_el);
+    const canvas = document.createElement('canvas');
+    canvas.style.display = 'none';
+    const r = create_mini_board_renderer(canvas, 6);
+    opponent_renderers.push({ canvas, render: r.render, destroy: r.destroy });
+    slot.appendChild(name_el);
+    slot.appendChild(canvas);
+    opponent_col.appendChild(slot);
+    layout.appendChild(opponent_col);
+  }
+
+  if (mp_ws || has_local_ai_opponent()) {
+    const opp_label = document.createElement('div');
+    opp_label.className = 'lobby-label';
+    opp_label.textContent = mp_ws ? 'OTHERS' : 'AI';
     opponent_col.appendChild(opp_label);
 
     // Reserve slots for up to 3 opponents
-    for (let i = 0; i < 3; i++) {
+    const slots = mp_ws ? 3 : 1;
+    for (let i = 0; i < slots; i++) {
       const slot = document.createElement('div');
       slot.className = 'opponent-panel';
       opponent_slots.push(slot);
       const name_el = document.createElement('div');
       name_el.className = 'opponent-name';
-      name_el.textContent = `P${i + 2}`;
+      name_el.textContent = mp_ws ? `P${i + 2}` : 'AI';
       opponent_labels.push(name_el);
       const canvas = document.createElement('canvas');
       canvas.style.display = 'none';
@@ -173,7 +213,7 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   layout.appendChild(hold_col);
   layout.appendChild(board_frame);
   layout.appendChild(right_col);
-  if (mp_ws) layout.appendChild(opponent_col);
+  if (mp_ws || has_local_ai_opponent()) layout.appendChild(opponent_col);
   wrapper.appendChild(layout);
   if (mp_ws) wrapper.appendChild(connection_badge);
   root.appendChild(wrapper);
@@ -190,7 +230,6 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   let prev_tspin = 0;
   let prev_all_clear = 0;
   let raf_id = 0;
-  let logic_timer_id: number | null = null;
   let last_tick = performance.now();
   let last_fx = performance.now();
   let cleanup_keyboard: (() => void) | null = null;
@@ -201,6 +240,15 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   let collapse_cancel: (() => void) | null = null;
 
   const input_buffer = mp_ws ? new InputBuffer(wasm) : null;
+
+  add_ai_btn.addEventListener('click', () => {
+    if (has_local_ai_opponent()) return;
+    add_ai_opponent(wasm);
+    ensure_local_ai_panel();
+    add_ai_btn.disabled = true;
+    add_ai_btn.textContent = 'AI 已加入';
+    render_all();
+  });
 
   function replay_player_for(player_id: number): OpponentReplayPlayer {
     let player = replay_players.get(player_id);
@@ -306,10 +354,6 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
       cancelAnimationFrame(raf_id);
       raf_id = 0;
     }
-    if (logic_timer_id !== null) {
-      window.clearInterval(logic_timer_id);
-      logic_timer_id = null;
-    }
     cleanup_keyboard?.();
   }
 
@@ -340,7 +384,8 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
 
     const prev_level = level.value;
     const prev_lines = lines.value;
-    wasm.tick(delta_ms);
+    const attack = wasm.tick(delta_ms);
+    tick_ai_opponent(wasm, delta_ms, attack);
     last_tick = now;
 
     const hud_after: unknown = wasm.get_hud_data();
@@ -389,6 +434,14 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
         const grid = get_opponent_player_grid(player.player_id);
         opponent_grids.set(i, grid);
         renderer.canvas.style.display = '';
+      }
+    }
+
+    if (!mp_ws && has_local_ai_opponent()) {
+      const grid = get_ai_opponent_grid();
+      if (grid && opponent_renderers[0]) {
+        opponent_renderers[0].canvas.style.display = '';
+        opponent_grids.set(0, grid);
       }
     }
 
@@ -536,6 +589,7 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
     if (mp_ws?.onpacket === handle_multiplayer_packet) {
       mp_ws.onpacket = null;
     }
+    reset_local_ai_opponent();
     hud.destroy();
     renderer.destroy();
     for (const r of opponent_renderers) r.destroy();
@@ -575,7 +629,8 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
 
         const prev_lines = lines.value;
         queue_multiplayer_input(action, true);
-        wasm.handle_action(action);
+        const attack = wasm.handle_action(action);
+        tick_ai_opponent(wasm, 0, attack);
 
         if (action === Actions.HardDrop) {
           check_harddrop_fx();
@@ -609,18 +664,14 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   const touch_overlay = create_touch_overlay(root, (action_val) => {
     if (!wasm.is_game_over && !paused) {
       queue_multiplayer_input(action_val, true);
-      wasm.handle_action(action_val);
+      const attack = wasm.handle_action(action_val);
+      tick_ai_opponent(wasm, 0, attack);
     }
   });
 
   last_tick = performance.now();
   last_fx = performance.now();
   render_all();
-  if (mp_ws) {
-    logic_timer_id = window.setInterval(() => {
-      advance_game(performance.now());
-    }, 50);
-  }
   raf_id = requestAnimationFrame(game_loop);
 
   return _destroy;

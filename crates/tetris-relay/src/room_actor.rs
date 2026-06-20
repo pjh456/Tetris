@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use tetris_net::bot::AiBot;
 use tetris_protocol::newtypes::{PlayerSlot, Seed, TickNumber};
 use tetris_protocol::protocol::{
     InputEvent, PROTOCOL_VERSION, PacketHeader, PacketType, PktRoomSnapshot, PktStateSnapshot,
@@ -13,6 +14,10 @@ use crate::player_conn::Online;
 use crate::player_conn::PlayerConnection;
 
 pub const STATE_HASH_INTERVAL: u64 = 100;
+const BOT_WEIGHTS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../models/weights.json"
+));
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum RelayRoomMode {
@@ -46,6 +51,10 @@ pub enum RoomCommand {
         slot: PlayerSlot,
         client_hashes: Vec<(TickNumber, u32)>,
     },
+    AddBot {
+        slot: PlayerSlot,
+        temperature: f32,
+    },
     Shutdown,
 }
 
@@ -56,6 +65,7 @@ pub struct RoomActor {
     outbound_txs: Vec<Option<mpsc::Sender<Vec<u8>>>>,
     pub active: bool,
     pub sim: AuthoritativeSim,
+    bots: Vec<(PlayerSlot, AiBot)>,
 }
 
 impl RoomActor {
@@ -67,6 +77,7 @@ impl RoomActor {
             outbound_txs: Vec::new(),
             active: true,
             sim: AuthoritativeSim::new(seed),
+            bots: Vec::new(),
         }
     }
 
@@ -105,6 +116,28 @@ impl RoomActor {
         self.input_rxs[idx] = Some(input_rx);
         self.connections[idx] = Some(conn);
         self.outbound_txs[idx] = Some(outbound_tx);
+    }
+
+    pub fn add_bot(&mut self, slot: PlayerSlot, temperature: f32) -> Result<(), String> {
+        let policy = tetris_infer::MlpPolicy::load_from_str(BOT_WEIGHTS)
+            .map_err(|err| format!("failed to load bot weights: {err}"))?;
+        let idx = slot.0 as usize;
+        if self.input_rxs.len() <= idx {
+            self.input_rxs.resize_with(idx + 1, || None);
+            self.connections.resize_with(idx + 1, || None);
+            self.outbound_txs.resize_with(idx + 1, || None);
+        }
+
+        let (input_tx, input_rx) = mpsc::channel::<InputEvent>(64);
+        let (outbound_tx, _outbound_rx) = mpsc::channel::<Vec<u8>>(64);
+        let conn = PlayerConnection::<Online>::new(slot, input_tx, format!("AI {}", slot.0));
+        self.sim.add_player(slot);
+        self.input_rxs[idx] = Some(input_rx);
+        self.connections[idx] = Some(conn);
+        self.outbound_txs[idx] = Some(outbound_tx);
+        self.bots
+            .push((slot, AiBot::new(policy, self.seed().0 as u32, temperature)));
+        Ok(())
     }
 
     fn resume_player(
@@ -153,7 +186,18 @@ impl RoomActor {
         }
     }
 
+    fn collect_bot_inputs(&mut self) {
+        for (slot, bot) in &mut self.bots {
+            if let Some(replay) = bot.next_replay(slot.0) {
+                for event in replay.events {
+                    self.sim.enqueue_input(*slot, event);
+                }
+            }
+        }
+    }
+
     pub fn run_one_tick(&mut self) {
+        self.collect_bot_inputs();
         self.collect_inputs();
         let Ok(outbound) = self.sim.tick() else {
             return;
@@ -266,6 +310,10 @@ impl RoomActor {
                         }
                         Some(RoomCommand::Reconnect { slot, client_hashes }) => {
                             self.send_reconnect_ack(slot, &client_hashes);
+                        }
+                        Some(RoomCommand::AddBot { slot, temperature }) => {
+                            let _ = self.add_bot(slot, temperature);
+                            self.broadcast_lobby_reset();
                         }
                         Some(RoomCommand::PlayerInput { slot, event }) => {
                             self.sim.enqueue_input(slot, event);
