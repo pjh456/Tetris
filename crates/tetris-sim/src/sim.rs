@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use tetris_core::engine::Engine;
 use tetris_protocol::newtypes::{PlayerSlot, Seed, TickNumber};
 use tetris_protocol::protocol::{
-    InputEvent, PROTOCOL_VERSION, PacketHeader, PacketType, PktGameOver, PktIncomingGarbage,
-    PktPlayerStatus, PktReconnectAck, PktServerReplay, PktStateHash, PktStateSnapshot,
+    InputEvent, PacketHeader, PacketType, PktGameOver, PktIncomingGarbage, PktPlayerStatus,
+    PktReconnectAck, PktServerReplay, PktStateHash, PktStateSnapshot,
 };
 
 use crate::replay::{HashLadder, ReplayBuffer};
@@ -167,11 +167,7 @@ impl AuthoritativeSim {
 
         let Some(divergence_tick) = divergence else {
             return PktReconnectAck {
-                header: PacketHeader {
-                    version: PROTOCOL_VERSION,
-                    packet_type: PacketType::ReconnectAck,
-                    player_id: 0,
-                },
+                header: PacketHeader::new(PacketType::ReconnectAck, 0),
                 divergence_tick: TickNumber(0),
                 replay_events: vec![],
                 snapshot: None,
@@ -186,11 +182,7 @@ impl AuthoritativeSim {
             let events = buf.get_events_since(divergence_tick);
             if !events.is_empty() {
                 replay_events.push(PktServerReplay {
-                    header: PacketHeader {
-                        version: PROTOCOL_VERSION,
-                        packet_type: PacketType::ServerReplay,
-                        player_id: 0,
-                    },
+                    header: PacketHeader::new(PacketType::ServerReplay, 0),
                     source_player: slot,
                     events: events.into_iter().map(|(_, _, ev)| ev).collect(),
                     ige_garbage_lines: 0,
@@ -206,11 +198,7 @@ impl AuthoritativeSim {
         };
 
         PktReconnectAck {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::ReconnectAck,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::ReconnectAck, 0),
             divergence_tick,
             replay_events,
             snapshot,
@@ -247,11 +235,7 @@ impl AuthoritativeSim {
         events: &[InputEvent],
     ) -> Result<Vec<SimOutbound>, SimError> {
         let pkt = PktServerReplay {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::ServerReplay,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::ServerReplay, 0),
             source_player: source_slot,
             events: events.to_vec(),
             ige_garbage_lines: 0,
@@ -324,11 +308,7 @@ impl AuthoritativeSim {
             }
             let source_slot = PlayerSlot(*source_idx as u8);
             let pkt = PktServerReplay {
-                header: PacketHeader {
-                    version: PROTOCOL_VERSION,
-                    packet_type: PacketType::ServerReplay,
-                    player_id: 0,
-                },
+                header: PacketHeader::new(PacketType::ServerReplay, 0),
                 source_player: source_slot,
                 events: events.clone(),
                 ige_garbage_lines: 0,
@@ -443,11 +423,7 @@ impl AuthoritativeSim {
                 continue;
             }
             let pkt = PktIncomingGarbage {
-                header: PacketHeader {
-                    version: PROTOCOL_VERSION,
-                    packet_type: PacketType::IncomingGarbage,
-                    player_id: 0,
-                },
+                header: PacketHeader::new(PacketType::IncomingGarbage, 0),
                 incoming_lines: *lines,
             };
             outbound.push(SimOutbound::ToPlayer(*slot, serialize_packet(&pkt)?));
@@ -469,11 +445,7 @@ impl AuthoritativeSim {
                 .find(|(slot, _)| slot.0 as usize == idx)
                 .map_or(0, |(_, hash)| *hash);
             let pkt = PktStateHash {
-                header: PacketHeader {
-                    version: PROTOCOL_VERSION,
-                    packet_type: PacketType::StateHash,
-                    player_id: 0,
-                },
+                header: PacketHeader::new(PacketType::StateHash, 0),
                 tick: self.tick,
                 hash,
             };
@@ -503,11 +475,7 @@ impl AuthoritativeSim {
     fn player_state_packet(&self, slot: PlayerSlot) -> Result<Vec<u8>, SimError> {
         let idx = slot.0 as usize;
         let pkt = PktPlayerStatus {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::PlayerStatus,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::PlayerStatus, 0),
             target_player_id: slot.0,
             alive: self.player_alive.get(idx).copied().unwrap_or(false),
             spectating: self.player_spectating.get(idx).is_some(),
@@ -521,11 +489,7 @@ impl AuthoritativeSim {
 
     fn game_over_packet(winner_id: u8) -> Result<Vec<u8>, SimError> {
         let pkt = PktGameOver {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::GameOver,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::GameOver, 0),
             winner_player_id: winner_id,
         };
         serialize_packet(&pkt)

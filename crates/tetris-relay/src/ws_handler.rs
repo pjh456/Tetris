@@ -115,11 +115,7 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
         }
 
         let accept = PktServerAccept {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::ServerAccept,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::ServerAccept, 0),
             assigned_player_id: peer.player_id,
             max_players: MAX_PLAYERS_PER_ROOM as u8,
         };
@@ -275,11 +271,7 @@ async fn handle_binary_message(
                                     return;
                                 }
                                 let countdown = PktStartCountdown {
-                                    header: PacketHeader {
-                                        version: PROTOCOL_VERSION,
-                                        packet_type: PacketType::StartCountdown,
-                                        player_id: 0,
-                                    },
+                                    header: PacketHeader::new(PacketType::StartCountdown, 0),
                                     remaining_secs,
                                 };
                                 if let Ok(data) = serialize(&countdown) {
@@ -308,11 +300,7 @@ async fn handle_binary_message(
                             }
                             let random_seed = rand::random::<u32>();
                             let game_start = PktGameStart {
-                                header: PacketHeader {
-                                    version: PROTOCOL_VERSION,
-                                    packet_type: PacketType::GameStart,
-                                    player_id: 0,
-                                },
+                                header: PacketHeader::new(PacketType::GameStart, 0),
                                 random_seed,
                             };
                             if let Ok(data) = serialize(&game_start) {
@@ -388,11 +376,7 @@ async fn handle_binary_message(
             let chat_pkt = if let Ok(peer) = state.room_manager.peer_by_id(room_code, peer_id).await
             {
                 PktChatMessage {
-                    header: PacketHeader {
-                        version: PROTOCOL_VERSION,
-                        packet_type: PacketType::ChatMessage,
-                        player_id: peer.player_id,
-                    },
+                    header: PacketHeader::new(PacketType::ChatMessage, peer.player_id),
                     message: pkt.message,
                     timestamp: pkt.timestamp,
                 }
@@ -490,11 +474,7 @@ fn binary_packet_is_replay(data: &[u8]) -> bool {
 
 async fn broadcast_countdown_cancel(state: &Arc<AppState>, room_code: &str) {
     let pkt = PktCountdownCancel {
-        header: PacketHeader {
-            version: PROTOCOL_VERSION,
-            packet_type: PacketType::CountdownCancel,
-            player_id: 0,
-        },
+        header: PacketHeader::new(PacketType::CountdownCancel, 0),
     };
     if let Ok(data) = serialize(&pkt) {
         let _ = state.room_manager.broadcast(room_code, data).await;
@@ -509,11 +489,7 @@ mod tests {
 
     fn make_replay(player_id: u8, events: Vec<InputEvent>) -> PktReplay {
         PktReplay {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::Replay,
-                player_id,
-            },
+            header: PacketHeader::new(PacketType::Replay, player_id),
             events,
             start_tick: TickNumber(10),
         }
@@ -572,11 +548,7 @@ mod tests {
         let actor_task = tokio::spawn(actor.run(cancel_rx, command_rx));
 
         let pkt = PktReconnect {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::Reconnect,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::Reconnect, 0),
             last_good_tick: TickNumber(100),
             client_hashes: vec![(TickNumber(100), 0xDEAD_BEEF)],
         };

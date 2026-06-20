@@ -1,14 +1,10 @@
 use tetris_core::engine::Engine;
 use tetris_protocol::newtypes::{Seed, TickNumber};
-use tetris_protocol::protocol::{PROTOCOL_VERSION, PacketHeader, PacketType, PktStateSnapshot};
+use tetris_protocol::protocol::{PacketHeader, PacketType, PktStateSnapshot};
 
 pub fn build_snapshot(engine: &Engine<10, 20>, tick: TickNumber, seed: Seed) -> PktStateSnapshot {
     PktStateSnapshot {
-        header: PacketHeader {
-            version: PROTOCOL_VERSION,
-            packet_type: PacketType::StateSnapshot,
-            player_id: 0,
-        },
+        header: PacketHeader::new(PacketType::StateSnapshot, 0),
         tick,
         board_rows: engine.state.board.rows.to_vec(),
         piece: engine.state.piece,

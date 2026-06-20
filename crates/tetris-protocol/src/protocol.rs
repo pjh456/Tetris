@@ -44,6 +44,16 @@ pub struct PacketHeader {
     pub player_id: u8,
 }
 
+impl PacketHeader {
+    pub fn new(packet_type: PacketType, player_id: u8) -> Self {
+        PacketHeader {
+            version: PROTOCOL_VERSION,
+            packet_type,
+            player_id,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PktClientJoin {
     pub header: PacketHeader,
@@ -283,22 +293,14 @@ mod tests {
 
     #[test]
     fn test_packet_header_round_trip() {
-        let hdr = PacketHeader {
-            version: PROTOCOL_VERSION,
-            packet_type: PacketType::ClientJoin,
-            player_id: 0,
-        };
+        let hdr = PacketHeader::new(PacketType::ClientJoin, 0);
         bincode_round_trip(&hdr);
     }
 
     #[test]
     fn test_game_start_round_trip() {
         let pkt = PktGameStart {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::GameStart,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::GameStart, 0),
             random_seed: 42,
         };
         bincode_round_trip(&pkt);
@@ -307,11 +309,7 @@ mod tests {
     #[test]
     fn test_server_accept_round_trip() {
         let pkt = PktServerAccept {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::ServerAccept,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::ServerAccept, 0),
             assigned_player_id: 1,
             max_players: 2,
         };
@@ -331,28 +329,16 @@ mod tests {
     #[test]
     fn test_batch_round_trip() {
         let inner1 = bincode::serialize(&PktClientJoin {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::ClientJoin,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::ClientJoin, 0),
         })
         .unwrap();
         let inner2 = bincode::serialize(&PktPlayerReady {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::PlayerReady,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::PlayerReady, 0),
             ready: true,
         })
         .unwrap();
         let batch = PktBatch {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::Batch,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::Batch, 0),
             packets: vec![inner1, inner2],
         };
         bincode_round_trip(&batch);
@@ -362,11 +348,7 @@ mod tests {
     #[test]
     fn test_create_room_round_trip() {
         let pkt = PktCreateRoom {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::CreateRoom,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::CreateRoom, 0),
             max_players: 4,
             start_level: 1,
             attack_mult: 1.0,
@@ -380,11 +362,7 @@ mod tests {
     #[test]
     fn test_join_room_round_trip() {
         let pkt = PktJoinRoom {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::JoinRoom,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::JoinRoom, 0),
             room_code: "ABCD".into(),
             player_name: "Bob".into(),
         };
@@ -394,11 +372,7 @@ mod tests {
     #[test]
     fn test_player_ready_round_trip() {
         let pkt = PktPlayerReady {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::PlayerReady,
-                player_id: 1,
-            },
+            header: PacketHeader::new(PacketType::PlayerReady, 1),
             ready: true,
         };
         bincode_round_trip(&pkt);
@@ -407,11 +381,7 @@ mod tests {
     #[test]
     fn test_chat_message_round_trip() {
         let pkt = PktChatMessage {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::ChatMessage,
-                player_id: 1,
-            },
+            header: PacketHeader::new(PacketType::ChatMessage, 1),
             message: "hello".into(),
             timestamp: "2026-06-13T00:00:00Z".into(),
         };
@@ -421,11 +391,7 @@ mod tests {
     #[test]
     fn test_start_countdown_round_trip() {
         let pkt = PktStartCountdown {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::StartCountdown,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::StartCountdown, 0),
             remaining_secs: 3,
         };
         bincode_round_trip(&pkt);
@@ -434,11 +400,7 @@ mod tests {
     #[test]
     fn test_countdown_cancel_round_trip() {
         let pkt = PktCountdownCancel {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::CountdownCancel,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::CountdownCancel, 0),
         };
         bincode_round_trip(&pkt);
     }
@@ -446,11 +408,7 @@ mod tests {
     #[test]
     fn test_host_migrate_round_trip() {
         let pkt = PktHostMigrate {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::HostMigrate,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::HostMigrate, 0),
             new_host_player_id: 2,
         };
         bincode_round_trip(&pkt);
@@ -459,11 +417,7 @@ mod tests {
     #[test]
     fn test_spectate_switch_round_trip() {
         let pkt = PktSpectateSwitch {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::SpectateSwitch,
-                player_id: 1,
-            },
+            header: PacketHeader::new(PacketType::SpectateSwitch, 1),
             target_player_id: 3,
         };
         bincode_round_trip(&pkt);
@@ -479,11 +433,7 @@ mod tests {
     #[test]
     fn test_room_snapshot_round_trip() {
         let pkt = PktRoomSnapshot {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::RoomSnapshot,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::RoomSnapshot, 0),
             room_code: "ABCD".into(),
             players: vec![RoomPlayerSnapshot {
                 player_id: 0,
@@ -524,11 +474,7 @@ mod tests {
     #[test]
     fn test_pkt_replay_round_trip() {
         let pkt = PktReplay {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::Replay,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::Replay, 0),
             events: vec![
                 InputEvent {
                     key: KeyAction::KeyLeft,
@@ -551,11 +497,7 @@ mod tests {
     #[test]
     fn test_pkt_server_replay_round_trip() {
         let pkt = PktServerReplay {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::ServerReplay,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::ServerReplay, 0),
             source_player: PlayerSlot(1),
             events: vec![InputEvent {
                 key: KeyAction::KeyRotateCW,
@@ -572,11 +514,7 @@ mod tests {
     #[test]
     fn test_pkt_state_hash_round_trip() {
         let pkt = PktStateHash {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::StateHash,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::StateHash, 0),
             tick: TickNumber(100),
             hash: 0xDEAD_BEEF,
         };
@@ -586,11 +524,7 @@ mod tests {
     #[test]
     fn test_pkt_state_snapshot_round_trip() {
         let pkt = PktStateSnapshot {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::StateSnapshot,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::StateSnapshot, 0),
             tick: TickNumber(50),
             board_rows: vec![0; 20],
             piece: Piece::T,
@@ -612,11 +546,7 @@ mod tests {
     #[test]
     fn test_pkt_reconnect_round_trip() {
         let pkt = PktReconnect {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::Reconnect,
-                player_id: 1,
-            },
+            header: PacketHeader::new(PacketType::Reconnect, 1),
             last_good_tick: TickNumber(99),
             client_hashes: vec![(TickNumber(0), 0xAAAA), (TickNumber(100), 0xBBBB)],
         };
@@ -626,11 +556,7 @@ mod tests {
     #[test]
     fn test_pkt_reconnect_ack_round_trip() {
         let pkt = PktReconnectAck {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::ReconnectAck,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::ReconnectAck, 0),
             divergence_tick: TickNumber(99),
             replay_events: vec![],
             snapshot: None,
@@ -641,11 +567,7 @@ mod tests {
     #[test]
     fn test_pkt_resume_round_trip() {
         let pkt = PktResume {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::Resume,
-                player_id: 1,
-            },
+            header: PacketHeader::new(PacketType::Resume, 1),
             socket_id: "abc".into(),
             resume_token: "xyz".into(),
         };
@@ -674,11 +596,7 @@ mod tests {
     #[test]
     fn test_add_bot_round_trip() {
         let pkt = PktAddBot {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::AddBot,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::AddBot, 0),
             temperature: 0.5,
         };
         bincode_round_trip(&pkt);

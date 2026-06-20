@@ -4,9 +4,7 @@ use tetris_core::engine::{Action, Engine};
 use tetris_core::rl;
 use tetris_infer::MlpPolicy;
 use tetris_protocol::newtypes::{KeyAction, TickNumber};
-use tetris_protocol::protocol::{
-    InputEvent, PROTOCOL_VERSION, PacketHeader, PacketType, PktReplay,
-};
+use tetris_protocol::protocol::{InputEvent, PacketHeader, PacketType, PktReplay};
 
 pub const BOT_DECIDE_COOLDOWN_TICKS: u32 = 4;
 
@@ -58,11 +56,7 @@ impl AiBot {
         }
         let start_tick = events[0].tick;
         Some(PktReplay {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::Replay,
-                player_id,
-            },
+            header: PacketHeader::new(PacketType::Replay, player_id),
             events,
             start_tick,
         })

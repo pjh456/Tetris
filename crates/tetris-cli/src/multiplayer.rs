@@ -15,8 +15,8 @@ use tetris_net::host_adapter::RenetHostAdapter;
 use tetris_net::network_manager::{MODEL_B_CHANNEL, NetworkManager};
 use tetris_protocol::newtypes::{KeyAction, PlayerSlot, Seed, TickNumber};
 use tetris_protocol::protocol::{
-    InputEvent, PROTOCOL_VERSION, PacketHeader, PacketType, PktIncomingGarbage, PktReplay,
-    PktServerAccept, PktServerReplay, PktStateHash, PktStateSnapshot,
+    InputEvent, PacketHeader, PacketType, PktIncomingGarbage, PktReplay, PktServerAccept,
+    PktServerReplay, PktStateHash, PktStateSnapshot,
 };
 
 const FLUSH_TICK_INTERVAL: u64 = 30;
@@ -526,11 +526,7 @@ impl CliInputBuffer {
         let start_tick = events.first().map_or(self.current_tick, |event| event.tick);
         self.last_flush_tick = self.current_tick;
         let pkt = PktReplay {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::Replay,
-                player_id,
-            },
+            header: PacketHeader::new(PacketType::Replay, player_id),
             events,
             start_tick,
         };
@@ -668,11 +664,7 @@ pub fn apply_authority_packet(
 #[cfg(test)]
 pub fn make_state_hash_packet(player_id: u8, tick: TickNumber, hash: u32) -> Vec<u8> {
     let pkt = PktStateHash {
-        header: PacketHeader {
-            version: PROTOCOL_VERSION,
-            packet_type: PacketType::StateHash,
-            player_id,
-        },
+        header: PacketHeader::new(PacketType::StateHash, player_id),
         tick,
         hash,
     };
@@ -764,11 +756,7 @@ mod tests {
         let mut engine = Engine::<10, 20>::new();
         engine.reset(42);
         let mut snapshot = PktStateSnapshot {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::StateSnapshot,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::StateSnapshot, 0),
             tick: TickNumber(7),
             board_rows: vec![0; 20],
             piece: tetris_core::types::Piece::T,
@@ -798,11 +786,7 @@ mod tests {
         let mut opponents = vec![OpponentView::new("P0", 42), OpponentView::new("P1", 42)];
         let before_hash = opponents[1].engine.state_hash();
         let replay = PktServerReplay {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::ServerReplay,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::ServerReplay, 0),
             source_player: PlayerSlot(1),
             events: vec![InputEvent {
                 key: KeyAction::KeyHardDrop,

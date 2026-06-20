@@ -365,11 +365,7 @@ impl WebTetris {
         player_name: String,
     ) -> js_sys::Uint8Array {
         let pkt = PktJoinRoom {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::JoinRoom,
-                player_id: self.local_player_id.unwrap_or(0),
-            },
+            header: PacketHeader::new(PacketType::JoinRoom, self.local_player_id.unwrap_or(0)),
             room_code,
             player_name,
         };
@@ -378,11 +374,7 @@ impl WebTetris {
 
     pub fn make_player_ready_packet(&self, ready: bool) -> js_sys::Uint8Array {
         let pkt = PktPlayerReady {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::PlayerReady,
-                player_id: self.local_player_id.unwrap_or(0),
-            },
+            header: PacketHeader::new(PacketType::PlayerReady, self.local_player_id.unwrap_or(0)),
             ready,
         };
         packet_to_uint8_array(&pkt)
@@ -394,11 +386,7 @@ impl WebTetris {
         timestamp: String,
     ) -> js_sys::Uint8Array {
         let pkt = PktChatMessage {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::ChatMessage,
-                player_id: self.local_player_id.unwrap_or(0),
-            },
+            header: PacketHeader::new(PacketType::ChatMessage, self.local_player_id.unwrap_or(0)),
             message,
             timestamp,
         };
@@ -407,11 +395,7 @@ impl WebTetris {
 
     pub fn make_add_bot_packet(&self, temperature: f32) -> js_sys::Uint8Array {
         let pkt = PktAddBot {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::AddBot,
-                player_id: self.local_player_id.unwrap_or(0),
-            },
+            header: PacketHeader::new(PacketType::AddBot, self.local_player_id.unwrap_or(0)),
             temperature,
         };
         packet_to_uint8_array(&pkt)
@@ -469,11 +453,7 @@ impl WebTetris {
             return js_sys::Uint8Array::new_with_length(0);
         };
         let pkt = PktReplay {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::Replay,
-                player_id: self.local_player_id.unwrap_or(0),
-            },
+            header: PacketHeader::new(PacketType::Replay, self.local_player_id.unwrap_or(0)),
             start_tick: events
                 .first()
                 .map_or(self.input_buf.current_tick(), |event| event.tick),
@@ -488,11 +468,7 @@ impl WebTetris {
         resume_token: String,
     ) -> js_sys::Uint8Array {
         let pkt = PktResume {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::Resume,
-                player_id: self.local_player_id.unwrap_or(0),
-            },
+            header: PacketHeader::new(PacketType::Resume, self.local_player_id.unwrap_or(0)),
             socket_id,
             resume_token,
         };
@@ -509,11 +485,7 @@ impl WebTetris {
             self.engine.state_hash(),
         ));
         let pkt = PktReconnect {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::Reconnect,
-                player_id: self.local_player_id.unwrap_or(0),
-            },
+            header: PacketHeader::new(PacketType::Reconnect, self.local_player_id.unwrap_or(0)),
             last_good_tick: client_hashes
                 .last()
                 .map_or(tetris_protocol::newtypes::TickNumber(0), |(tick, _)| *tick),
@@ -889,11 +861,7 @@ mod tests {
     fn packet_parse_room_snapshot_waits_for_local_player_id() {
         let mut wt = WebTetris::new(42);
         let snapshot = PktRoomSnapshot {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::RoomSnapshot,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::RoomSnapshot, 0),
             room_code: "ABCD".into(),
             players: vec![
                 RoomPlayerSnapshot {
@@ -921,11 +889,7 @@ mod tests {
         assert!(wt.opponent_infos.is_empty());
 
         let accept = PktServerAccept {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::ServerAccept,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::ServerAccept, 0),
             assigned_player_id: 0,
             max_players: 2,
         };
@@ -941,22 +905,14 @@ mod tests {
     fn countdown_cancel_clears_countdown() {
         let mut wt = WebTetris::new(42);
         let countdown = PktStartCountdown {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::StartCountdown,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::StartCountdown, 0),
             remaining_secs: 3,
         };
         wt.apply_packet(&packet_bytes(&countdown)).unwrap();
         assert_eq!(wt.countdown, Some(3));
 
         let cancel = PktCountdownCancel {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::CountdownCancel,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::CountdownCancel, 0),
         };
         let event = wt.apply_packet(&packet_bytes(&cancel)).unwrap();
 
@@ -968,20 +924,12 @@ mod tests {
     fn reset_multiplayer_game_preserves_room_metadata() {
         let mut wt = WebTetris::new(42);
         let accept = PktServerAccept {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::ServerAccept,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::ServerAccept, 0),
             assigned_player_id: 0,
             max_players: 2,
         };
         let snapshot = PktRoomSnapshot {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::RoomSnapshot,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::RoomSnapshot, 0),
             room_code: "ABCD".into(),
             players: vec![
                 RoomPlayerSnapshot {
@@ -1018,11 +966,7 @@ mod tests {
     fn packet_parse_state_hash_reports_mismatch() {
         let mut wt = WebTetris::new(42);
         let pkt = PktStateHash {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::StateHash,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::StateHash, 0),
             tick: TickNumber(100),
             hash: 0xDEAD_BEEF,
         };
@@ -1039,11 +983,7 @@ mod tests {
     fn reconcile_state_snapshot_applies_local_authority() {
         let mut wt = WebTetris::new(42);
         let pkt = PktStateSnapshot {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::StateSnapshot,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::StateSnapshot, 0),
             tick: TickNumber(7),
             board_rows: vec![0x3ff; 20],
             piece: Piece::O,
@@ -1075,11 +1015,7 @@ mod tests {
         let mut wt = WebTetris::new(42);
         wt.local_player_id = Some(0);
         let pkt = PktServerReplay {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::ServerReplay,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::ServerReplay, 0),
             source_player: PlayerSlot(1),
             events: vec![InputEvent {
                 key: KeyAction::KeyLeft,

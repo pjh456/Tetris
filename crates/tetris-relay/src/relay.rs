@@ -2,9 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
-use tetris_protocol::protocol::{
-    PROTOCOL_VERSION, PacketHeader, PacketType, PktRoomSnapshot, RoomPlayerSnapshot,
-};
+use tetris_protocol::protocol::{PacketHeader, PacketType, PktRoomSnapshot, RoomPlayerSnapshot};
 use tokio::sync::{Mutex, RwLock, broadcast};
 
 use crate::error::RelayError;
@@ -226,11 +224,7 @@ impl RoomManager {
         };
         let host_peer_id = *room.host_peer_id.read().await;
         let pkt = PktRoomSnapshot {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::RoomSnapshot,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::RoomSnapshot, 0),
             room_code: code.to_string(),
             players: peers
                 .iter()

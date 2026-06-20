@@ -62,11 +62,7 @@ impl RenetHostAdapter {
             self.known_clients.insert(client_id);
 
             let accept = PktServerAccept {
-                header: PacketHeader {
-                    version: PROTOCOL_VERSION,
-                    packet_type: PacketType::ServerAccept,
-                    player_id: 0,
-                },
+                header: PacketHeader::new(PacketType::ServerAccept, 0),
                 assigned_player_id: slot.0,
                 max_players: self.max_players,
             };

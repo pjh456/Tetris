@@ -2,8 +2,7 @@ use serde::{Deserialize, Serialize};
 use tetris_net::bot::AiBot;
 use tetris_protocol::newtypes::{PlayerSlot, Seed, TickNumber};
 use tetris_protocol::protocol::{
-    InputEvent, PROTOCOL_VERSION, PacketHeader, PacketType, PktRoomSnapshot, PktStateSnapshot,
-    RoomPlayerSnapshot,
+    InputEvent, PacketHeader, PacketType, PktRoomSnapshot, PktStateSnapshot, RoomPlayerSnapshot,
 };
 use tetris_sim::{AuthoritativeSim, RoomMode, SimOutbound};
 use tokio::sync::mpsc;
@@ -275,11 +274,7 @@ impl RoomActor {
 
     pub fn broadcast_lobby_reset(&self) {
         let snapshot = PktRoomSnapshot {
-            header: PacketHeader {
-                version: PROTOCOL_VERSION,
-                packet_type: PacketType::RoomSnapshot,
-                player_id: 0,
-            },
+            header: PacketHeader::new(PacketType::RoomSnapshot, 0),
             room_code: self.room_code.clone(),
             players: self.build_player_snapshots(),
         };
