@@ -1,4 +1,5 @@
 import { effect } from '@preact/signals-core';
+import { create_button } from '../core/dom';
 import { page, is_multiplayer, room_code, connection_status } from '../state';
 import { WsClient } from '../core/ws_client';
 import { set_multiplayer_ws } from '../core/multiplayer';
@@ -207,11 +208,7 @@ export function create_lobby_screen(): HTMLElement {
 }
 
 function build_add_ai_button(): HTMLButtonElement {
-  const btn = document.createElement('button');
-  btn.className = 'btn';
-  btn.textContent = '加 AI';
-  btn.setAttribute('aria-label', '加 AI 对手');
-  return btn;
+  return create_button('加 AI', { ariaLabel: '加 AI 对手' });
 }
 
 function build_room_code_section(): {
@@ -230,13 +227,12 @@ function build_room_code_section(): {
   code_display.className = 'room-code';
   code_display.textContent = room_code.value ?? '----';
 
-  const copy_btn = document.createElement('button');
-  copy_btn.className = 'btn';
-  copy_btn.textContent = 'Copy';
-  copy_btn.addEventListener('click', () => {
-    if (room_code.value) {
-      navigator.clipboard.writeText(room_code.value).catch(() => {});
-    }
+  const copy_btn = create_button('Copy', {
+    onClick: () => {
+      if (room_code.value) {
+        navigator.clipboard.writeText(room_code.value).catch(() => {});
+      }
+    },
   });
 
   const join_row = document.createElement('div');
@@ -387,9 +383,7 @@ function build_chat_section(on_send: (text: string) => void): {
   input.maxLength = 256;
   input.placeholder = 'Type a message...';
 
-  const send_btn = document.createElement('button');
-  send_btn.className = 'btn';
-  send_btn.textContent = 'Send';
+  const send_btn = create_button('Send');
 
   function send_message() {
     const text = input.value.trim();

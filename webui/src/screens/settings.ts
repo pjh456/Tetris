@@ -1,4 +1,5 @@
 import { page, settings } from '../state';
+import { create_button } from '../core/dom';
 import {
   load_settings,
   save_settings,
@@ -73,12 +74,11 @@ export function create_settings_screen(): HTMLElement {
 
   const header = document.createElement('div');
   header.className = 'settings-header';
-  const back_btn = document.createElement('button');
-  back_btn.className = 'btn';
-  back_btn.textContent = '← Back';
-  back_btn.onclick = () => {
-    page.value = 'home';
-  };
+  const back_btn = create_button('← Back', {
+    onClick: () => {
+      page.value = 'home';
+    },
+  });
   const title = document.createElement('h2');
   title.className = 'settings-title';
   title.textContent = 'Settings';
@@ -222,9 +222,7 @@ function create_display_section(s: Settings, on_save: () => void): HTMLElement {
   const theme_group = document.createElement('div');
   theme_group.style.cssText = 'display:flex;gap:var(--space-sm);';
   for (const t of ['cyberpunk', 'retro', 'minimal'] as const) {
-    const btn = document.createElement('button');
-    btn.className = 'btn';
-    btn.textContent = t.charAt(0).toUpperCase() + t.slice(1);
+    const btn = create_button(t.charAt(0).toUpperCase() + t.slice(1));
     if (s.theme === t) btn.style.borderColor = 'var(--color-accent)';
     btn.onclick = () => {
       s.theme = t;

@@ -1,4 +1,5 @@
 import init, { WebTetris, wasm_memory } from '../../wasm/tetris_wasm.js';
+import { create_button } from './dom';
 
 interface LoadingElement extends HTMLElement {
   _cleanup?: () => void;
@@ -13,11 +14,16 @@ function create_grid_view(wasm: WebTetris): Uint8Array {
   return new Uint8Array(memory.buffer, wasm.grid_ptr(), wasm.grid_len());
 }
 
-export function get_grid_view(): Uint8Array {
+function require_instance(): WebTetris {
   if (!instance) throw new Error('WASM not initialized');
+  return instance;
+}
+
+export function get_grid_view(): Uint8Array {
+  const i = require_instance();
   // Recreate on every call: WASM memory may have grown, detaching old view.
-  instance.update_grid();
-  grid_view = create_grid_view(instance);
+  i.update_grid();
+  grid_view = create_grid_view(i);
   return grid_view;
 }
 
@@ -72,10 +78,7 @@ export function wasm_error_screen(msg: string): HTMLElement {
   msg_el.style.cssText = 'color:var(--color-muted);font-size:12px;opacity:0.6;';
   msg_el.textContent = msg;
   el.appendChild(msg_el);
-  const btn = document.createElement('button');
-  btn.className = 'btn';
-  btn.textContent = 'Retry Loading';
-  btn.onclick = () => location.reload();
+  const btn = create_button('Retry Loading', { onClick: () => location.reload() });
   el.appendChild(btn);
   return el;
 }
@@ -118,30 +121,28 @@ export async function init_wasm(container?: HTMLElement): Promise<WebTetris> {
 }
 
 export function get_wasm(): WebTetris {
-  if (!instance) throw new Error('WASM not initialized');
-  return instance;
+  return require_instance();
 }
 
 export type { WebTetris };
 
 export function reset_wasm(): WebTetris {
-  if (!instance) throw new Error('WASM not initialized');
+  const i = require_instance();
   const seed = Date.now() >>> 0;
-  instance.reset(seed);
-  grid_view = create_grid_view(instance);
-  return instance;
+  i.reset(seed);
+  grid_view = create_grid_view(i);
+  return i;
 }
 
 export function reset_multiplayer_wasm(seed: number): WebTetris {
-  if (!instance) throw new Error('WASM not initialized');
-  instance.reset_multiplayer_game(seed >>> 0);
-  grid_view = create_grid_view(instance);
-  return instance;
+  const i = require_instance();
+  i.reset_multiplayer_game(seed >>> 0);
+  grid_view = create_grid_view(i);
+  return i;
 }
 
 export function get_opponent_grid_view(player_id: number): Uint8Array {
-  if (!instance) throw new Error('WASM not initialized');
-  return instance.get_opponent_grid(player_id);
+  return require_instance().get_opponent_grid(player_id);
 }
 
 export function get_opponent_count(): number {
@@ -157,8 +158,7 @@ export function get_opponent_info(index: number): Record<string, unknown> | null
 }
 
 export function get_opponent_player_grid(player_id: number): Uint8Array {
-  if (!instance) throw new Error('WASM not initialized');
-  return instance.get_opponent_grid(player_id);
+  return require_instance().get_opponent_grid(player_id);
 }
 
 export type MultiplayerPlayer = {
@@ -210,56 +210,45 @@ export function consume_last_multiplayer_event(): MultiplayerEvent | null {
 }
 
 export function make_join_room_packet(room: string, player_name: string): Uint8Array {
-  if (!instance) throw new Error('WASM not initialized');
-  return instance.make_join_room_packet(room, player_name);
+  return require_instance().make_join_room_packet(room, player_name);
 }
 
 export function make_player_ready_packet(ready: boolean): Uint8Array {
-  if (!instance) throw new Error('WASM not initialized');
-  return instance.make_player_ready_packet(ready);
+  return require_instance().make_player_ready_packet(ready);
 }
 
 export function make_chat_message_packet(message: string): Uint8Array {
-  if (!instance) throw new Error('WASM not initialized');
-  return instance.make_chat_message_packet(message, new Date().toISOString());
+  return require_instance().make_chat_message_packet(message, new Date().toISOString());
 }
 
 export function make_add_bot_packet(temperature: number): Uint8Array {
-  if (!instance) throw new Error('WASM not initialized');
-  return instance.make_add_bot_packet(temperature);
+  return require_instance().make_add_bot_packet(temperature);
 }
 
 export function push_input_event(key: number, pressed: boolean, subframe = 0): void {
-  if (!instance) throw new Error('WASM not initialized');
-  instance.push_input_event(key, pressed, subframe);
+  require_instance().push_input_event(key, pressed, subframe);
 }
 
 export function advance_client_tick(): void {
-  if (!instance) throw new Error('WASM not initialized');
-  instance.advance_client_tick();
+  require_instance().advance_client_tick();
 }
 
 export function should_flush_input(): boolean {
-  if (!instance) throw new Error('WASM not initialized');
-  return instance.should_flush_input();
+  return require_instance().should_flush_input();
 }
 
 export function flush_input_buffer(): unknown {
-  if (!instance) throw new Error('WASM not initialized');
-  return instance.flush_input_buffer();
+  return require_instance().flush_input_buffer();
 }
 
 export function make_replay_packet(events: unknown): Uint8Array {
-  if (!instance) throw new Error('WASM not initialized');
-  return instance.make_replay_packet(events);
+  return require_instance().make_replay_packet(events);
 }
 
 export function make_resume_packet(socket_id: string, resume_token: string): Uint8Array {
-  if (!instance) throw new Error('WASM not initialized');
-  return instance.make_resume_packet(socket_id, resume_token);
+  return require_instance().make_resume_packet(socket_id, resume_token);
 }
 
 export function make_reconnect_packet(): Uint8Array {
-  if (!instance) throw new Error('WASM not initialized');
-  return instance.make_reconnect_packet();
+  return require_instance().make_reconnect_packet();
 }

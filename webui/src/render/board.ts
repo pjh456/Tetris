@@ -137,3 +137,28 @@ export function create_mini_board_renderer(
     },
   };
 }
+
+export type OpponentPanel = {
+  slot: HTMLElement;
+  name_el: HTMLElement;
+  canvas: HTMLCanvasElement;
+  renderer: {
+    canvas: HTMLCanvasElement;
+    render: (grid: ArrayLike<number>, colors?: string[]) => void;
+    destroy: () => void;
+  };
+};
+
+export function create_opponent_panel(name: string): OpponentPanel {
+  const slot = document.createElement('div');
+  slot.className = 'opponent-panel';
+  const name_el = document.createElement('div');
+  name_el.className = 'opponent-name';
+  name_el.textContent = name;
+  const canvas = document.createElement('canvas');
+  canvas.style.display = 'none';
+  const r = create_mini_board_renderer(canvas, 6);
+  slot.appendChild(name_el);
+  slot.appendChild(canvas);
+  return { slot, name_el, canvas, renderer: { canvas, render: r.render, destroy: r.destroy } };
+}

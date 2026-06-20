@@ -19,7 +19,11 @@ import {
   is_multiplayer,
   connection_status,
 } from '../state';
-import { createBoardRenderer, create_mini_board_renderer } from '../render/board';
+import {
+  createBoardRenderer,
+  create_mini_board_renderer,
+  create_opponent_panel,
+} from '../render/board';
 import { createPreviewRenderer, createNextStackRenderer } from '../render/preview';
 import { create_hud_overlay } from '../render/hud';
 import { get_theme_colors } from '../render/colors';
@@ -30,6 +34,7 @@ import { run_collapse_animation } from '../fx/gameover_fx';
 import { bindKeyboard, type KeyboardConfig } from '../input/keyboard';
 import { Actions } from '../game/actions';
 import { audio_manager } from '../core/audio';
+import { create_button, create_label } from '../core/dom';
 import { create_touch_overlay } from '../input/touch';
 import { get_multiplayer_ws } from '../core/multiplayer';
 import { OpponentReplayPlayer } from '../core/replay_player';
@@ -134,10 +139,7 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   right_col.appendChild(next_canvas);
 
   const hud = create_hud_overlay(right_col);
-  const add_ai_btn = document.createElement('button');
-  add_ai_btn.className = 'btn';
-  add_ai_btn.textContent = '加 AI';
-  add_ai_btn.setAttribute('aria-label', '加 AI 对手');
+  const add_ai_btn = create_button('加 AI', { ariaLabel: '加 AI 对手' });
   if (!is_multiplayer.value) {
     right_col.appendChild(add_ai_btn);
   }
@@ -185,27 +187,16 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   }
 
   if (mp_ws || has_local_ai_opponent()) {
-    const opp_label = document.createElement('div');
-    opp_label.className = 'lobby-label';
-    opp_label.textContent = mp_ws ? 'OTHERS' : 'AI';
+    const opp_label = create_label(mp_ws ? 'OTHERS' : 'AI');
     opponent_col.appendChild(opp_label);
 
     // Reserve slots for up to 3 opponents
     const slots = mp_ws ? 3 : 1;
     for (let i = 0; i < slots; i++) {
-      const slot = document.createElement('div');
-      slot.className = 'opponent-panel';
+      const { slot, name_el, renderer } = create_opponent_panel(mp_ws ? `P${i + 2}` : 'AI');
       opponent_slots.push(slot);
-      const name_el = document.createElement('div');
-      name_el.className = 'opponent-name';
-      name_el.textContent = mp_ws ? `P${i + 2}` : 'AI';
       opponent_labels.push(name_el);
-      const canvas = document.createElement('canvas');
-      canvas.style.display = 'none';
-      const r = create_mini_board_renderer(canvas, 6);
-      opponent_renderers.push({ canvas, render: r.render, destroy: r.destroy });
-      slot.appendChild(name_el);
-      slot.appendChild(canvas);
+      opponent_renderers.push(renderer);
       opponent_col.appendChild(slot);
     }
   }

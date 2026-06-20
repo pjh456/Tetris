@@ -58,6 +58,17 @@ vi.mock('../../core/audio', () => ({
 vi.mock('../../render/board', () => ({
   createBoardRenderer: vi.fn(() => ({ render: vi.fn(), destroy: vi.fn() })),
   create_mini_board_renderer: vi.fn(() => ({ render: vi.fn(), destroy: vi.fn() })),
+  create_opponent_panel: vi.fn((name: string) => {
+    const slot = document.createElement('div');
+    slot.className = 'opponent-panel';
+    const name_el = document.createElement('div');
+    name_el.className = 'opponent-name';
+    name_el.textContent = name;
+    const canvas = document.createElement('canvas');
+    slot.appendChild(name_el);
+    slot.appendChild(canvas);
+    return { slot, name_el, canvas, renderer: { canvas, render: vi.fn(), destroy: vi.fn() } };
+  }),
 }));
 
 vi.mock('../../render/preview', () => ({

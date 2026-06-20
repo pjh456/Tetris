@@ -1,4 +1,5 @@
 import { page } from '../state';
+import { create_button } from '../core/dom';
 import { get_leaderboard, clear_leaderboard, type LeaderboardEntry } from '../core/settings_store';
 
 const RANK_COLORS = ['#ffd700', '#c0c0c0', '#cd7f32'];
@@ -108,11 +109,10 @@ function build_buttons(overlay: HTMLElement): HTMLElement {
   const bar = document.createElement('div');
   bar.className = 'leaderboard-buttons';
 
-  const play_btn = document.createElement('button');
-  play_btn.className = 'btn';
-  play_btn.textContent = 'Play Again';
-  play_btn.addEventListener('click', () => {
-    page.value = 'game';
+  const play_btn = create_button('Play Again', {
+    onClick: () => {
+      page.value = 'game';
+    },
   });
 
   const clear_btn = document.createElement('button');
@@ -122,11 +122,10 @@ function build_buttons(overlay: HTMLElement): HTMLElement {
     show_confirm(overlay);
   });
 
-  const close_btn = document.createElement('button');
-  close_btn.className = 'btn';
-  close_btn.textContent = 'Close';
-  close_btn.addEventListener('click', () => {
-    page.value = 'home';
+  const close_btn = create_button('Close', {
+    onClick: () => {
+      page.value = 'home';
+    },
   });
 
   bar.append(play_btn, clear_btn, close_btn);
