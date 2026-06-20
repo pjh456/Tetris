@@ -1,29 +1,33 @@
-type Particle = {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  size: number;
-  life: number;
-  max_life: number;
-  color: string;
-};
+import { type FxParticle, ParticleFx } from './particle_fx';
 
-export class HardDropFx {
-  private canvas: HTMLCanvasElement;
-  private ctx: CanvasRenderingContext2D;
-  private particles: Particle[] = [];
+class HardDropParticle implements FxParticle {
+  x = 0;
+  y = 0;
+  vx = 0;
+  vy = 0;
+  size = 2;
+  life = 0;
+  max_life = 0;
+  color = '';
 
-  constructor(canvas: HTMLCanvasElement) {
-    this.canvas = canvas;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('2D context not available');
-    this.ctx = ctx;
+  update(dt: number): boolean {
+    this.life -= dt;
+    if (this.life <= 0) return false;
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+    return true;
   }
 
+  draw(ctx: CanvasRenderingContext2D): void {
+    ctx.globalAlpha = this.life / this.max_life;
+    ctx.fillStyle = this.color;
+    ctx.fillRect(this.x - this.size / 2, this.y - this.size / 2, this.size, this.size);
+  }
+}
+
+export class HardDropFx extends ParticleFx<HardDropParticle> {
   trigger(mask: number, y_start: number, y_end: number, color: string) {
-    const css_w = parseFloat(this.canvas.style.width) || this.canvas.width;
-    const cell = css_w / 10;
+    const cell = this.css_w / 10;
     const min_y = Math.min(y_start, y_end);
     const max_y = Math.max(y_start, y_end);
 
@@ -31,41 +35,17 @@ export class HardDropFx {
       if (!(mask & (1 << col))) continue;
       const x_base = col * cell + cell * 0.5;
       for (let i = 0; i < 6; i++) {
-        this.particles.push({
-          x: x_base,
-          y: min_y + Math.random() * (max_y - min_y + cell),
-          vx: (Math.random() < 0.5 ? -1 : 1) * (0.08 + Math.random() * 0.15),
-          vy: 0,
-          size: 2 + Math.random() * 2,
-          max_life: 250 + Math.random() * 100,
-          life: 250 + Math.random() * 100,
-          color,
-        });
+        const p = new HardDropParticle();
+        p.x = x_base;
+        p.y = min_y + Math.random() * (max_y - min_y + cell);
+        p.vx = (Math.random() < 0.5 ? -1 : 1) * (0.08 + Math.random() * 0.15);
+        p.vy = 0;
+        p.size = 2 + Math.random() * 2;
+        p.max_life = 250 + Math.random() * 100;
+        p.life = 250 + Math.random() * 100;
+        p.color = color;
+        this.add(p);
       }
     }
-  }
-
-  update(dt: number) {
-    for (let i = this.particles.length - 1; i >= 0; i--) {
-      const p = this.particles[i];
-      p.life -= dt;
-      if (p.life <= 0) {
-        this.particles.splice(i, 1);
-        continue;
-      }
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
-    }
-  }
-
-  render() {
-    const prev_alpha = this.ctx.globalAlpha;
-    for (const p of this.particles) {
-      const alpha = p.life / p.max_life;
-      this.ctx.globalAlpha = alpha;
-      this.ctx.fillStyle = p.color;
-      this.ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
-    }
-    this.ctx.globalAlpha = prev_alpha;
   }
 }

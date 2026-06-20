@@ -1,3 +1,5 @@
+import { type FxParticle, ParticleFx } from './particle_fx';
+
 type Flash = {
   y: number;
   height: number;
@@ -5,23 +7,36 @@ type Flash = {
   life: number;
 };
 
-export class LineFx {
-  private canvas: HTMLCanvasElement;
-  private ctx: CanvasRenderingContext2D;
+class LineParticle implements FxParticle {
+  x = 0;
+  y = 0;
+  vx = 0;
+  vy = 0;
+  size = 2;
+  life = 0;
+  maxLife = 0;
+  color = '';
+
+  update(dt: number): boolean {
+    this.life -= dt;
+    if (this.life <= 0) return false;
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+    this.vy += 0.0009 * dt;
+    return true;
+  }
+
+  draw(ctx: CanvasRenderingContext2D): void {
+    const alpha = Math.max(0, this.life / this.maxLife);
+    ctx.fillStyle = this.color
+      ? withAlpha(this.color, 0.9 * alpha)
+      : `rgba(200, 240, 255, ${0.9 * alpha})`;
+    ctx.fillRect(this.x, this.y, this.size, this.size * 0.6);
+  }
+}
+
+export class LineFx extends ParticleFx<LineParticle> {
   private flashes: Flash[] = [];
-  private particles: Particle[] = [];
-  private pool: Particle[] = [];
-
-  constructor(canvas: HTMLCanvasElement) {
-    this.canvas = canvas;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('2D context not available');
-    this.ctx = ctx;
-  }
-
-  private get css_w(): number {
-    return parseFloat(this.canvas.style.width) || this.canvas.clientWidth || this.canvas.width;
-  }
 
   resize(width: number, height: number) {
     this.canvas.width = width;
@@ -44,19 +59,7 @@ export class LineFx {
     }
     this.flashes.length = write;
 
-    const next: Particle[] = [];
-    for (const p of this.particles) {
-      p.life -= dt;
-      if (p.life <= 0) {
-        this.pool.push(p);
-        continue;
-      }
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
-      p.vy += 0.0009 * dt;
-      next.push(p);
-    }
-    this.particles = next;
+    super.update(dt);
   }
 
   render() {
@@ -71,20 +74,13 @@ export class LineFx {
       ctx.fillRect(0, f.y + f.height * 0.2, this.css_w, f.height * 0.6);
     }
 
-    for (const p of this.particles) {
-      const t = p.life / p.maxLife;
-      const alpha = Math.max(0, t);
-      ctx.fillStyle = p.color
-        ? withAlpha(p.color, 0.9 * alpha)
-        : `rgba(200, 240, 255, ${0.9 * alpha})`;
-      ctx.fillRect(p.x, p.y, p.size, p.size * 0.6);
-    }
+    super.render();
   }
 
   private spawnParticles(y: number, height: number) {
     const count = 16;
     for (let i = 0; i < count; i++) {
-      const p = this.pool.pop() ?? makeParticle();
+      const p = new LineParticle();
       p.x = Math.random() * this.css_w;
       p.y = y + Math.random() * height;
       p.vx = (Math.random() - 0.5) * 0.3;
@@ -93,7 +89,7 @@ export class LineFx {
       p.maxLife = 650 + Math.random() * 150;
       p.life = p.maxLife;
       p.color = '';
-      this.particles.push(p);
+      this.add(p);
     }
   }
 
@@ -107,7 +103,7 @@ export class LineFx {
       const xBase = col * cell + cell * 0.5;
       const count = 14;
       for (let i = 0; i < count; i++) {
-        const p = this.pool.pop() ?? makeParticle();
+        const p = new LineParticle();
         const side = Math.random() < 0.5 ? -1 : 1;
         p.x = xBase + side * (cell * 0.1 + Math.random() * cell * 0.2);
         p.y = minY + Math.random() * (maxY - minY + cell);
@@ -117,34 +113,10 @@ export class LineFx {
         p.maxLife = 480 + Math.random() * 180;
         p.life = p.maxLife;
         p.color = color;
-        this.particles.push(p);
+        this.add(p);
       }
     }
   }
-}
-
-type Particle = {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  size: number;
-  life: number;
-  maxLife: number;
-  color: string;
-};
-
-function makeParticle(): Particle {
-  return {
-    x: 0,
-    y: 0,
-    vx: 0,
-    vy: 0,
-    size: 2,
-    life: 0,
-    maxLife: 0,
-    color: '',
-  };
 }
 
 function withAlpha(color: string, alpha: number) {
