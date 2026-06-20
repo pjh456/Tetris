@@ -94,8 +94,7 @@ impl MultiplayerEvent {
     }
 }
 
-#[cfg(target_arch = "wasm32")]
-#[wasm_bindgen]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[allow(dead_code)]
 pub struct WebTetris {
     engine: Engine<10, 20>,
@@ -113,10 +112,11 @@ pub struct WebTetris {
     last_state_hash: Option<(tetris_protocol::newtypes::TickNumber, u32)>,
 }
 
-#[cfg(target_arch = "wasm32")]
-#[wasm_bindgen]
+// 纯 Rust 逻辑 + 私有 helper：对 wasm 导出，对 native 普通方法（tests 可见）。
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 impl WebTetris {
-    #[wasm_bindgen(constructor)]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen(constructor))]
     pub fn new(seed: u32) -> Self {
         let mut engine = Engine::<10, 20>::new();
         engine.reset_with_level(seed, 1);
@@ -138,39 +138,31 @@ impl WebTetris {
         }
     }
 
-    pub fn reset(&mut self, seed: u32) {
+    fn reset_common(&mut self, seed: u32, level: u32, clear_opponents: bool) {
         self.has_hold = false;
-        self.engine.reset_with_level(seed, 1);
-        self.opponent_engines.clear();
-        self.opponent_grid_bufs.clear();
-        self.room_player_infos.clear();
-        self.opponent_infos.clear();
+        self.engine.reset_with_level(seed, level);
+        if clear_opponents {
+            self.opponent_engines.clear();
+            self.opponent_grid_bufs.clear();
+            self.room_player_infos.clear();
+            self.opponent_infos.clear();
+        }
         self.countdown = None;
         self.last_event = None;
         self.input_buf = input_buffer::ClientInputBuffer::new();
         self.last_state_hash = None;
+    }
+
+    pub fn reset(&mut self, seed: u32) {
+        self.reset_common(seed, 1, true);
     }
 
     pub fn reset_multiplayer_game(&mut self, seed: u32) {
-        self.has_hold = false;
-        self.engine.reset_with_level(seed, 1);
-        self.countdown = None;
-        self.last_event = None;
-        self.input_buf = input_buffer::ClientInputBuffer::new();
-        self.last_state_hash = None;
+        self.reset_common(seed, 1, false);
     }
 
     pub fn reset_with_level(&mut self, seed: u32, start_level: u32) {
-        self.has_hold = false;
-        self.engine.reset_with_level(seed, start_level.clamp(1, 15));
-        self.opponent_engines.clear();
-        self.opponent_grid_bufs.clear();
-        self.room_player_infos.clear();
-        self.opponent_infos.clear();
-        self.countdown = None;
-        self.last_event = None;
-        self.input_buf = input_buffer::ClientInputBuffer::new();
-        self.last_state_hash = None;
+        self.reset_common(seed, start_level.clamp(1, 15), true);
     }
 
     fn ensure_opponent_slot(&mut self, player_id: u8) -> Option<usize> {
@@ -205,33 +197,9 @@ impl WebTetris {
         );
     }
 
-    pub fn tick(&mut self, delta_ms: u32) -> JsValue {
-        let result = self.engine.tick(delta_ms);
-        serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL)
-    }
-
-    pub fn handle_action(&mut self, action_val: u8) -> JsValue {
-        let action = Action::from_u8(action_val);
-        let result = self.engine.handle_action(action);
-        if action == Action::Hold {
-            self.has_hold = true;
-        }
-        serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL)
-    }
-
-    #[wasm_bindgen(getter)]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen(getter))]
     pub fn is_game_over(&self) -> bool {
         self.engine.game_over
-    }
-
-    pub fn get_grid(&self) -> js_sys::Uint8Array {
-        let ghost_y = tetris_core::rules::get_ghost_y(&self.engine.state);
-        let grid = utils::build_grid(&self.engine.state, ghost_y, self.engine.game_over);
-        let arr = js_sys::Uint8Array::new_with_length(200);
-        for (i, &v) in grid.iter().enumerate() {
-            arr.set_index(i as u32, v);
-        }
-        arr
     }
 
     pub fn grid_ptr(&self) -> *const u8 {
@@ -253,20 +221,11 @@ impl WebTetris {
     }
 
     pub fn get_hold(&self) -> i32 {
-        if !self.has_hold {
-            -1
-        } else {
+        if self.has_hold {
             self.engine.state.hold as i32
+        } else {
+            -1
         }
-    }
-
-    pub fn get_next(&self) -> js_sys::Uint8Array {
-        let next = utils::build_next(&self.engine.state);
-        let arr = js_sys::Uint8Array::new_with_length(5);
-        for (i, &v) in next.iter().enumerate() {
-            arr.set_index(i as u32, v);
-        }
-        arr
     }
 
     pub fn would_hit_wall(&self, dx: i8) -> bool {
@@ -295,6 +254,73 @@ impl WebTetris {
         mask
     }
 
+    pub fn get_lock_timer(&self) -> u16 {
+        self.engine.get_lock_timer().max(0) as u16
+    }
+
+    pub fn receive_garbage(&mut self, lines: u8, hole_x: u8) {
+        self.engine.add_pending_garbage(lines, hole_x, 0);
+    }
+
+    pub fn opponent_count(&self) -> u8 {
+        self.opponent_infos.len() as u8
+    }
+
+    pub fn push_input_event(&mut self, key: u8, pressed: bool, subframe: f32) {
+        let action = tetris_protocol::newtypes::KeyAction::from_u8(key);
+        self.input_buf.push(action, pressed, subframe);
+    }
+
+    pub fn advance_client_tick(&mut self) {
+        self.input_buf.advance_tick();
+    }
+
+    pub fn should_flush_input(&self) -> bool {
+        self.input_buf.should_flush()
+    }
+
+    pub fn get_state_hash(&self) -> u32 {
+        self.engine.state_hash()
+    }
+}
+
+// JS 边界方法：返回 JsValue/Uint8Array，仅 wasm 编译。
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+impl WebTetris {
+    pub fn tick(&mut self, delta_ms: u32) -> JsValue {
+        let result = self.engine.tick(delta_ms);
+        serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL)
+    }
+
+    pub fn handle_action(&mut self, action_val: u8) -> JsValue {
+        let action = Action::from_u8(action_val);
+        let result = self.engine.handle_action(action);
+        if action == Action::Hold {
+            self.has_hold = true;
+        }
+        serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL)
+    }
+
+    pub fn get_grid(&self) -> js_sys::Uint8Array {
+        let ghost_y = tetris_core::rules::get_ghost_y(&self.engine.state);
+        let grid = utils::build_grid(&self.engine.state, ghost_y, self.engine.game_over);
+        let arr = js_sys::Uint8Array::new_with_length(200);
+        for (i, &v) in grid.iter().enumerate() {
+            arr.set_index(i as u32, v);
+        }
+        arr
+    }
+
+    pub fn get_next(&self) -> js_sys::Uint8Array {
+        let next = utils::build_next(&self.engine.state);
+        let arr = js_sys::Uint8Array::new_with_length(5);
+        for (i, &v) in next.iter().enumerate() {
+            arr.set_index(i as u32, v);
+        }
+        arr
+    }
+
     pub fn get_last_hard_drop_info(&self) -> JsValue {
         let info = serde_wasm_bindgen::to_value(&utils::HardDropInfo {
             cols: self.engine.state.last_harddrop_cols,
@@ -303,10 +329,6 @@ impl WebTetris {
             piece: self.engine.state.last_harddrop_piece as u8,
         });
         info.unwrap_or(JsValue::NULL)
-    }
-
-    pub fn get_lock_timer(&self) -> u16 {
-        self.engine.get_lock_timer().max(0) as u16
     }
 
     pub fn get_hud_data(&self) -> JsValue {
@@ -401,10 +423,6 @@ impl WebTetris {
         packet_to_uint8_array(&pkt)
     }
 
-    pub fn receive_garbage(&mut self, lines: u8, hole_x: u8) {
-        self.engine.add_pending_garbage(lines, hole_x, 0);
-    }
-
     pub fn get_opponent_grid(&self, player_id: u8) -> js_sys::Uint8Array {
         let idx = player_id as usize;
         if idx >= self.opponent_grid_bufs.len() {
@@ -412,10 +430,6 @@ impl WebTetris {
         }
         let buf = &self.opponent_grid_bufs[idx];
         js_sys::Uint8Array::from(buf.as_slice())
-    }
-
-    pub fn opponent_count(&self) -> u8 {
-        self.opponent_infos.len() as u8
     }
 
     pub fn get_opponent_info(&self, index: u8) -> JsValue {
@@ -426,26 +440,9 @@ impl WebTetris {
         serde_wasm_bindgen::to_value(&self.opponent_infos[idx]).unwrap_or(JsValue::NULL)
     }
 
-    pub fn push_input_event(&mut self, key: u8, pressed: bool, subframe: f32) {
-        let action = tetris_protocol::newtypes::KeyAction::from_u8(key);
-        self.input_buf.push(action, pressed, subframe);
-    }
-
     pub fn flush_input_buffer(&mut self) -> JsValue {
         let events = self.input_buf.flush();
         serde_wasm_bindgen::to_value(&events).unwrap_or(JsValue::NULL)
-    }
-
-    pub fn advance_client_tick(&mut self) {
-        self.input_buf.advance_tick();
-    }
-
-    pub fn should_flush_input(&self) -> bool {
-        self.input_buf.should_flush()
-    }
-
-    pub fn get_state_hash(&self) -> u32 {
-        self.engine.state_hash()
     }
 
     pub fn make_replay_packet(&self, events_js: JsValue) -> js_sys::Uint8Array {
@@ -506,94 +503,6 @@ fn packet_to_uint8_array<T: Serialize>(packet: &T) -> js_sys::Uint8Array {
     match bincode::serialize(packet) {
         Ok(bytes) => js_sys::Uint8Array::from(bytes.as_slice()),
         Err(_) => js_sys::Uint8Array::new_with_length(0),
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-#[allow(dead_code)]
-pub struct WebTetris {
-    #[allow(dead_code)]
-    pub engine: Engine<10, 20>,
-    has_hold: bool,
-    grid_buf: Vec<u8>,
-    opponent_engines: Vec<Engine<10, 20>>,
-    opponent_grid_bufs: Vec<Vec<u8>>,
-    room_player_infos: Vec<OpponentInfo>,
-    opponent_infos: Vec<OpponentInfo>,
-    room_code: Option<String>,
-    local_player_id: Option<u8>,
-    countdown: Option<u8>,
-    last_event: Option<MultiplayerEvent>,
-    input_buf: input_buffer::ClientInputBuffer,
-    last_state_hash: Option<(tetris_protocol::newtypes::TickNumber, u32)>,
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-#[allow(dead_code)]
-impl WebTetris {
-    pub fn new(seed: u32) -> Self {
-        let mut engine = Engine::<10, 20>::new();
-        engine.reset_with_level(seed, 1);
-        WebTetris {
-            engine,
-            has_hold: false,
-            grid_buf: vec![0u8; 200],
-            opponent_engines: Vec::new(),
-            opponent_grid_bufs: Vec::new(),
-            room_player_infos: Vec::new(),
-            opponent_infos: Vec::new(),
-            room_code: None,
-            local_player_id: None,
-            countdown: None,
-            last_event: None,
-            input_buf: input_buffer::ClientInputBuffer::new(),
-            last_state_hash: None,
-        }
-    }
-
-    pub fn receive_garbage(&mut self, lines: u8, hole_x: u8) {
-        self.engine.add_pending_garbage(lines, hole_x, 0);
-    }
-
-    pub fn reset_multiplayer_game(&mut self, seed: u32) {
-        self.has_hold = false;
-        self.engine.reset_with_level(seed, 1);
-        self.countdown = None;
-        self.last_event = None;
-        self.input_buf = input_buffer::ClientInputBuffer::new();
-        self.last_state_hash = None;
-    }
-
-    fn ensure_opponent_slot(&mut self, player_id: u8) -> Option<usize> {
-        if player_id >= MAX_OPPONENTS {
-            return None;
-        }
-        let idx = player_id as usize;
-        if self
-            .local_player_id
-            .is_some_and(|local| idx == local as usize)
-        {
-            return None;
-        }
-        while self.opponent_engines.len() <= idx {
-            self.opponent_engines.push(Engine::<10, 20>::new());
-            self.opponent_grid_bufs.push(vec![0u8; OPPONENT_GRID_LEN]);
-        }
-        Some(idx)
-    }
-
-    fn refresh_opponent_grid(&mut self, idx: usize) {
-        if idx >= self.opponent_engines.len() || idx >= self.opponent_grid_bufs.len() {
-            return;
-        }
-        let engine = &self.opponent_engines[idx];
-        let ghost_y = tetris_core::rules::get_ghost_y(&engine.state);
-        utils::fill_grid_buf(
-            &engine.state,
-            ghost_y,
-            engine.game_over,
-            &mut self.opponent_grid_bufs[idx],
-        );
     }
 }
 
