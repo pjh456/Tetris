@@ -8,9 +8,9 @@ use bincode::Options;
 use bincode::serialize;
 use futures_util::{SinkExt, StreamExt};
 use tetris_protocol::protocol::{
-    InputEvent, PROTOCOL_VERSION, PacketHeader, PacketType, PktChatMessage, PktGameStart,
-    PktJoinRoom, PktPlayerReady, PktReconnect, PktReplay, PktResume, PktServerAccept,
-    PktStartCountdown,
+    InputEvent, PROTOCOL_VERSION, PacketHeader, PacketType, PktAddBot, PktChatMessage,
+    PktCountdownCancel, PktGameStart, PktJoinRoom, PktPlayerReady, PktReconnect, PktReplay,
+    PktResume, PktServerAccept, PktStartCountdown,
 };
 use tokio::sync::Mutex;
 use tokio::time::interval;
@@ -241,6 +241,7 @@ async fn handle_binary_message(
                 let all_ready = peers.len() >= 2 && peers.iter().all(|peer| peer.ready);
                 if !all_ready {
                     let _ = state.room_manager.cancel_countdown(room_code).await;
+                    broadcast_countdown_cancel(state, room_code).await;
                 }
                 if all_ready {
                     let countdown_generation = state
@@ -270,6 +271,7 @@ async fn handle_binary_message(
                                 if !still_ready || !countdown_current {
                                     let _ =
                                         state.room_manager.cancel_countdown(&room_code_owned).await;
+                                    broadcast_countdown_cancel(&state, &room_code_owned).await;
                                     return;
                                 }
                                 let countdown = PktStartCountdown {
@@ -301,6 +303,7 @@ async fn handle_binary_message(
                                     .unwrap_or(false)
                             {
                                 let _ = state.room_manager.cancel_countdown(&room_code_owned).await;
+                                broadcast_countdown_cancel(&state, &room_code_owned).await;
                                 return;
                             }
                             let random_seed = rand::random::<u32>();
@@ -325,6 +328,11 @@ async fn handle_binary_message(
                                     room_code_owned.clone(),
                                     Seed(random_seed as i32),
                                 );
+                                let room_peers = state
+                                    .room_manager
+                                    .room_peers(&room_code_owned)
+                                    .await
+                                    .unwrap_or_default();
                                 for (player_id, input_rx, outbound_tx) in player_channels {
                                     let (conn_tx, _) = tokio::sync::mpsc::channel::<InputEvent>(64);
                                     let conn = make_player_connection(player_id, conn_tx);
@@ -334,6 +342,10 @@ async fn handle_binary_message(
                                         conn,
                                         outbound_tx,
                                     );
+                                }
+                                for peer in room_peers.iter().filter(|peer| peer.is_bot) {
+                                    let _ =
+                                        actor.add_bot(PlayerSlot(peer.player_id), peer.temperature);
                                 }
                                 actor.set_room_mode(RoomMode::Playing);
                                 let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
@@ -389,6 +401,32 @@ async fn handle_binary_message(
             };
             if let Ok(data) = serialize(&chat_pkt) {
                 let _ = state.room_manager.broadcast(room_code, data).await;
+            }
+        }
+        PacketType::AddBot => {
+            let Ok(pkt) = deser::<PktAddBot>(&data) else {
+                return;
+            };
+            let Ok(bot_peer) = state
+                .room_manager
+                .add_bot_peer(room_code, pkt.temperature)
+                .await
+            else {
+                return;
+            };
+            if let Ok(peers) = state.room_manager.room_peers(room_code).await {
+                state
+                    .room_manager
+                    .broadcast_snapshot(room_code, &peers)
+                    .await;
+            }
+            if let Ok(Some(actor_tx)) = state.room_manager.actor_tx(room_code).await {
+                let _ = actor_tx
+                    .send(RoomCommand::AddBot {
+                        slot: PlayerSlot(bot_peer.player_id),
+                        temperature: pkt.temperature,
+                    })
+                    .await;
             }
         }
         // New protocol types (Replay, etc.) — forward to input_tx if RoomActor is active
@@ -448,6 +486,19 @@ fn binary_packet_is_replay(data: &[u8]) -> bool {
     deser::<PacketHeader>(data).is_ok_and(|header| {
         header.version == PROTOCOL_VERSION && header.packet_type == PacketType::Replay
     })
+}
+
+async fn broadcast_countdown_cancel(state: &Arc<AppState>, room_code: &str) {
+    let pkt = PktCountdownCancel {
+        header: PacketHeader {
+            version: PROTOCOL_VERSION,
+            packet_type: PacketType::CountdownCancel,
+            player_id: 0,
+        },
+    };
+    if let Ok(data) = serialize(&pkt) {
+        let _ = state.room_manager.broadcast(room_code, data).await;
+    }
 }
 
 #[cfg(test)]

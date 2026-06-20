@@ -132,6 +132,13 @@ export function reset_wasm(): WebTetris {
   return instance;
 }
 
+export function reset_multiplayer_wasm(seed: number): WebTetris {
+  if (!instance) throw new Error('WASM not initialized');
+  instance.reset_multiplayer_game(seed >>> 0);
+  grid_view = create_grid_view(instance);
+  return instance;
+}
+
 export function get_opponent_grid_view(player_id: number): Uint8Array {
   if (!instance) throw new Error('WASM not initialized');
   return instance.get_opponent_grid(player_id);
@@ -215,6 +222,11 @@ export function make_player_ready_packet(ready: boolean): Uint8Array {
 export function make_chat_message_packet(message: string): Uint8Array {
   if (!instance) throw new Error('WASM not initialized');
   return instance.make_chat_message_packet(message, new Date().toISOString());
+}
+
+export function make_add_bot_packet(temperature: number): Uint8Array {
+  if (!instance) throw new Error('WASM not initialized');
+  return instance.make_add_bot_packet(temperature);
 }
 
 export function push_input_event(key: number, pressed: boolean, subframe = 0): void {

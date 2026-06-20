@@ -2,6 +2,7 @@ import { effect } from '@preact/signals-core';
 import { page, is_multiplayer, room_code, connection_status } from '../state';
 import { WsClient } from '../core/ws_client';
 import { set_multiplayer_ws } from '../core/multiplayer';
+import { add_multiplayer_ai_opponent } from '../core/ai_opponent';
 import {
   consume_last_multiplayer_event,
   get_multiplayer_snapshot,
@@ -9,6 +10,7 @@ import {
   make_chat_message_packet,
   make_join_room_packet,
   make_player_ready_packet,
+  reset_multiplayer_wasm,
 } from '../core/wasm';
 import type { MultiplayerPlayer } from '../core/wasm';
 
@@ -46,9 +48,11 @@ export function create_lobby_screen(): HTMLElement {
   const { section: room_section, join_input, join_btn } = build_room_code_section();
   const { section: player_section, update: update_players } = build_player_list();
   const { btn: ready_btn, set_ready: set_ready_btn } = build_ready_button();
+  const add_ai_btn = build_add_ai_button();
 
   main.appendChild(room_section);
   main.appendChild(player_section);
+  main.appendChild(add_ai_btn);
   main.appendChild(ready_btn);
 
   const sidebar = document.createElement('div');
@@ -84,7 +88,10 @@ export function create_lobby_screen(): HTMLElement {
         room_code.value = snapshot.room_code ?? room_code.value;
         const code_display = room_section.querySelector('.room-code');
         if (code_display) code_display.textContent = room_code.value ?? '----';
-        const me = peers.find((player) => player.name === my_name);
+        const me =
+          typeof snapshot.local_player_id === 'number'
+            ? peers.find((player) => player.player_id === snapshot.local_player_id)
+            : peers.find((player) => player.name === my_name);
         is_ready = me?.ready ?? false;
         set_ready_btn(is_ready);
         countdown_el.textContent =
@@ -106,10 +113,12 @@ export function create_lobby_screen(): HTMLElement {
         }
       } else if (last_event.kind === 'countdown' && typeof last_event.countdown === 'number') {
         countdown_el.textContent = `STARTING IN ${last_event.countdown}`;
+      } else if (last_event.kind === 'countdown_cancel') {
+        countdown_el.textContent = '';
       } else if (last_event.kind === 'game_start' && typeof last_event.random_seed === 'number') {
         is_multiplayer.value = true;
         set_multiplayer_ws(current_ws);
-        wasm.reset(last_event.random_seed >>> 0);
+        reset_multiplayer_wasm(last_event.random_seed);
         dispose();
         page.value = 'game';
       }
@@ -134,7 +143,18 @@ export function create_lobby_screen(): HTMLElement {
   ready_btn.addEventListener('click', () => {
     is_ready = !is_ready;
     set_ready_btn(is_ready);
+    if (!is_ready) {
+      countdown_el.textContent = '';
+    }
     current_ws.send(make_player_ready_packet(is_ready));
+  });
+
+  add_ai_btn.addEventListener('click', () => {
+    if (add_multiplayer_ai_opponent(current_ws)) {
+      append_system('AI opponent requested');
+    } else {
+      append_system('Relay not connected; AI request not sent');
+    }
   });
 
   attach_handlers(current_ws);
@@ -184,6 +204,14 @@ export function create_lobby_screen(): HTMLElement {
   (container as HTMLElement & { _cleanup?: () => void })._cleanup = cleanup;
 
   return container;
+}
+
+function build_add_ai_button(): HTMLButtonElement {
+  const btn = document.createElement('button');
+  btn.className = 'btn';
+  btn.textContent = '加 AI';
+  btn.setAttribute('aria-label', '加 AI 对手');
+  return btn;
 }
 
 function build_room_code_section(): {

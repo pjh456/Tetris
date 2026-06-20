@@ -18,6 +18,9 @@ export class WebTetris {
   reset(seed) {
     this._seed = seed;
   }
+  reset_multiplayer_game(seed) {
+    this._seed = seed;
+  }
   tick() {
     return {};
   }
@@ -89,6 +92,12 @@ export class WebTetris {
   make_replay_packet(events) {
     return events.length === 0 ? new Uint8Array(0) : new Uint8Array([23, events.length]);
   }
+  make_add_bot_packet() {
+    return new Uint8Array([34]);
+  }
+  receive_garbage(lines, hole_x) {
+    this._received_garbage = { lines, hole_x };
+  }
   make_resume_packet() {
     return new Uint8Array([29]);
   }
@@ -118,6 +127,38 @@ export class WebTetris {
   }
   __set_multiplayer_snapshot(snapshot) {
     this._snapshot = snapshot;
+  }
+}
+
+export class WasmAi {
+  constructor(seed) {
+    this._seed = seed;
+    this._grid = new Uint8Array(200);
+    this._garbage = [];
+  }
+  reset(seed) {
+    this._seed = seed;
+  }
+  set_temperature(value) {
+    this._temperature = value;
+  }
+  decide() {
+    return 3;
+  }
+  tick() {}
+  receive_garbage(lines, hole_x) {
+    this._received_garbage = { lines, hole_x };
+  }
+  drain_pending_garbage() {
+    const garbage = this._garbage;
+    this._garbage = [];
+    return garbage;
+  }
+  get_grid() {
+    return this._grid;
+  }
+  __push_garbage(lines, hole_x) {
+    this._garbage.push(lines, hole_x);
   }
 }
 

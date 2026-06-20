@@ -33,6 +33,8 @@ pub enum PacketType {
     IncomingGarbage = 31,
     PlayerStatus = 32,
     Batch = 33,
+    AddBot = 34,
+    CountdownCancel = 35,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -140,6 +142,11 @@ pub struct PktStartCountdown {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PktCountdownCancel {
+    pub header: PacketHeader,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PktHostMigrate {
     pub header: PacketHeader,
     pub new_host_player_id: u8,
@@ -172,6 +179,12 @@ pub struct PktRoomSnapshot {
     pub header: PacketHeader,
     pub room_code: String,
     pub players: Vec<RoomPlayerSnapshot>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PktAddBot {
+    pub header: PacketHeader,
+    pub temperature: f32,
 }
 
 // ── 0x11 protocol types (per D-02, D-05, D-06, D-10, D-12) ──
@@ -419,6 +432,18 @@ mod tests {
     }
 
     #[test]
+    fn test_countdown_cancel_round_trip() {
+        let pkt = PktCountdownCancel {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::CountdownCancel,
+                player_id: 0,
+            },
+        };
+        bincode_round_trip(&pkt);
+    }
+
+    #[test]
     fn test_host_migrate_round_trip() {
         let pkt = PktHostMigrate {
             header: PacketHeader {
@@ -642,5 +667,20 @@ mod tests {
         assert_eq!(PacketType::ReconnectAck as u8, 28);
         assert_eq!(PacketType::Resume as u8, 29);
         assert_eq!(PacketType::IncomingGarbage as u8, 31);
+        assert_eq!(PacketType::AddBot as u8, 34);
+        assert_eq!(PacketType::CountdownCancel as u8, 35);
+    }
+
+    #[test]
+    fn test_add_bot_round_trip() {
+        let pkt = PktAddBot {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::AddBot,
+                player_id: 0,
+            },
+            temperature: 0.5,
+        };
+        bincode_round_trip(&pkt);
     }
 }

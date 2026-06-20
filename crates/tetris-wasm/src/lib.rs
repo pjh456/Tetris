@@ -7,6 +7,7 @@ use wasm_bindgen::prelude::*;
 
 use bincode::Options;
 
+pub mod ai;
 mod error;
 mod input_buffer;
 mod utils;
@@ -144,6 +145,15 @@ impl WebTetris {
         self.opponent_grid_bufs.clear();
         self.room_player_infos.clear();
         self.opponent_infos.clear();
+        self.countdown = None;
+        self.last_event = None;
+        self.input_buf = input_buffer::ClientInputBuffer::new();
+        self.last_state_hash = None;
+    }
+
+    pub fn reset_multiplayer_game(&mut self, seed: u32) {
+        self.has_hold = false;
+        self.engine.reset_with_level(seed, 1);
         self.countdown = None;
         self.last_event = None;
         self.input_buf = input_buffer::ClientInputBuffer::new();
@@ -395,6 +405,22 @@ impl WebTetris {
         packet_to_uint8_array(&pkt)
     }
 
+    pub fn make_add_bot_packet(&self, temperature: f32) -> js_sys::Uint8Array {
+        let pkt = PktAddBot {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::AddBot,
+                player_id: self.local_player_id.unwrap_or(0),
+            },
+            temperature,
+        };
+        packet_to_uint8_array(&pkt)
+    }
+
+    pub fn receive_garbage(&mut self, lines: u8, hole_x: u8) {
+        self.engine.add_pending_garbage(lines, hole_x, 0);
+    }
+
     pub fn get_opponent_grid(&self, player_id: u8) -> js_sys::Uint8Array {
         let idx = player_id as usize;
         if idx >= self.opponent_grid_bufs.len() {
@@ -553,6 +579,19 @@ impl WebTetris {
         }
     }
 
+    pub fn receive_garbage(&mut self, lines: u8, hole_x: u8) {
+        self.engine.add_pending_garbage(lines, hole_x, 0);
+    }
+
+    pub fn reset_multiplayer_game(&mut self, seed: u32) {
+        self.has_hold = false;
+        self.engine.reset_with_level(seed, 1);
+        self.countdown = None;
+        self.last_event = None;
+        self.input_buf = input_buffer::ClientInputBuffer::new();
+        self.last_state_hash = None;
+    }
+
     fn ensure_opponent_slot(&mut self, player_id: u8) -> Option<usize> {
         if player_id >= MAX_OPPONENTS {
             return None;
@@ -705,6 +744,11 @@ impl WebTetris {
                 let pkt: PktStartCountdown = deser(data).ok()?;
                 self.countdown = Some(pkt.remaining_secs);
                 MultiplayerEvent::new("countdown", self.room_code.clone(), self.countdown)
+            }
+            PacketType::CountdownCancel => {
+                let _pkt: PktCountdownCancel = deser(data).ok()?;
+                self.countdown = None;
+                MultiplayerEvent::new("countdown_cancel", self.room_code.clone(), None)
             }
             PacketType::StateHash => {
                 let pkt: PktStateHash = deser(data).ok()?;
@@ -891,6 +935,83 @@ mod tests {
         assert_eq!(wt.local_player_id, Some(0));
         assert_eq!(wt.opponent_infos.len(), 1);
         assert_eq!(wt.opponent_infos[0].player_id, 1);
+    }
+
+    #[test]
+    fn countdown_cancel_clears_countdown() {
+        let mut wt = WebTetris::new(42);
+        let countdown = PktStartCountdown {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::StartCountdown,
+                player_id: 0,
+            },
+            remaining_secs: 3,
+        };
+        wt.apply_packet(&packet_bytes(&countdown)).unwrap();
+        assert_eq!(wt.countdown, Some(3));
+
+        let cancel = PktCountdownCancel {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::CountdownCancel,
+                player_id: 0,
+            },
+        };
+        let event = wt.apply_packet(&packet_bytes(&cancel)).unwrap();
+
+        assert_eq!(event.kind, "countdown_cancel");
+        assert_eq!(wt.countdown, None);
+    }
+
+    #[test]
+    fn reset_multiplayer_game_preserves_room_metadata() {
+        let mut wt = WebTetris::new(42);
+        let accept = PktServerAccept {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::ServerAccept,
+                player_id: 0,
+            },
+            assigned_player_id: 0,
+            max_players: 2,
+        };
+        let snapshot = PktRoomSnapshot {
+            header: PacketHeader {
+                version: PROTOCOL_VERSION,
+                packet_type: PacketType::RoomSnapshot,
+                player_id: 0,
+            },
+            room_code: "ABCD".into(),
+            players: vec![
+                RoomPlayerSnapshot {
+                    player_id: 0,
+                    name: "Alice".into(),
+                    ready: true,
+                    alive: true,
+                    away: false,
+                    is_host: true,
+                },
+                RoomPlayerSnapshot {
+                    player_id: 1,
+                    name: "AI 1".into(),
+                    ready: true,
+                    alive: true,
+                    away: false,
+                    is_host: false,
+                },
+            ],
+        };
+        wt.apply_packet(&packet_bytes(&accept)).unwrap();
+        wt.apply_packet(&packet_bytes(&snapshot)).unwrap();
+
+        wt.reset_multiplayer_game(99);
+
+        assert_eq!(wt.local_player_id, Some(0));
+        assert_eq!(wt.room_code.as_deref(), Some("ABCD"));
+        assert_eq!(wt.room_player_infos.len(), 2);
+        assert_eq!(wt.opponent_infos.len(), 1);
+        assert_eq!(wt.opponent_infos[0].name, "AI 1");
     }
 
     #[test]
