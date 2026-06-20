@@ -254,7 +254,6 @@ impl<const W: usize, const H: usize> Engine<W, H> {
                 .insert_garbage(self.state.pending_garbage, hole_x);
             self.state.pending_garbage = 0;
             self.garbage_hole_x = 0;
-            self.pending_garbage_queue.clear();
             attack_res.garbage_inserted = true;
         }
 
@@ -365,6 +364,7 @@ impl<const W: usize, const H: usize> Engine<W, H> {
         self.hard_drop_cells = 0;
         self.gravity_accumulator = 0;
         self.garbage_hole_x = 0;
+        self.pending_garbage_queue.clear();
 
         for i in 0..5 {
             self.state.next[i] = self.pop_next_piece();
@@ -619,6 +619,16 @@ impl<const W: usize, const H: usize> Engine<W, H> {
         digest.update(&self.lock_delay_ticks.accumulated_ticks.to_le_bytes());
         digest.update(&self.lock_delay_ticks.move_reset_count.to_le_bytes());
 
+        digest.update(&self.gravity_accumulator.to_le_bytes());
+        digest.update(&self.garbage_hole_x.to_le_bytes());
+        digest.update(&[self.game_over as u8]);
+        digest.update(&self.scorer.level.to_le_bytes());
+        for entry in &self.pending_garbage_queue {
+            digest.update(&entry.lines.to_le_bytes());
+            digest.update(&entry.hole_x.to_le_bytes());
+            digest.update(&entry.remaining_ticks.to_le_bytes());
+        }
+
         digest.finalize()
     }
 
@@ -804,6 +814,71 @@ mod tests {
             engine.handle_action(Action::HardDrop);
         }
         assert!(!engine.game_over);
+    }
+
+    #[test]
+    fn no_clear_lock_keeps_unmatured_garbage_queue() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset(42);
+        engine.add_pending_garbage(2, 3, 0); // 立即到期
+        engine.add_pending_garbage(4, 5, 100); // 未到期
+        engine.process_pending_garbage_queue();
+        assert!(engine.state.pending_garbage > 0);
+        assert_eq!(engine.pending_garbage_queue.len(), 1);
+        // 无消行锁定 → 进入 lines_cleared==0 && pending_garbage>0 分支
+        engine.handle_action(Action::HardDrop);
+        // 未到期条目不应被清空
+        assert_eq!(engine.pending_garbage_queue.len(), 1);
+        assert_eq!(engine.pending_garbage_queue[0].lines, 4);
+    }
+
+    #[test]
+    fn reset_clears_pending_garbage_queue() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset(42);
+        engine.add_pending_garbage(3, 2, 50);
+        assert!(!engine.pending_garbage_queue.is_empty());
+        engine.reset_with_level(99, 1);
+        assert!(engine.pending_garbage_queue.is_empty());
+    }
+
+    #[test]
+    fn state_hash_includes_extended_fields() {
+        let mut a = Engine::<10, 20>::new();
+        a.reset(42);
+        let base_hash = a.state_hash();
+
+        let mut h1 = Engine::<10, 20>::new();
+        h1.reset(42);
+        h1.garbage_hole_x = 9;
+        assert_ne!(
+            base_hash,
+            h1.state_hash(),
+            "garbage_hole_x must affect hash"
+        );
+
+        let mut h2 = Engine::<10, 20>::new();
+        h2.reset(42);
+        h2.game_over = true;
+        assert_ne!(base_hash, h2.state_hash(), "game_over must affect hash");
+
+        let mut h3 = Engine::<10, 20>::new();
+        h3.reset(42);
+        h3.add_pending_garbage(2, 1, 30);
+        assert_ne!(
+            base_hash,
+            h3.state_hash(),
+            "pending_garbage_queue must affect hash"
+        );
+
+        let mut h4 = Engine::<10, 20>::new();
+        h4.reset(42);
+        h4.gravity_accumulator = 123;
+        assert_ne!(
+            base_hash,
+            h4.state_hash(),
+            "gravity_accumulator must affect hash"
+        );
     }
 
     #[test]
