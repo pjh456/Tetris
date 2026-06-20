@@ -9,8 +9,8 @@ use bincode::serialize;
 use futures_util::{SinkExt, StreamExt};
 use tetris_protocol::protocol::{
     InputEvent, PROTOCOL_VERSION, PacketHeader, PacketType, PktAddBot, PktChatMessage,
-    PktCountdownCancel, PktGameStart, PktJoinRoom, PktPlayerReady, PktReconnect, PktReplay,
-    PktResume, PktServerAccept, PktStartCountdown,
+    PktGameStart, PktJoinRoom, PktPlayerReady, PktReconnect, PktReplay, PktResume, PktServerAccept,
+    PktStartCountdown,
 };
 use tokio::sync::Mutex;
 use tokio::time::interval;
@@ -236,8 +236,10 @@ async fn handle_binary_message(
                     .await;
                 let all_ready = peers.len() >= 2 && peers.iter().all(|peer| peer.ready);
                 if !all_ready {
-                    let _ = state.room_manager.cancel_countdown(room_code).await;
-                    broadcast_countdown_cancel(state, room_code).await;
+                    state
+                        .room_manager
+                        .cancel_and_broadcast_countdown(room_code)
+                        .await;
                 }
                 if all_ready {
                     let countdown_generation = state
@@ -265,9 +267,10 @@ async fn handle_binary_message(
                                     .await
                                     .unwrap_or(false);
                                 if !still_ready || !countdown_current {
-                                    let _ =
-                                        state.room_manager.cancel_countdown(&room_code_owned).await;
-                                    broadcast_countdown_cancel(&state, &room_code_owned).await;
+                                    state
+                                        .room_manager
+                                        .cancel_and_broadcast_countdown(&room_code_owned)
+                                        .await;
                                     return;
                                 }
                                 let countdown = PktStartCountdown {
@@ -294,8 +297,10 @@ async fn handle_binary_message(
                                     .await
                                     .unwrap_or(false)
                             {
-                                let _ = state.room_manager.cancel_countdown(&room_code_owned).await;
-                                broadcast_countdown_cancel(&state, &room_code_owned).await;
+                                state
+                                    .room_manager
+                                    .cancel_and_broadcast_countdown(&room_code_owned)
+                                    .await;
                                 return;
                             }
                             let random_seed = rand::random::<u32>();
@@ -398,12 +403,7 @@ async fn handle_binary_message(
             else {
                 return;
             };
-            if let Ok(peers) = state.room_manager.room_peers(room_code).await {
-                state
-                    .room_manager
-                    .broadcast_snapshot(room_code, &peers)
-                    .await;
-            }
+            state.room_manager.broadcast_room_snapshot(room_code).await;
             if let Ok(Some(actor_tx)) = state.room_manager.actor_tx(room_code).await {
                 let _ = actor_tx
                     .send(RoomCommand::AddBot {
@@ -470,15 +470,6 @@ fn binary_packet_is_replay(data: &[u8]) -> bool {
     deser::<PacketHeader>(data).is_ok_and(|header| {
         header.version == PROTOCOL_VERSION && header.packet_type == PacketType::Replay
     })
-}
-
-async fn broadcast_countdown_cancel(state: &Arc<AppState>, room_code: &str) {
-    let pkt = PktCountdownCancel {
-        header: PacketHeader::new(PacketType::CountdownCancel, 0),
-    };
-    if let Ok(data) = serialize(&pkt) {
-        let _ = state.room_manager.broadcast(room_code, data).await;
-    }
 }
 
 #[cfg(test)]

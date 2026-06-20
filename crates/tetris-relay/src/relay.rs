@@ -2,7 +2,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
-use tetris_protocol::protocol::{PacketHeader, PacketType, PktRoomSnapshot, RoomPlayerSnapshot};
+use tetris_protocol::protocol::{
+    PacketHeader, PacketType, PktCountdownCancel, PktRoomSnapshot, RoomPlayerSnapshot,
+};
 use tokio::sync::{Mutex, RwLock, broadcast};
 
 use crate::error::RelayError;
@@ -236,6 +238,24 @@ impl RoomManager {
         };
         if let Ok(data) = bincode::serialize(&pkt) {
             let _ = room.tx.send(data);
+        }
+    }
+
+    /// 取房间 peers 并广播 `RoomSnapshot`，调用方无需先 `room_peers`。
+    pub async fn broadcast_room_snapshot(&self, code: &str) {
+        if let Ok(peers) = self.room_peers(code).await {
+            self.broadcast_snapshot(code, &peers).await;
+        }
+    }
+
+    /// 取消倒计时并广播 `CountdownCancel`，成对封装防漏。
+    pub async fn cancel_and_broadcast_countdown(&self, code: &str) {
+        let _ = self.cancel_countdown(code).await;
+        let pkt = PktCountdownCancel {
+            header: PacketHeader::new(PacketType::CountdownCancel, 0),
+        };
+        if let Ok(data) = bincode::serialize(&pkt) {
+            let _ = self.broadcast(code, data).await;
         }
     }
 
