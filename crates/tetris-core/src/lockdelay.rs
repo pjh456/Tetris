@@ -93,23 +93,16 @@ impl LockDelayTicks {
 
     pub fn reset(&mut self) {
         self.active = true;
+        if self.move_reset_count >= MAX_MOVE_RESETS as u8 {
+            // 达 15 次移动上限：不再续命——保留 accumulated_ticks，让锁定计时继续走向锁定。
+            return;
+        }
         self.move_reset_count = self.move_reset_count.saturating_add(1);
         self.accumulated_ticks = 0;
     }
 
     pub fn update(&mut self) -> bool {
         if !self.active {
-            return false;
-        }
-
-        if self.move_reset_count >= MAX_MOVE_RESETS as u8 {
-            self.accumulated_ticks = self.accumulated_ticks.saturating_add(1);
-            if self.accumulated_ticks >= LOCK_DELAY_TICKS {
-                self.active = false;
-                self.move_reset_count = 0;
-                self.accumulated_ticks = 0;
-                return true;
-            }
             return false;
         }
 
@@ -289,7 +282,32 @@ mod tests {
         for _ in 0..16 {
             ld.reset();
         }
-        assert_eq!(ld.move_reset_count, 16);
+        // 达上限后第 16 次 reset 被忽略，计数封顶于 MAX_MOVE_RESETS。
+        assert_eq!(ld.move_reset_count, 15);
+    }
+
+    #[test]
+    fn test_ticks_reset_capped_does_not_extend_delay() {
+        let mut ld = LockDelayTicks::new();
+        ld.start();
+        for _ in 0..15 {
+            ld.reset();
+        }
+        assert_eq!(ld.move_reset_count, 15);
+        for _ in 0..20 {
+            ld.update();
+        }
+        assert_eq!(ld.accumulated_ticks, 20);
+        // 第 16 次 reset：达上限，不清零 accumulated、不再增计数。
+        ld.reset();
+        assert_eq!(ld.move_reset_count, 15);
+        assert_eq!(ld.accumulated_ticks, 20);
+        // 计时继续走，达 LOCK_DELAY_TICKS 时强制锁定，无法靠移动续命。
+        for _ in 0..9 {
+            assert!(!ld.update());
+        }
+        assert!(ld.update());
+        assert!(!ld.active);
     }
 
     #[test]
