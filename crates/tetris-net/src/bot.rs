@@ -1,7 +1,6 @@
 use std::collections::VecDeque;
 
 use tetris_core::engine::{Action, Engine};
-use tetris_core::rl;
 use tetris_infer::MlpPolicy;
 use tetris_protocol::newtypes::{KeyAction, TickNumber};
 use tetris_protocol::protocol::{InputEvent, PacketHeader, PacketType, PktReplay};
@@ -81,15 +80,9 @@ impl AiBot {
             return;
         }
 
-        let placements = self.engine.enumerate_placements();
-        if placements.is_empty() {
-            return;
-        }
-
-        let obs = rl::encode_obs(&self.engine.state);
-        let mask = rl::action_mask(&placements);
-        let action_index = self.policy.act(&obs, &mask, self.temperature);
-        let Some((col, rot)) = rl::action_to_placement(action_index) else {
+        let Some((col, rot, _action_index)) =
+            tetris_infer::decide(&self.engine, &self.policy, self.temperature)
+        else {
             return;
         };
 
@@ -119,22 +112,12 @@ fn key_action_for_action(action: Action) -> KeyAction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tetris_infer::Layer;
-
-    fn zero_policy() -> MlpPolicy {
-        MlpPolicy::new(
-            rl::OBS_DIM,
-            rl::ACTION_SPACE_SIZE,
-            vec![Layer {
-                weight: vec![vec![0.0; rl::OBS_DIM]; rl::ACTION_SPACE_SIZE],
-                bias: vec![0.0; rl::ACTION_SPACE_SIZE],
-            }],
-        )
-    }
+    use tetris_core::rl;
+    use tetris_infer::zero_policy;
 
     #[test]
     fn bot_emits_thin_input_events() {
-        let mut bot = AiBot::new(zero_policy(), 42, 0.0);
+        let mut bot = AiBot::new(zero_policy(rl::OBS_DIM, rl::ACTION_SPACE_SIZE), 42, 0.0);
         let inputs = bot.next_inputs();
         assert!(!inputs.is_empty());
         assert!(matches!(
@@ -149,7 +132,7 @@ mod tests {
 
     #[test]
     fn bot_replay_uses_protocol_packet() {
-        let mut bot = AiBot::new(zero_policy(), 42, 0.0);
+        let mut bot = AiBot::new(zero_policy(rl::OBS_DIM, rl::ACTION_SPACE_SIZE), 42, 0.0);
         let replay = bot.next_replay(1).unwrap();
         assert_eq!(replay.header.packet_type, PacketType::Replay);
         assert_eq!(replay.header.player_id, 1);

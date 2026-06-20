@@ -1,6 +1,5 @@
 use tetris_core::attack::AttackResult;
 use tetris_core::engine::Engine;
-use tetris_core::rl;
 use tetris_infer::MlpPolicy;
 
 #[cfg(target_arch = "wasm32")]
@@ -58,15 +57,9 @@ impl WasmAi {
     }
 
     pub fn decide(&mut self) -> u8 {
-        let placements = self.engine.enumerate_placements();
-        if placements.is_empty() {
-            return u8::MAX;
-        }
-
-        let obs = rl::encode_obs(&self.engine.state);
-        let mask = rl::action_mask(&placements);
-        let action_index = self.policy.act(&obs, &mask, self.temperature);
-        let Some((col, rot)) = rl::action_to_placement(action_index) else {
+        let Some((col, rot, action_index)) =
+            tetris_infer::decide(&self.engine, &self.policy, self.temperature)
+        else {
             return u8::MAX;
         };
 
@@ -118,23 +111,13 @@ impl WasmAi {
 mod tests {
     use super::*;
     use tetris_core::engine::Action;
+    use tetris_core::rl;
     use tetris_core::types::{Piece, Rot};
-    use tetris_infer::Layer;
-
-    fn zero_policy() -> MlpPolicy {
-        MlpPolicy::new(
-            rl::OBS_DIM,
-            rl::ACTION_SPACE_SIZE,
-            vec![Layer {
-                weight: vec![vec![0.0; rl::OBS_DIM]; rl::ACTION_SPACE_SIZE],
-                bias: vec![0.0; rl::ACTION_SPACE_SIZE],
-            }],
-        )
-    }
+    use tetris_infer::zero_policy;
 
     #[test]
     fn wasm_ai_drains_outbound_garbage_after_line_clear() {
-        let mut ai = WasmAi::from_policy(zero_policy(), 42);
+        let mut ai = WasmAi::from_policy(zero_policy(rl::OBS_DIM, rl::ACTION_SPACE_SIZE), 42);
         for col in 0..10 {
             if col != 5 && col != 6 {
                 ai.engine.state.board.rows[19] |= 1u64 << col;

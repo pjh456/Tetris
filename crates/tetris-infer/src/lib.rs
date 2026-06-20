@@ -1,6 +1,8 @@
+mod decide;
 mod mlp;
 mod weights;
 
+pub use decide::{decide, zero_policy};
 pub use mlp::{MlpPolicy, softmax_sample, softmax_sample_seeded};
 pub use weights::{Layer, WeightsFile, load_from_slice, load_from_str};
 
