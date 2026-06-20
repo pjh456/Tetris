@@ -47,6 +47,21 @@ pub struct RoomManager {
     max_rooms: usize,
 }
 
+/// Pick the lowest unused `player_id` in the room (avoids collision on leave+join).
+/// `map_or` fallback is dead code at the existing call sites: a `peers.len() < MAX`
+/// check guarantees an unused slot exists before this is called.
+fn alloc_player_slot(peers: &[PeerInfo]) -> u8 {
+    let mut used = [false; MAX_PLAYERS_PER_ROOM];
+    for p in peers {
+        if (p.player_id as usize) < MAX_PLAYERS_PER_ROOM {
+            used[p.player_id as usize] = true;
+        }
+    }
+    used.iter()
+        .position(|u| !u)
+        .map_or(MAX_PLAYERS_PER_ROOM as u8 - 1, |i| i as u8)
+}
+
 impl RoomManager {
     pub fn new(max_rooms: usize) -> Self {
         Self {
@@ -70,17 +85,7 @@ impl RoomManager {
             return Err(RelayError::RoomFull("too many players".into()));
         }
         // Pick lowest unused player_id instead of peers.len() — avoids collision on leave+join
-        let mut used = [false; MAX_PLAYERS_PER_ROOM];
-        for p in peers.iter() {
-            if (p.player_id as usize) < MAX_PLAYERS_PER_ROOM {
-                used[p.player_id as usize] = true;
-            }
-        }
-        // unwrap_or is dead code: len() check guarantees an unused slot exists.
-        let player_id = used
-            .iter()
-            .position(|u| !u)
-            .map_or(MAX_PLAYERS_PER_ROOM as u8 - 1, |i| i as u8);
+        let player_id = alloc_player_slot(&peers);
         let name = format!("Player {}", player_id + 1);
         peers.push(PeerInfo {
             id,
@@ -107,16 +112,7 @@ impl RoomManager {
         if peers.len() >= MAX_PLAYERS_PER_ROOM {
             return Err(RelayError::RoomFull("too many players".into()));
         }
-        let mut used = [false; MAX_PLAYERS_PER_ROOM];
-        for p in peers.iter() {
-            if (p.player_id as usize) < MAX_PLAYERS_PER_ROOM {
-                used[p.player_id as usize] = true;
-            }
-        }
-        let player_id = used
-            .iter()
-            .position(|u| !u)
-            .map_or(MAX_PLAYERS_PER_ROOM as u8 - 1, |i| i as u8);
+        let player_id = alloc_player_slot(&peers);
         let id = Self::alloc_peer_id();
         let bot_count = peers.iter().filter(|peer| peer.is_bot).count() + 1;
         let peer = PeerInfo {
