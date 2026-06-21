@@ -60,13 +60,20 @@ impl MlpPolicy {
     }
 
     pub fn act(&self, x: &[f32], mask: &[bool], temperature: f32) -> usize {
+        self.act_seeded(x, mask, temperature, 0x5EED_5EED)
+    }
+
+    /// Like [`act`](Self::act) but with an explicit sampling seed, so independent
+    /// callers (e.g. multiple bots) on identical observations can sample
+    /// different actions instead of moving in lockstep.
+    pub fn act_seeded(&self, x: &[f32], mask: &[bool], temperature: f32, seed: u64) -> usize {
         let mut logits = self.forward(x);
         for (index, allowed) in mask.iter().copied().enumerate() {
             if !allowed && let Some(logit) = logits.get_mut(index) {
                 *logit = f32::NEG_INFINITY;
             }
         }
-        softmax_sample(&logits, temperature)
+        softmax_sample_seeded(&logits, temperature, seed)
     }
 }
 

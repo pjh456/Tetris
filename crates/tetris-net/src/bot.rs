@@ -14,6 +14,9 @@ pub struct AiBot {
     decide_cooldown: u32,
     pending_actions: VecDeque<Action>,
     current_tick: TickNumber,
+    /// Per-bot sampling seed. Two bots on an identical board sample different
+    /// placements (anti-lockstep) — the shared `decide` uses a fixed seed.
+    sample_seed: u64,
 }
 
 impl AiBot {
@@ -27,6 +30,7 @@ impl AiBot {
             decide_cooldown: 0,
             pending_actions: VecDeque::new(),
             current_tick: TickNumber(0),
+            sample_seed: u64::from(seed),
         }
     }
 
@@ -67,6 +71,21 @@ impl AiBot {
         self.decide_cooldown = 0;
     }
 
+    /// Resync to the authoritative engine **only at a decision boundary** (no
+    /// pending actions, cooldown elapsed), then produce the next replay. This
+    /// keeps the bot deciding on the real board (incl. received garbage) without
+    /// interrupting an in-flight placement or breaking the decide cadence.
+    pub fn observe_and_decide(
+        &mut self,
+        authoritative: &Engine<10, 20>,
+        player_id: u8,
+    ) -> Option<PktReplay> {
+        if self.pending_actions.is_empty() && self.decide_cooldown == 0 {
+            self.engine = authoritative.clone();
+        }
+        self.next_replay(player_id)
+    }
+
     pub fn state_hash(&self) -> u32 {
         self.engine.state_hash()
     }
@@ -80,9 +99,12 @@ impl AiBot {
             return;
         }
 
-        let Some((col, rot, _action_index)) =
-            tetris_infer::decide(&self.engine, &self.policy, self.temperature)
-        else {
+        let Some((col, rot, _action_index)) = tetris_infer::decide_seeded(
+            &self.engine,
+            &self.policy,
+            self.temperature,
+            self.sample_seed.wrapping_add(self.current_tick.0),
+        ) else {
             return;
         };
 
@@ -136,5 +158,47 @@ mod tests {
         let replay = bot.next_replay(1).unwrap();
         assert_eq!(replay.header.packet_type, PacketType::Replay);
         assert_eq!(replay.header.player_id, 1);
+    }
+
+    #[test]
+    fn observe_engine_adopts_authoritative_board() {
+        let mut bot = AiBot::new(zero_policy(rl::OBS_DIM, rl::ACTION_SPACE_SIZE), 42, 0.0);
+        let mut authoritative = Engine::<10, 20>::new();
+        authoritative.reset(999);
+        // Mutate the authoritative board so it differs from the bot's own engine.
+        authoritative.handle_action(Action::HardDrop);
+        bot.observe_engine(authoritative.clone());
+        assert_eq!(
+            bot.state_hash(),
+            authoritative.state_hash(),
+            "bot must decide on the authoritative board after observe"
+        );
+    }
+
+    #[test]
+    fn seeded_decision_is_reproducible() {
+        let policy = zero_policy(rl::OBS_DIM, rl::ACTION_SPACE_SIZE);
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset(42);
+        let first = tetris_infer::decide_seeded(&engine, &policy, 2.0, 7);
+        let second = tetris_infer::decide_seeded(&engine, &policy, 2.0, 7);
+        assert_eq!(first, second, "same seed must yield the same decision");
+    }
+
+    #[test]
+    fn seeded_decisions_diverge_across_seeds() {
+        let policy = zero_policy(rl::OBS_DIM, rl::ACTION_SPACE_SIZE);
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset(42);
+        let mut indices = std::collections::HashSet::new();
+        for seed in 0..16u64 {
+            if let Some((_, _, idx)) = tetris_infer::decide_seeded(&engine, &policy, 2.0, seed) {
+                indices.insert(idx);
+            }
+        }
+        assert!(
+            indices.len() > 1,
+            "different per-bot seeds must produce more than one distinct placement (anti-lockstep)"
+        );
     }
 }

@@ -131,14 +131,19 @@ impl RoomActor {
         }
 
         let (input_tx, input_rx) = mpsc::channel::<InputEvent>(64);
-        let (outbound_tx, _outbound_rx) = mpsc::channel::<Vec<u8>>(64);
         let conn = PlayerConnection::<Online>::new(slot, input_tx, format!("AI {}", slot.0));
         self.sim.add_player(slot);
         self.input_rxs[idx] = Some(input_rx);
         self.connections[idx] = Some(conn);
-        self.outbound_txs[idx] = Some(outbound_tx);
+        // Bots have no client socket — registering an outbound channel would create
+        // a misleading dead sink (no receiver). None is skipped by broadcast /
+        // send_to_player; the bot decides from the authoritative engine, not outbound.
+        self.outbound_txs[idx] = None;
+        // Distinct per-bot seed so multiple bots of the same temperature do not
+        // play in lockstep (threaded into the bot's seeded sampling).
+        let bot_seed = self.seed().0 as u32 ^ u32::from(slot.0);
         self.bots
-            .push((slot, AiBot::new(policy, self.seed().0 as u32, temperature)));
+            .push((slot, AiBot::new(policy, bot_seed, temperature)));
         Ok(())
     }
 
@@ -190,7 +195,18 @@ impl RoomActor {
 
     fn collect_bot_inputs(&mut self) {
         for (slot, bot) in &mut self.bots {
-            if let Some(replay) = bot.next_replay(slot.0) {
+            // Dead bot (topped out, or no engine) produces no input.
+            let Some(engine) = self.sim.engine(*slot) else {
+                continue;
+            };
+            if engine.game_over {
+                continue;
+            }
+            // Resync the bot to the authoritative board (incl. received garbage)
+            // at a decision boundary, then decide. `observe_and_decide` clones the
+            // engine internally, so the borrow ends before `enqueue_input`.
+            let replay = bot.observe_and_decide(engine, slot.0);
+            if let Some(replay) = replay {
                 for event in replay.events {
                     self.sim.enqueue_input(*slot, event);
                 }
@@ -450,5 +466,32 @@ mod tests {
         actor.set_room_mode(RoomMode::Playing);
 
         assert_eq!(actor.room_mode(), RoomMode::Playing);
+    }
+
+    #[test]
+    fn dead_bot_is_skipped_live_bot_plays() {
+        let mut actor = RoomActor::new("ABCD".into(), Seed(42));
+        actor.add_bot(PlayerSlot(0), 0.0).unwrap();
+        actor.add_bot(PlayerSlot(1), 0.0).unwrap();
+
+        // Kill bot at slot 1: a dead bot must produce no further input.
+        actor.sim.engine_mut(PlayerSlot(1)).unwrap().game_over = true;
+        let dead_before = actor.sim.engine(PlayerSlot(1)).unwrap().state_hash();
+        let live_before = actor.sim.engine(PlayerSlot(0)).unwrap().state_hash();
+
+        for _ in 0..40 {
+            actor.run_one_tick();
+        }
+
+        // Dead bot's board never advanced (skipped — no input applied).
+        assert_eq!(
+            actor.sim.engine(PlayerSlot(1)).unwrap().state_hash(),
+            dead_before
+        );
+        // Live bot kept playing → its board changed.
+        assert_ne!(
+            actor.sim.engine(PlayerSlot(0)).unwrap().state_hash(),
+            live_before
+        );
     }
 }
