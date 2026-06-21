@@ -37,7 +37,7 @@ function place_btn(btn: TouchButton, x: number, y: number, size: number) {
 
 export function create_touch_overlay(
   container: HTMLElement,
-  on_action: (action: number) => void,
+  on_action: (action: number, pressed: boolean) => void,
 ): { destroy: () => void } {
   const overlay = document.createElement('div');
   overlay.className = 'touch-overlay';
@@ -125,7 +125,7 @@ export function create_touch_overlay(
         active_touches.set(touch.identifier, btn);
         btn.el.classList.add('active');
         btn.held_start = performance.now();
-        on_action(btn.action);
+        on_action(btn.action, true);
         vibrate(10);
       }
     }
@@ -151,6 +151,7 @@ export function create_touch_overlay(
       if (btn) {
         btn.el.classList.remove('active');
         active_touches.delete(touch.identifier);
+        on_action(btn.action, false);
       }
     }
   });
@@ -163,6 +164,7 @@ export function create_touch_overlay(
       if (btn) {
         btn.el.classList.remove('active');
         active_touches.delete(touch.identifier);
+        on_action(btn.action, false);
       }
     }
   });
@@ -179,7 +181,7 @@ export function create_touch_overlay(
         if (tick_count > 0) {
           btn.held_start = now - das;
           if (DAS_REPEAT_ACTIONS.has(btn.action)) {
-            on_action(btn.action);
+            on_action(btn.action, true);
           }
         }
       }

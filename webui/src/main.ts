@@ -11,6 +11,7 @@ import { create_gameover_screen } from './screens/gameover';
 import { create_leaderboard_screen } from './screens/leaderboard';
 import { create_lobby_screen } from './screens/lobby';
 import { create_spectator_screen } from './screens/spectator';
+import { reset_multiplayer_ws } from './core/multiplayer';
 
 const boot_theme = (settings.value.theme as ThemeName) || 'cyberpunk';
 apply_theme(boot_theme);
@@ -72,6 +73,13 @@ effect(() => {
   // Reset multiplayer state when leaving multiplayer screens
   if (current === 'home' || current === 'game') {
     is_multiplayer.value = false;
+  }
+
+  // Landing on home is the single exit point of any multiplayer session →
+  // tear down the ws + heartbeat there (centralized). Not on 'game': a
+  // lobby→game handoff keeps the ws alive (closing it would break the game).
+  if (current === 'home') {
+    reset_multiplayer_ws();
   }
 
   switch (current) {

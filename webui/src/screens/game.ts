@@ -62,6 +62,8 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   if (!is_multiplayer.value) {
     const seed = Date.now() >>> 0;
     wasm.reset(seed);
+    // Clear any stale multiplayer connection status carried over from a prior session.
+    connection_status.value = 'offline';
   }
   await audio_manager.init();
   audio_manager.set_sfx_volume(settings.value.sfx_volume);
@@ -276,6 +278,9 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   }
 
   if (mp_ws) {
+    // Game takes over the ws: drop lobby's onopen (else a mid-game reconnect
+    // would resend a spurious join_room).
+    mp_ws.onopen = null;
     mp_ws.onpacket = handle_multiplayer_packet;
   }
 
@@ -561,6 +566,8 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
     collapse_cancel?.();
     collapse_cancel = null;
     cleanup_runtime();
+    // Stop BGM on any exit (e.g. topbar back), not just the pause menu.
+    audio_manager.stop_bgm();
     touch_overlay.destroy();
     document.removeEventListener('visibilitychange', on_visibility_change);
     if (mp_ws?.onpacket === handle_multiplayer_packet) {
@@ -638,7 +645,12 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
 
   document.addEventListener('visibilitychange', on_visibility_change);
 
-  const touch_overlay = create_touch_overlay(root, (action_val) => {
+  const touch_overlay = create_touch_overlay(root, (action_val, pressed) => {
+    if (!pressed) {
+      // Always forward release so the server clears the held key (touch B7-2).
+      queue_multiplayer_input(action_val, false);
+      return;
+    }
     if (!wasm.is_game_over && !paused) {
       queue_multiplayer_input(action_val, true);
       const attack = wasm.handle_action(action_val);
