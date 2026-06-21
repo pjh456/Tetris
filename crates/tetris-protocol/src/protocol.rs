@@ -64,6 +64,9 @@ pub struct PktServerAccept {
     pub header: PacketHeader,
     pub assigned_player_id: u8,
     pub max_players: u8,
+    /// Server-issued unpredictable resume token. Delivered only to the owning
+    /// client; used to authenticate reconnect/resume requests (anti-spoofing).
+    pub resume_token: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -312,6 +315,7 @@ mod tests {
             header: PacketHeader::new(PacketType::ServerAccept, 0),
             assigned_player_id: 1,
             max_players: 2,
+            resume_token: "deadbeefcafef00d".into(),
         };
         bincode_round_trip(&pkt);
     }

@@ -65,6 +65,7 @@ impl RenetHostAdapter {
                 header: PacketHeader::new(PacketType::ServerAccept, 0),
                 assigned_player_id: slot.0,
                 max_players: self.max_players,
+                resume_token: String::new(),
             };
             let data = bincode::serialize(&accept).map_err(|e| NetError::Encode(e.to_string()))?;
             net.send_to_client(client_id, RELIABLE_CHANNEL, data);

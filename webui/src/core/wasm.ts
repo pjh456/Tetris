@@ -194,6 +194,7 @@ export type MultiplayerEvent = {
   local_hash?: number | null;
   hash_match?: boolean | null;
   event_count?: number | null;
+  resume_token?: string | null;
   events?: unknown[];
 };
 

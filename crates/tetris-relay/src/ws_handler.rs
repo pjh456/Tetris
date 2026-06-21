@@ -28,6 +28,13 @@ const MAX_REPLAY_EVENTS_PER_PACKET: usize = 120;
 const MAX_REPLAY_TICK_SPAN: u64 = 120;
 const MAX_MSG_PER_SEC: u32 = 60;
 const MAX_CHAT_LEN: usize = 256;
+/// Max wait for the first client packet during the connection handshake. A
+/// reconnecting client sends its `Resume` packet immediately on open, so this
+/// resolves near-instantly in practice; the bound only guards a silent client.
+const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(2);
+/// Grace window after an in-game disconnect before the slot/engine is removed.
+/// A reconnect with a valid resume token within this window reclaims the slot.
+const RECONNECT_GRACE_SECS: u64 = 10;
 
 fn deser<'de, T: serde::Deserialize<'de>>(data: &'de [u8]) -> Result<T, bincode::Error> {
     bincode::DefaultOptions::new()
@@ -77,63 +84,103 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
 
     let peer_id = RoomManager::alloc_peer_id();
 
-    let peers = match state.room_manager.add_peer(&room_code, peer_id).await {
-        Ok(p) => p,
-        Err(e) => {
-            warn!("add_peer failed: {e}");
-            state.room_manager.leave_room(&room_code).await;
-            return;
-        }
-    };
-
-    let (mut sender, mut receiver) = socket.split();
+    let (sender, mut receiver) = socket.split();
     let room_code_send = room_code.clone();
 
-    // Per-client bounded input + outbound channels for RoomActor (D-18)
+    // Per-client bounded input + outbound channels for RoomActor (D-18).
     let (input_tx, input_rx) = tokio::sync::mpsc::channel::<InputEvent>(64);
     let (outbound_tx, outbound_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
 
-    if let Ok(peer) = state.room_manager.peer_by_id(&room_code, peer_id).await {
-        let actor_tx = state.room_manager.actor_tx(&room_code).await.ok().flatten();
-        if let Some(actor_tx) = actor_tx {
-            let conn = make_player_connection(peer.player_id, input_tx.clone());
-            let _ = actor_tx
-                .send(RoomCommand::ResumePlayer {
-                    slot: PlayerSlot(peer.player_id),
-                    input_rx,
-                    conn,
-                    outbound_tx,
-                })
-                .await;
-        } else {
-            let mut pending = state.pending_inputs.lock().await;
-            pending.entry(room_code.clone()).or_default().push((
-                peer.player_id,
-                input_rx,
-                outbound_tx,
-            ));
-        }
+    // send_loop owns the socket sender; ServerAccept + gamestate all flow through
+    // outbound_tx, so the handshake never touches the raw sink directly.
+    let send_task = tokio::spawn(send_loop(sender, outbound_rx, broadcast_rx));
 
-        let accept = PktServerAccept {
-            header: PacketHeader::new(PacketType::ServerAccept, 0),
-            assigned_player_id: peer.player_id,
-            max_players: MAX_PLAYERS_PER_ROOM as u8,
-        };
-        if let Ok(data) = serialize(&accept) {
-            let _ = sender.send(Message::Binary(data.into())).await;
-        }
+    // Handshake: peek the first client packet. A reconnecting client sends a
+    // `Resume` packet first (ws_client.send_resume_packets); a fresh client sends
+    // its JoinRoom. We must learn this before allocating a slot so that a valid
+    // Resume reclaims the away peer's existing slot + engine instead of grabbing a
+    // brand-new slot (which would lose game progress).
+    let first_packet = read_first_binary(&mut receiver, HANDSHAKE_TIMEOUT).await;
+    let resume_token = first_packet.as_deref().and_then(parse_resume_token);
+
+    let reclaimed = if let Some(token) = resume_token.as_deref() {
+        state
+            .room_manager
+            .reclaim_away_peer(&room_code, peer_id, token)
+            .await
     } else {
-        warn!("peer_by_id failed for {peer_id} in room {room_code}");
-        return;
+        None
+    };
+
+    let peer = if let Some(peer) = reclaimed {
+        info!(
+            "client {peer_id} reclaimed slot {} in room {room_code}",
+            peer.player_id
+        );
+        peer
+    } else {
+        // Fresh join (or a forged/stale resume token → no hijack, join anew).
+        if let Err(e) = state.room_manager.add_peer(&room_code, peer_id).await {
+            warn!("add_peer failed: {e}");
+            send_task.abort();
+            state.room_manager.leave_room(&room_code).await;
+            return;
+        }
+        match state.room_manager.peer_by_id(&room_code, peer_id).await {
+            Ok(peer) => peer,
+            Err(e) => {
+                warn!("peer_by_id failed for {peer_id} in room {room_code}: {e}");
+                send_task.abort();
+                state.room_manager.leave_room(&room_code).await;
+                return;
+            }
+        }
+    };
+
+    // Bind this connection's channels to the resolved slot. When a RoomActor is
+    // already running, ResumePlayer rebuilds that slot's outbound/input channels
+    // (preserving the engine on reclaim); otherwise the channels wait in pending
+    // until the game starts.
+    let conn = make_player_connection(peer.player_id, input_tx.clone());
+    if let Ok(Some(actor_tx)) = state.room_manager.actor_tx(&room_code).await {
+        let _ = actor_tx
+            .send(RoomCommand::ResumePlayer {
+                slot: PlayerSlot(peer.player_id),
+                input_rx,
+                conn,
+                outbound_tx: outbound_tx.clone(),
+            })
+            .await;
+    } else {
+        let mut pending = state.pending_inputs.lock().await;
+        pending.entry(room_code.clone()).or_default().push((
+            peer.player_id,
+            input_rx,
+            outbound_tx.clone(),
+        ));
+    }
+
+    // ServerAccept carries the server-issued resume_token. Sent over outbound_tx
+    // so only this client receives it (never in a room-wide broadcast).
+    let accept = PktServerAccept {
+        header: PacketHeader::new(PacketType::ServerAccept, 0),
+        assigned_player_id: peer.player_id,
+        max_players: MAX_PLAYERS_PER_ROOM as u8,
+        resume_token: peer.resume_token.clone(),
+    };
+    if let Ok(data) = serialize(&accept) {
+        let _ = outbound_tx.send(data).await;
     }
 
     info!("client {peer_id} joined room {room_code}");
-    state
-        .room_manager
-        .broadcast_snapshot(&room_code, &peers)
-        .await;
+    state.room_manager.broadcast_room_snapshot(&room_code).await;
 
-    let send_task = tokio::spawn(send_loop(sender, outbound_rx, broadcast_rx));
+    // A non-resume first packet (e.g. JoinRoom) must still be processed.
+    if let Some(data) = first_packet
+        && resume_token.is_none()
+    {
+        handle_binary_message(&state, &room_code, peer_id, &input_tx, data).await;
+    }
 
     let mut msg_count: u32 = 0;
     let mut msg_window_start = tokio::time::Instant::now();
@@ -167,24 +214,64 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
 
     send_task.abort();
 
-    // Remove pending_inputs entry for this peer to avoid ghost player in RoomActor
-    if let Ok(peer) = state.room_manager.peer_by_id(&room_code, peer_id).await {
-        {
-            let mut pending = state.pending_inputs.lock().await;
-            if let Some(entries) = pending.get_mut(&room_code) {
-                entries.retain(|(pid, _, _)| *pid != peer.player_id);
-            }
-        }
-        // 通知 RoomActor 该 slot 离场，移除僵尸引擎（不再被 tick/选为攻击目标）。
-        if let Ok(Some(actor_tx)) = state.room_manager.actor_tx(&room_code).await {
-            let _ = actor_tx
-                .send(RoomCommand::PlayerLeave {
-                    slot: PlayerSlot(peer.player_id),
-                })
-                .await;
+    let peer = state
+        .room_manager
+        .peer_by_id(&room_code, peer_id)
+        .await
+        .ok();
+
+    // Always drop any pending (pre-game) channel for this peer.
+    if let Some(peer) = &peer {
+        let mut pending = state.pending_inputs.lock().await;
+        if let Some(entries) = pending.get_mut(&room_code) {
+            entries.retain(|(pid, _, _)| *pid != peer.player_id);
         }
     }
 
+    let actor_present = matches!(state.room_manager.actor_tx(&room_code).await, Ok(Some(_)));
+
+    if let (Some(peer), true) = (&peer, actor_present) {
+        // In-game disconnect: enter a grace window instead of removing immediately.
+        // The slot + engine are kept so a reconnect (valid resume token) reclaims
+        // them; the player is only truly removed if still away after the grace
+        // period — distinguishing a brief drop from leaving for good.
+        let _ = state.room_manager.mark_peer_away(&room_code, peer_id).await;
+        state.room_manager.broadcast_room_snapshot(&room_code).await;
+        info!("client {peer_id} away (grace) in room {room_code_send}");
+
+        let grace_state = Arc::clone(&state);
+        let grace_code = room_code.clone();
+        let slot = PlayerSlot(peer.player_id);
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(RECONNECT_GRACE_SECS)).await;
+            // Reclaimed during grace (peer.id rebound to a new connection) → no-op.
+            if !grace_state
+                .room_manager
+                .peer_is_away(&grace_code, peer_id)
+                .await
+            {
+                return;
+            }
+            if let Ok(Some(actor_tx)) = grace_state.room_manager.actor_tx(&grace_code).await {
+                let _ = actor_tx.send(RoomCommand::PlayerLeave { slot }).await;
+            }
+            let remaining = grace_state
+                .room_manager
+                .remove_peer(&grace_code, peer_id)
+                .await;
+            grace_state.room_manager.leave_room(&grace_code).await;
+            info!("client {peer_id} grace expired, removed from room {grace_code}");
+            if !remaining.is_empty() {
+                grace_state
+                    .room_manager
+                    .broadcast_snapshot(&grace_code, &remaining)
+                    .await;
+            }
+        });
+        return;
+    }
+
+    // Lobby / pre-game disconnect: immediate teardown (no engine to preserve).
     let remaining = state.room_manager.remove_peer(&room_code, peer_id).await;
     state.room_manager.leave_room(&room_code).await;
     info!("client {peer_id} left room {room_code_send}");
@@ -466,15 +553,17 @@ async fn handle_binary_message(
             }
         }
         PacketType::Resume => {
+            // Resume is authenticated and acted on during the connection handshake
+            // (see handle_socket). A mid-session Resume is a no-op; we only check
+            // the token shape against the peer's own token and never act on a
+            // mismatch — the slot is never reassigned from here.
             let Ok(pkt) = deser::<PktResume>(&data) else {
                 return;
             };
-            let Ok(peer) = state.room_manager.peer_by_id(room_code, peer_id).await else {
-                return;
-            };
-            let expected = peer.player_id.to_string();
-            if pkt.socket_id != expected || pkt.resume_token != expected {
-                warn!("rejecting resume token mismatch for peer {peer_id}");
+            if let Ok(peer) = state.room_manager.peer_by_id(room_code, peer_id).await
+                && pkt.resume_token != peer.resume_token
+            {
+                warn!("ignoring mid-session resume with non-matching token for peer {peer_id}");
             }
         }
         PacketType::Reconnect => {
@@ -506,6 +595,33 @@ fn make_player_connection(
         tx,
         format!("Player {}", player_id + 1),
     )
+}
+
+/// Extract the resume token from a packet iff it is a `Resume` packet on the
+/// current protocol version. Returns None for anything else.
+fn parse_resume_token(data: &[u8]) -> Option<String> {
+    let header = deser::<PacketHeader>(data).ok()?;
+    if header.version != PROTOCOL_VERSION || header.packet_type != PacketType::Resume {
+        return None;
+    }
+    deser::<PktResume>(data).ok().map(|pkt| pkt.resume_token)
+}
+
+/// Read the first non-empty binary message, skipping pings, empty heartbeats,
+/// and text frames. Returns None on close, error, or timeout.
+async fn read_first_binary(
+    receiver: &mut futures_util::stream::SplitStream<WebSocket>,
+    timeout: Duration,
+) -> Option<Vec<u8>> {
+    loop {
+        match tokio::time::timeout(timeout, receiver.next()).await {
+            Ok(Some(Ok(Message::Binary(data)))) if !data.is_empty() => {
+                return Some(data.to_vec());
+            }
+            Ok(Some(Ok(_))) => {}
+            Ok(Some(Err(_)) | None) | Err(_) => return None,
+        }
+    }
 }
 
 fn binary_packet_is_replay(data: &[u8]) -> bool {

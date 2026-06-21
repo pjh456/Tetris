@@ -69,9 +69,9 @@ export class WsClient {
       if (this.wasm) {
         try {
           const parsed = this.wasm.parse_packet(data) as MultiplayerEvent | null;
-          if (parsed?.kind === 'server_accept' && typeof parsed.player_id === 'number') {
-            const token = String(parsed.player_id);
-            this.set_resume_token(token, token);
+          if (parsed?.kind === 'server_accept' && typeof parsed.resume_token === 'string') {
+            const socket_id = typeof parsed.player_id === 'number' ? String(parsed.player_id) : '';
+            this.set_resume_token(parsed.resume_token, socket_id);
           }
           this.onpacket?.(parsed);
         } catch {
@@ -82,24 +82,28 @@ export class WsClient {
 
     this.socket.onclose = () => {
       this.stop_heartbeat();
-      if (
-        connection_status.value === 'online' ||
-        connection_status.value === 'slow' ||
-        connection_status.value === 'reconnecting'
-      ) {
+      if (this.should_attempt_reconnect()) {
         this.begin_reconnect();
       }
     };
 
     this.socket.onerror = () => {
-      if (
-        connection_status.value === 'online' ||
-        connection_status.value === 'slow' ||
-        connection_status.value === 'reconnecting'
-      ) {
+      if (this.should_attempt_reconnect()) {
         this.begin_reconnect();
       }
     };
+  }
+
+  private should_attempt_reconnect(): boolean {
+    const status = connection_status.value as ConnectionState;
+    // 'connecting' is included so a failed INITIAL connection degrades to
+    // disconnected (with retries) instead of hanging forever.
+    return (
+      status === 'online' ||
+      status === 'slow' ||
+      status === 'reconnecting' ||
+      status === 'connecting'
+    );
   }
 
   private start_heartbeat() {
@@ -108,10 +112,15 @@ export class WsClient {
       if (this.socket?.readyState === WebSocket.OPEN) {
         this.socket.send(new Uint8Array(0));
       }
+      // Only adjust slow/online while actually connected. Never override
+      // resyncing/reconnecting/connecting/disconnected — doing so previously
+      // interrupted the reconnect/resync flow.
+      const status = connection_status.value as ConnectionState;
+      if (status !== 'online' && status !== 'slow') return;
       const elapsed = Date.now() - this.last_pong_time;
       if (elapsed > 500) {
         connection_status.value = 'slow';
-      } else if ((connection_status.value as ConnectionState) === 'slow') {
+      } else if (status === 'slow') {
         connection_status.value = 'online';
       }
     }, HEARTBEAT_MS);
@@ -203,6 +212,25 @@ export class WsClient {
       this.was_reconnecting = false;
       this.flush_buffer();
     }
+  }
+
+  /**
+   * Manual reconnect entry point (for the connection UI after auto-reconnect
+   * exhausts or the user is disconnected). Resets the attempt counter and
+   * re-opens the socket from a clean state.
+   */
+  reconnect() {
+    if (this.reconnect_timeout) {
+      clearTimeout(this.reconnect_timeout);
+      this.reconnect_timeout = null;
+    }
+    if (this.reconnect_timer) {
+      clearTimeout(this.reconnect_timer);
+      this.reconnect_timer = null;
+    }
+    this.reconnect_attempt = 0;
+    connection_status.value = 'connecting';
+    this.create_socket();
   }
 
   close() {

@@ -67,6 +67,7 @@ pub struct MultiplayerEvent {
     pub local_hash: Option<u32>,
     pub hash_match: Option<bool>,
     pub event_count: Option<usize>,
+    pub resume_token: Option<String>,
     pub events: Vec<InputEvent>,
 }
 
@@ -89,6 +90,7 @@ impl MultiplayerEvent {
             local_hash: None,
             hash_match: None,
             event_count: None,
+            resume_token: None,
             events: Vec::new(),
         }
     }
@@ -481,22 +483,7 @@ impl WebTetris {
     }
 
     pub fn make_reconnect_packet(&self) -> js_sys::Uint8Array {
-        let mut client_hashes = Vec::new();
-        if let Some((tick, hash)) = self.last_state_hash {
-            client_hashes.push((tick, hash));
-        }
-        client_hashes.push((
-            tetris_protocol::newtypes::TickNumber(0),
-            self.engine.state_hash(),
-        ));
-        let pkt = PktReconnect {
-            header: PacketHeader::new(PacketType::Reconnect, self.local_player_id.unwrap_or(0)),
-            last_good_tick: client_hashes
-                .last()
-                .map_or(tetris_protocol::newtypes::TickNumber(0), |(tick, _)| *tick),
-            client_hashes,
-        };
-        packet_to_uint8_array(&pkt)
+        packet_to_uint8_array(&self.build_reconnect_packet())
     }
 }
 
@@ -526,6 +513,27 @@ impl WebTetris {
                 .collect(),
             None => Vec::new(),
         };
+    }
+
+    /// Build the reconnect packet. Pure logic so it is unit-testable on native
+    /// (the wasm `make_reconnect_packet` wrapper only adds the `Uint8Array` bridge).
+    fn build_reconnect_packet(&self) -> PktReconnect {
+        use tetris_protocol::newtypes::TickNumber;
+        // `last_good_tick` must reflect the real tick of the last server-confirmed
+        // state hash — never the unconditional (TickNumber(0), local_hash) entry,
+        // which previously pinned it to 0 and produced a wrong diverged_tick.
+        let last_good_tick = self.last_state_hash.map_or(TickNumber(0), |(tick, _)| tick);
+        let mut client_hashes = Vec::new();
+        if let Some((tick, hash)) = self.last_state_hash {
+            client_hashes.push((tick, hash));
+        }
+        // Current local hash is an extra ladder entry; it does NOT define last_good_tick.
+        client_hashes.push((TickNumber(0), self.engine.state_hash()));
+        PktReconnect {
+            header: PacketHeader::new(PacketType::Reconnect, self.local_player_id.unwrap_or(0)),
+            last_good_tick,
+            client_hashes,
+        }
     }
 
     fn apply_local_state_snapshot(&mut self, pkt: &PktStateSnapshot) {
@@ -593,6 +601,7 @@ impl WebTetris {
                 let mut event =
                     MultiplayerEvent::new("server_accept", self.room_code.clone(), None);
                 event.player_id = Some(pkt.assigned_player_id);
+                event.resume_token = Some(pkt.resume_token);
                 event
             }
             PacketType::RoomSnapshot => {
@@ -810,6 +819,7 @@ mod tests {
             header: PacketHeader::new(PacketType::ServerAccept, 0),
             assigned_player_id: 0,
             max_players: 2,
+            resume_token: "tok".into(),
         };
         wt.apply_packet(&packet_bytes(&accept)).unwrap();
         wt.apply_packet(&packet_bytes(&snapshot)).unwrap();
@@ -845,6 +855,7 @@ mod tests {
             header: PacketHeader::new(PacketType::ServerAccept, 0),
             assigned_player_id: 0,
             max_players: 2,
+            resume_token: "tok".into(),
         };
         let snapshot = PktRoomSnapshot {
             header: PacketHeader::new(PacketType::RoomSnapshot, 0),
@@ -895,6 +906,25 @@ mod tests {
         assert_eq!(event.tick, Some(100));
         assert_eq!(event.hash, Some(0xDEAD_BEEF));
         assert_eq!(event.hash_match, Some(false));
+    }
+
+    #[test]
+    fn reconnect_packet_uses_real_last_state_hash_tick() {
+        let mut wt = WebTetris::new(42);
+        wt.local_player_id = Some(1);
+        let hash_pkt = PktStateHash {
+            header: PacketHeader::new(PacketType::StateHash, 0),
+            tick: TickNumber(50),
+            hash: 0xABCD,
+        };
+        wt.apply_packet(&packet_bytes(&hash_pkt)).unwrap();
+
+        let pkt = wt.build_reconnect_packet();
+
+        // last_good_tick reflects the confirmed hash tick (50), not the old恒-0 bug.
+        assert_eq!(pkt.last_good_tick, TickNumber(50));
+        assert_eq!(pkt.header.player_id, 1);
+        assert!(pkt.client_hashes.iter().any(|(t, _)| *t == TickNumber(50)));
     }
 
     #[test]

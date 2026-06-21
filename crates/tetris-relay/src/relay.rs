@@ -39,6 +39,9 @@ pub struct PeerInfo {
     pub away: bool,
     pub is_bot: bool,
     pub temperature: f32,
+    /// Server-issued unpredictable token authenticating reconnect/resume.
+    /// Empty for bots (they never reconnect).
+    pub resume_token: String,
 }
 
 pub struct RoomManager {
@@ -59,6 +62,13 @@ fn alloc_player_slot(peers: &[PeerInfo]) -> u8 {
     used.iter()
         .position(|u| !u)
         .map_or(MAX_PLAYERS_PER_ROOM as u8 - 1, |i| i as u8)
+}
+
+/// Generate an unpredictable 128-bit resume token (hex). The client must echo
+/// this exact value to be authenticated on reconnect — a forged `player_id`
+/// (0/1/2) cannot match it.
+fn generate_resume_token() -> String {
+    format!("{:032x}", rand::random::<u128>())
 }
 
 impl RoomManager {
@@ -94,6 +104,7 @@ impl RoomManager {
             away: false,
             is_bot: false,
             temperature: 0.0,
+            resume_token: generate_resume_token(),
         });
         if room.host_peer_id.read().await.is_none() {
             *room.host_peer_id.write().await = Some(id);
@@ -121,6 +132,7 @@ impl RoomManager {
             away: false,
             is_bot: true,
             temperature,
+            resume_token: String::new(),
         };
         peers.push(peer.clone());
         Ok(peer)
@@ -207,6 +219,55 @@ impl RoomManager {
         } else {
             vec![]
         }
+    }
+
+    /// Mark a peer as away (disconnected, in grace window) without removing it.
+    /// Keeps its slot, engine, and `resume_token` so a reconnect can reclaim them.
+    /// Returns the peer clone if found.
+    pub async fn mark_peer_away(&self, code: &str, id: u64) -> Option<PeerInfo> {
+        let rooms = self.rooms.read().await;
+        let room = rooms.get(code)?;
+        let mut peers = room.peers.lock().await;
+        let peer = peers.iter_mut().find(|p| p.id == id)?;
+        peer.away = true;
+        Some(peer.clone())
+    }
+
+    /// Returns true if a peer with this id exists and is still marked away.
+    /// Used by the grace timer to decide whether to truly remove the slot.
+    pub async fn peer_is_away(&self, code: &str, id: u64) -> bool {
+        let rooms = self.rooms.read().await;
+        let Some(room) = rooms.get(code) else {
+            return false;
+        };
+        room.peers.lock().await.iter().any(|p| p.id == id && p.away)
+    }
+
+    /// Reclaim an away peer whose `resume_token` matches `token` (non-empty),
+    /// rebinding it to the new connection `new_id` and clearing the away flag.
+    /// Returns the reclaimed peer (with its original `slot`/`player_id`) or None when
+    /// no away peer matches — e.g. a forged or stale token.
+    pub async fn reclaim_away_peer(
+        &self,
+        code: &str,
+        new_id: u64,
+        token: &str,
+    ) -> Option<PeerInfo> {
+        if token.is_empty() {
+            return None;
+        }
+        let rooms = self.rooms.read().await;
+        let room = rooms.get(code)?;
+        let mut peers = room.peers.lock().await;
+        let peer = peers
+            .iter_mut()
+            .find(|p| p.away && !p.is_bot && p.resume_token == token)?;
+        peer.away = false;
+        peer.id = new_id;
+        if room.host_peer_id.read().await.is_none() {
+            *room.host_peer_id.write().await = Some(new_id);
+        }
+        Some(peer.clone())
     }
 
     pub async fn broadcast_snapshot(&self, code: &str, peers: &[PeerInfo]) {
@@ -578,5 +639,61 @@ mod tests {
         assert!(bot.ready);
         assert_eq!(bot.temperature, 0.5);
         assert_eq!(peers.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn reclaim_away_peer_restores_same_slot_on_matching_token() {
+        let manager = RoomManager::new(4);
+        manager.get_or_create_room("ABCD").await.unwrap();
+        let first_id = RoomManager::alloc_peer_id();
+        manager.join_room("ABCD").await.unwrap();
+        let peers = manager.add_peer("ABCD", first_id).await.unwrap();
+        let slot = peers[0].player_id;
+        let token = peers[0].resume_token.clone();
+        assert!(!token.is_empty());
+
+        // Disconnect: mark away (slot preserved during grace), then reconnect.
+        manager.mark_peer_away("ABCD", first_id).await.unwrap();
+        assert!(manager.peer_is_away("ABCD", first_id).await);
+
+        let new_id = RoomManager::alloc_peer_id();
+        let reclaimed = manager
+            .reclaim_away_peer("ABCD", new_id, &token)
+            .await
+            .expect("matching token must reclaim the away slot");
+
+        assert_eq!(reclaimed.player_id, slot, "reclaim keeps original slot");
+        assert!(!reclaimed.away);
+        assert_eq!(reclaimed.id, new_id, "peer rebound to new connection");
+    }
+
+    #[tokio::test]
+    async fn reclaim_away_peer_rejects_forged_player_id_token() {
+        let manager = RoomManager::new(4);
+        manager.get_or_create_room("ABCD").await.unwrap();
+        let first_id = RoomManager::alloc_peer_id();
+        manager.join_room("ABCD").await.unwrap();
+        let peers = manager.add_peer("ABCD", first_id).await.unwrap();
+        let slot = peers[0].player_id;
+        manager.mark_peer_away("ABCD", first_id).await.unwrap();
+
+        // Attacker guesses the resume token is the player_id (the old behavior).
+        let forged = slot.to_string();
+        let new_id = RoomManager::alloc_peer_id();
+
+        assert!(
+            manager
+                .reclaim_away_peer("ABCD", new_id, &forged)
+                .await
+                .is_none(),
+            "forged player_id token must not reclaim the slot"
+        );
+        // Empty token is also rejected outright.
+        assert!(
+            manager
+                .reclaim_away_peer("ABCD", new_id, "")
+                .await
+                .is_none()
+        );
     }
 }
