@@ -11,6 +11,7 @@ import { create_gameover_screen } from './screens/gameover';
 import { create_leaderboard_screen } from './screens/leaderboard';
 import { create_lobby_screen } from './screens/lobby';
 import { create_spectator_screen } from './screens/spectator';
+import { create_watch_ai_screen } from './screens/watch_ai';
 import { reset_multiplayer_ws } from './core/multiplayer';
 
 const boot_theme = (settings.value.theme as ThemeName) || 'cyberpunk';
@@ -169,6 +170,25 @@ effect(() => {
       app.appendChild(sp_el);
       mount_back_button(app);
       _cleanups.push(() => sp_el._cleanup?.());
+      break;
+    }
+    case 'watch_ai': {
+      const content = document.createElement('div');
+      content.className = 'content';
+      app.appendChild(content);
+      void (async () => {
+        try {
+          await init_wasm(content);
+          if (page.value !== 'watch_ai') {
+            return;
+          }
+          const destroy = untracked(() => create_watch_ai_screen(content));
+          _cleanups.push(destroy);
+        } catch {
+          // `init_wasm` already renders error state into `content`.
+        }
+      })();
+      mount_back_button(app);
       break;
     }
   }

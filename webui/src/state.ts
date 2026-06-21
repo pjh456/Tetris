@@ -8,7 +8,8 @@ export type Page =
   | 'gameover'
   | 'lobby'
   | 'leaderboard'
-  | 'spectator';
+  | 'spectator'
+  | 'watch_ai';
 
 export const page = signal<Page>('home');
 export const is_multiplayer = signal(false);

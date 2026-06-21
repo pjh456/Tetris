@@ -157,6 +157,9 @@ export class WasmAi {
   get_grid() {
     return this._grid;
   }
+  is_game_over() {
+    return false;
+  }
   __push_garbage(lines, hole_x) {
     this._garbage.push(lines, hole_x);
   }

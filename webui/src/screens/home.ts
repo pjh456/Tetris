@@ -34,6 +34,18 @@ export function create_home_screen(
 
   cards.push(
     create_card({
+      left_label: 'AI',
+      title: 'WATCH AI',
+      subtitle: 'WATCH THE AI PLAY — A HANDS-OFF DEMO',
+      css_class: 'menu-watch-ai',
+      onclick: () => {
+        page.value = 'watch_ai';
+      },
+    }),
+  );
+
+  cards.push(
+    create_card({
       left_label: 'LB',
       title: 'LEADERBOARD',
       subtitle: 'TOP 10 LOCAL RANKINGS',
