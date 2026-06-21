@@ -115,7 +115,7 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
     let peer = if let Some(peer) = reclaimed {
         info!(
             "client {peer_id} reclaimed slot {} in room {room_code}",
-            peer.player_id
+            peer.session.player_id
         );
         peer
     } else {
@@ -141,11 +141,11 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
     // already running, ResumePlayer rebuilds that slot's outbound/input channels
     // (preserving the engine on reclaim); otherwise the channels wait in pending
     // until the game starts.
-    let conn = make_player_connection(peer.player_id, input_tx.clone());
+    let conn = make_player_connection(peer.session.player_id, input_tx.clone());
     if let Ok(Some(actor_tx)) = state.room_manager.actor_tx(&room_code).await {
         let _ = actor_tx
             .send(RoomCommand::ResumePlayer {
-                slot: PlayerSlot(peer.player_id),
+                slot: PlayerSlot(peer.session.player_id),
                 input_rx,
                 conn,
                 outbound_tx: outbound_tx.clone(),
@@ -154,7 +154,7 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
     } else {
         let mut pending = state.pending_inputs.lock().await;
         pending.entry(room_code.clone()).or_default().push((
-            peer.player_id,
+            peer.session.player_id,
             input_rx,
             outbound_tx.clone(),
         ));
@@ -164,9 +164,9 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
     // so only this client receives it (never in a room-wide broadcast).
     let accept = PktServerAccept {
         header: PacketHeader::new(PacketType::ServerAccept, 0),
-        assigned_player_id: peer.player_id,
+        assigned_player_id: peer.session.player_id,
         max_players: MAX_PLAYERS_PER_ROOM as u8,
-        resume_token: peer.resume_token.clone(),
+        resume_token: peer.session.resume_token.clone(),
     };
     if let Ok(data) = serialize(&accept) {
         let _ = outbound_tx.send(data).await;
@@ -224,7 +224,7 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
     if let Some(peer) = &peer {
         let mut pending = state.pending_inputs.lock().await;
         if let Some(entries) = pending.get_mut(&room_code) {
-            entries.retain(|(pid, _, _)| *pid != peer.player_id);
+            entries.retain(|(pid, _, _)| *pid != peer.session.player_id);
         }
     }
 
@@ -241,7 +241,7 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
 
         let grace_state = Arc::clone(&state);
         let grace_code = room_code.clone();
-        let slot = PlayerSlot(peer.player_id);
+        let slot = PlayerSlot(peer.session.player_id);
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(RECONNECT_GRACE_SECS)).await;
             // Reclaimed during grace (peer.id rebound to a new connection) → no-op.
@@ -465,9 +465,11 @@ async fn handle_binary_message(
                                         outbound_tx,
                                     );
                                 }
-                                for peer in room_peers.iter().filter(|peer| peer.is_bot) {
-                                    let _ =
-                                        actor.add_bot(PlayerSlot(peer.player_id), peer.temperature);
+                                for peer in room_peers.iter().filter(|peer| peer.session.is_bot) {
+                                    let _ = actor.add_bot(
+                                        PlayerSlot(peer.session.player_id),
+                                        peer.session.temperature,
+                                    );
                                 }
                                 actor.set_room_mode(RoomMode::Playing);
                                 let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
@@ -510,7 +512,7 @@ async fn handle_binary_message(
             let chat_pkt = if let Ok(peer) = state.room_manager.peer_by_id(room_code, peer_id).await
             {
                 PktChatMessage {
-                    header: PacketHeader::new(PacketType::ChatMessage, peer.player_id),
+                    header: PacketHeader::new(PacketType::ChatMessage, peer.session.player_id),
                     message: pkt.message,
                     timestamp: pkt.timestamp,
                 }
@@ -536,7 +538,7 @@ async fn handle_binary_message(
             if let Ok(Some(actor_tx)) = state.room_manager.actor_tx(room_code).await {
                 let _ = actor_tx
                     .send(RoomCommand::AddBot {
-                        slot: PlayerSlot(bot_peer.player_id),
+                        slot: PlayerSlot(bot_peer.session.player_id),
                         temperature: pkt.temperature,
                     })
                     .await;
@@ -561,7 +563,7 @@ async fn handle_binary_message(
                 return;
             };
             if let Ok(peer) = state.room_manager.peer_by_id(room_code, peer_id).await
-                && pkt.resume_token != peer.resume_token
+                && pkt.resume_token != peer.session.resume_token
             {
                 warn!("ignoring mid-session resume with non-matching token for peer {peer_id}");
             }
@@ -576,7 +578,7 @@ async fn handle_binary_message(
             if let Ok(Some(actor_tx)) = state.room_manager.actor_tx(room_code).await {
                 let _ = actor_tx
                     .send(RoomCommand::Reconnect {
-                        slot: PlayerSlot(peer.player_id),
+                        slot: PlayerSlot(peer.session.player_id),
                         client_hashes: pkt.client_hashes,
                     })
                     .await;

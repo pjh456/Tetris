@@ -30,18 +30,61 @@ pub struct RoomState {
     pub actor_tx: Mutex<Option<tokio::sync::mpsc::Sender<RoomCommand>>>,
 }
 
+/// First-class player session, decoupled from the WS connection. Survives a
+/// disconnect (grace `away` window) so a reconnect can reclaim the same slot +
+/// engine. Holds all player-scoped state; `PeerInfo` is the thin transport shell.
 #[derive(Clone)]
-pub struct PeerInfo {
-    pub id: u64,
+pub struct Session {
     pub player_id: u8,
     pub name: String,
-    pub ready: bool,
-    pub away: bool,
     pub is_bot: bool,
     pub temperature: f32,
     /// Server-issued unpredictable token authenticating reconnect/resume.
     /// Empty for bots (they never reconnect).
     pub resume_token: String,
+    pub away: bool,
+}
+
+impl Session {
+    fn new(
+        player_id: u8,
+        name: String,
+        is_bot: bool,
+        temperature: f32,
+        resume_token: String,
+    ) -> Self {
+        Self {
+            player_id,
+            name,
+            is_bot,
+            temperature,
+            resume_token,
+            away: false,
+        }
+    }
+
+    fn mark_away(&mut self) {
+        self.away = true;
+    }
+
+    fn unmark_away(&mut self) {
+        self.away = false;
+    }
+
+    /// A session is reclaimable by `token` only when it is away, not a bot, and
+    /// the (non-empty) token matches exactly — a forged `player_id` cannot pass.
+    fn reclaimable_by(&self, token: &str) -> bool {
+        self.away && !self.is_bot && !token.is_empty() && self.resume_token == token
+    }
+}
+
+/// Thin transport shell: a live WS connection (`id`) bound to a `Session`.
+/// `ready` is connection-level lobby state (resets on reclaim).
+#[derive(Clone)]
+pub struct PeerInfo {
+    pub id: u64,
+    pub ready: bool,
+    pub session: Session,
 }
 
 pub struct RoomManager {
@@ -55,8 +98,8 @@ pub struct RoomManager {
 fn alloc_player_slot(peers: &[PeerInfo]) -> u8 {
     let mut used = [false; MAX_PLAYERS_PER_ROOM];
     for p in peers {
-        if (p.player_id as usize) < MAX_PLAYERS_PER_ROOM {
-            used[p.player_id as usize] = true;
+        if (p.session.player_id as usize) < MAX_PLAYERS_PER_ROOM {
+            used[p.session.player_id as usize] = true;
         }
     }
     used.iter()
@@ -98,13 +141,8 @@ impl RoomManager {
         let name = format!("Player {}", player_id + 1);
         peers.push(PeerInfo {
             id,
-            player_id,
-            name,
             ready: false,
-            away: false,
-            is_bot: false,
-            temperature: 0.0,
-            resume_token: generate_resume_token(),
+            session: Session::new(player_id, name, false, 0.0, generate_resume_token()),
         });
         if room.host_peer_id.read().await.is_none() {
             *room.host_peer_id.write().await = Some(id);
@@ -123,16 +161,17 @@ impl RoomManager {
         }
         let player_id = alloc_player_slot(&peers);
         let id = Self::alloc_peer_id();
-        let bot_count = peers.iter().filter(|peer| peer.is_bot).count() + 1;
+        let bot_count = peers.iter().filter(|peer| peer.session.is_bot).count() + 1;
         let peer = PeerInfo {
             id,
-            player_id,
-            name: format!("AI {bot_count}"),
             ready: true,
-            away: false,
-            is_bot: true,
-            temperature,
-            resume_token: String::new(),
+            session: Session::new(
+                player_id,
+                format!("AI {bot_count}"),
+                true,
+                temperature,
+                String::new(),
+            ),
         };
         peers.push(peer.clone());
         Ok(peer)
@@ -155,7 +194,7 @@ impl RoomManager {
             .iter_mut()
             .find(|peer| peer.id == id)
             .ok_or(RelayError::PeerNotFound)?;
-        peer.name = name;
+        peer.session.name = name;
         Ok(peers.clone())
     }
 
@@ -229,7 +268,7 @@ impl RoomManager {
         let room = rooms.get(code)?;
         let mut peers = room.peers.lock().await;
         let peer = peers.iter_mut().find(|p| p.id == id)?;
-        peer.away = true;
+        peer.session.mark_away();
         Some(peer.clone())
     }
 
@@ -240,7 +279,11 @@ impl RoomManager {
         let Some(room) = rooms.get(code) else {
             return false;
         };
-        room.peers.lock().await.iter().any(|p| p.id == id && p.away)
+        room.peers
+            .lock()
+            .await
+            .iter()
+            .any(|p| p.id == id && p.session.away)
     }
 
     /// Reclaim an away peer whose `resume_token` matches `token` (non-empty),
@@ -259,10 +302,8 @@ impl RoomManager {
         let rooms = self.rooms.read().await;
         let room = rooms.get(code)?;
         let mut peers = room.peers.lock().await;
-        let peer = peers
-            .iter_mut()
-            .find(|p| p.away && !p.is_bot && p.resume_token == token)?;
-        peer.away = false;
+        let peer = peers.iter_mut().find(|p| p.session.reclaimable_by(token))?;
+        peer.session.unmark_away();
         peer.id = new_id;
         if room.host_peer_id.read().await.is_none() {
             *room.host_peer_id.write().await = Some(new_id);
@@ -282,11 +323,11 @@ impl RoomManager {
             players: peers
                 .iter()
                 .map(|peer| RoomPlayerSnapshot {
-                    player_id: peer.player_id,
-                    name: peer.name.clone(),
+                    player_id: peer.session.player_id,
+                    name: peer.session.name.clone(),
                     ready: peer.ready,
                     alive: true,
-                    away: peer.away,
+                    away: peer.session.away,
                     is_host: host_peer_id.is_some_and(|host_id| host_id == peer.id),
                 })
                 .collect(),
@@ -613,12 +654,12 @@ mod tests {
         manager.add_peer("ABCD", second_id).await.unwrap();
 
         let remaining = manager.remove_peer("ABCD", first_id).await;
-        assert_eq!(remaining[0].player_id, 1);
+        assert_eq!(remaining[0].session.player_id, 1);
 
         manager.join_room("ABCD").await.unwrap();
         let peers = manager.add_peer("ABCD", third_id).await.unwrap();
 
-        let mut slots: Vec<_> = peers.iter().map(|peer| peer.player_id).collect();
+        let mut slots: Vec<_> = peers.iter().map(|peer| peer.session.player_id).collect();
         slots.sort_unstable();
         assert_eq!(slots, vec![0, 1]);
     }
@@ -634,10 +675,10 @@ mod tests {
         let bot = manager.add_bot_peer("ABCD", 0.5).await.unwrap();
         let peers = manager.room_peers("ABCD").await.unwrap();
 
-        assert_eq!(bot.player_id, 1);
-        assert!(bot.is_bot);
+        assert_eq!(bot.session.player_id, 1);
+        assert!(bot.session.is_bot);
         assert!(bot.ready);
-        assert_eq!(bot.temperature, 0.5);
+        assert_eq!(bot.session.temperature, 0.5);
         assert_eq!(peers.len(), 2);
     }
 
@@ -648,8 +689,8 @@ mod tests {
         let first_id = RoomManager::alloc_peer_id();
         manager.join_room("ABCD").await.unwrap();
         let peers = manager.add_peer("ABCD", first_id).await.unwrap();
-        let slot = peers[0].player_id;
-        let token = peers[0].resume_token.clone();
+        let slot = peers[0].session.player_id;
+        let token = peers[0].session.resume_token.clone();
         assert!(!token.is_empty());
 
         // Disconnect: mark away (slot preserved during grace), then reconnect.
@@ -662,8 +703,11 @@ mod tests {
             .await
             .expect("matching token must reclaim the away slot");
 
-        assert_eq!(reclaimed.player_id, slot, "reclaim keeps original slot");
-        assert!(!reclaimed.away);
+        assert_eq!(
+            reclaimed.session.player_id, slot,
+            "reclaim keeps original slot"
+        );
+        assert!(!reclaimed.session.away);
         assert_eq!(reclaimed.id, new_id, "peer rebound to new connection");
     }
 
@@ -674,7 +718,7 @@ mod tests {
         let first_id = RoomManager::alloc_peer_id();
         manager.join_room("ABCD").await.unwrap();
         let peers = manager.add_peer("ABCD", first_id).await.unwrap();
-        let slot = peers[0].player_id;
+        let slot = peers[0].session.player_id;
         manager.mark_peer_away("ABCD", first_id).await.unwrap();
 
         // Attacker guesses the resume token is the player_id (the old behavior).
