@@ -1,3 +1,5 @@
+import { get_display_name } from './user_profile';
+
 export type KeyBind = { key: string; code: string };
 
 export type Settings = {
@@ -103,6 +105,7 @@ export type LeaderboardEntry = {
   level: number;
   lines: number;
   date: string;
+  name: string;
 };
 
 const LEADERBOARD_KEY = 'tetris-leaderboard';
@@ -131,6 +134,10 @@ export function get_leaderboard(): LeaderboardEntry[] {
           typeof (e as LeaderboardEntry).lines === 'number' &&
           typeof (e as LeaderboardEntry).date === 'string',
       )
+      .map((e: LeaderboardEntry) => ({
+        ...e,
+        name: typeof e.name === 'string' ? e.name : 'Guest',
+      }))
       .sort((a: LeaderboardEntry, b: LeaderboardEntry) => b.score - a.score)
       .slice(0, 10);
     return _leaderboard_cache;
@@ -139,13 +146,19 @@ export function get_leaderboard(): LeaderboardEntry[] {
   }
 }
 
-export function save_score_to_leaderboard(score: number, level: number, lines: number): number {
+export function save_score_to_leaderboard(
+  score: number,
+  level: number,
+  lines: number,
+  name: string = get_display_name(),
+): number {
   const entries = get_leaderboard();
   const entry: LeaderboardEntry = {
     score,
     level,
     lines,
     date: new Date().toISOString(),
+    name,
   };
   entries.push(entry);
   entries.sort((a, b) => b.score - a.score);

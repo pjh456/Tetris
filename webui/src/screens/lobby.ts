@@ -4,6 +4,7 @@ import { page, is_multiplayer, room_code, connection_status } from '../state';
 import { WsClient } from '../core/ws_client';
 import { set_multiplayer_ws } from '../core/multiplayer';
 import { add_multiplayer_ai_opponent } from '../core/ai_opponent';
+import { get_display_name } from '../core/user_profile';
 import {
   consume_last_multiplayer_event,
   get_multiplayer_snapshot,
@@ -36,7 +37,7 @@ export function create_lobby_screen(): HTMLElement {
   const wasm = get_wasm();
   let current_ws = new WsClient(`${RELAY_URL}/room/${room_code.value}`, wasm);
   let peers: MultiplayerPlayer[] = [];
-  const my_name = `Guest-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+  const my_name = get_display_name();
   let is_ready = false;
   let last_room_sync_count: number | null = null;
 

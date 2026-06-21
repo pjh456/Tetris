@@ -1,6 +1,6 @@
 import './style.css';
 import { effect, untracked } from '@preact/signals-core';
-import { page, settings, is_multiplayer } from './state';
+import { page, settings, is_multiplayer, connection_status } from './state';
 import { apply_theme, type ThemeName } from './core/theme';
 import { init_particles, apply_theme_particles } from './core/particles';
 import { init_wasm } from './core/wasm';
@@ -13,6 +13,17 @@ import { create_lobby_screen } from './screens/lobby';
 import { create_spectator_screen } from './screens/spectator';
 import { create_watch_ai_screen } from './screens/watch_ai';
 import { reset_multiplayer_ws } from './core/multiplayer';
+import { get_display_name } from './core/user_profile';
+
+const CONNECTION_LABELS: Record<string, string> = {
+  offline: 'OFFLINE',
+  connecting: 'CONNECTING',
+  online: 'ONLINE',
+  slow: 'SLOW',
+  reconnecting: 'RECONNECTING',
+  disconnected: 'DISCONNECTED',
+  resyncing: 'RESYNCING',
+};
 
 const boot_theme = (settings.value.theme as ThemeName) || 'cyberpunk';
 apply_theme(boot_theme);
@@ -35,10 +46,19 @@ function mount_topbar(container: HTMLElement) {
       <div class="logo">TETRIS</div>
     </div>
     <div class="user-info">
-      <div>GUEST</div>
+      <div class="user-name"></div>
       <div class="status">OFFLINE</div>
     </div>
   `;
+  // Display name from local profile (textContent — avoids HTML injection).
+  topbar.querySelector('.user-name')!.textContent = get_display_name();
+  // Status reflects the live connection_status signal.
+  const status_el = topbar.querySelector('.status')!;
+  const dispose = effect(() => {
+    const status = connection_status.value;
+    status_el.textContent = CONNECTION_LABELS[status] ?? status.toUpperCase();
+  });
+  _cleanups.push(dispose);
   topbar.querySelector('.back-btn')!.addEventListener('click', () => {
     page.value = 'home';
   });

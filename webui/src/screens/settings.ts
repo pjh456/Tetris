@@ -7,6 +7,7 @@ import {
   type Settings,
 } from '../core/settings_store';
 import { apply_theme, type ThemeName } from '../core/theme';
+import { load_profile, save_profile } from '../core/user_profile';
 
 const ACTION_LABELS: Record<string, string> = {
   MoveLeft: 'Move Left',
@@ -86,6 +87,7 @@ export function create_settings_screen(): HTMLElement {
   header.appendChild(title);
   el.appendChild(header);
 
+  el.appendChild(create_profile_section());
   el.appendChild(create_controls_section(current, () => auto_save(current), overlay_cleanup));
   el.appendChild(create_audio_section(current, () => auto_save(current)));
   el.appendChild(create_display_section(current, () => auto_save(current)));
@@ -115,6 +117,33 @@ export function create_settings_screen(): HTMLElement {
   };
 
   return el;
+}
+
+function create_profile_section(): HTMLElement {
+  const section = document.createElement('section');
+  section.className = 'settings-section';
+  const h3 = document.createElement('h3');
+  h3.textContent = 'Profile';
+  section.appendChild(h3);
+
+  const row = document.createElement('div');
+  row.className = 'settings-row';
+  const lbl = document.createElement('label');
+  lbl.textContent = 'Nickname';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.maxLength = 16;
+  input.className = 'settings-text-input';
+  input.value = load_profile().name;
+  input.addEventListener('change', () => {
+    save_profile({ name: input.value });
+    // Reflect the cleaned/clamped value back into the field.
+    input.value = load_profile().name;
+  });
+  row.appendChild(lbl);
+  row.appendChild(input);
+  section.appendChild(row);
+  return section;
 }
 
 function create_controls_section(
