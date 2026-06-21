@@ -37,9 +37,10 @@ impl ScoreTracker {
         if lines_cleared > 0 {
             let base: u64 = if is_tspin {
                 if is_mini {
+                    // Tetris guideline: T-Spin Mini Single = 200, Mini Double = 400.
                     match lines_cleared {
                         1 => 200,
-                        _ => 200,
+                        _ => 400,
                     }
                 } else {
                     match lines_cleared {

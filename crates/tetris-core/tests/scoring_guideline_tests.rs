@@ -78,6 +78,15 @@ fn test_tspin_mini_single_level_1() {
 }
 
 #[test]
+fn test_tspin_mini_double_level_1() {
+    // Tetris guideline: T-Spin Mini Double = 400 (was an oversight at flat 200).
+    let mut s = ScoreTracker::default();
+    s.level = 1;
+    s.update(2, true, true, false, false, 0, 0, 0, 1);
+    assert_eq!(s.score, 400);
+}
+
+#[test]
 fn test_b2b_chain_broken() {
     let mut s = ScoreTracker::default();
     s.level = 1;

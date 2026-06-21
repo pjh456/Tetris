@@ -244,7 +244,9 @@ impl<const W: usize, const H: usize> Engine<W, H> {
                 attack_res.damage -= self.state.pending_garbage as i32;
                 self.state.pending_garbage = 0;
             } else {
-                self.state.pending_garbage -= attack_res.damage as u8;
+                // Defensive: damage is < pending_garbage (u8) here, so the cast is
+                // always in range; try_from guards against any future overflow.
+                self.state.pending_garbage -= u8::try_from(attack_res.damage).unwrap_or(u8::MAX);
                 attack_res.damage = 0;
             }
         } else if lines_cleared == 0 && self.state.pending_garbage > 0 {

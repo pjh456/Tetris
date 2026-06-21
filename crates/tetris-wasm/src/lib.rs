@@ -269,7 +269,8 @@ impl WebTetris {
     }
 
     pub fn receive_garbage(&mut self, lines: u8, hole_x: u8) {
-        self.engine.add_pending_garbage(lines, hole_x, 0);
+        // Clamp hole_x into [0, W-1]; an out-of-range hole would corrupt the garbage row.
+        self.engine.add_pending_garbage(lines, hole_x.min(9), 0);
     }
 
     pub fn opponent_count(&self) -> u8 {
@@ -277,7 +278,9 @@ impl WebTetris {
     }
 
     pub fn push_input_event(&mut self, key: u8, pressed: bool, subframe: f32) {
-        let action = tetris_protocol::newtypes::KeyAction::from_u8(key);
+        let Some(action) = tetris_protocol::newtypes::KeyAction::from_u8(key) else {
+            return;
+        };
         self.input_buf.push(action, pressed, subframe);
     }
 
@@ -580,9 +583,22 @@ impl WebTetris {
     }
 
     fn apply_packet(&mut self, data: &[u8]) -> Option<MultiplayerEvent> {
-        let header: PacketHeader = deser(data).ok()?;
+        // Distinguish the three parse-failure classes (decode / version / unknown
+        // type) via dedicated event kinds, so the JS layer can observe them
+        // instead of silently dropping every failure to null.
+        let Ok(header) = deser::<PacketHeader>(data) else {
+            return Some(MultiplayerEvent::new(
+                "parse_error_decode",
+                self.room_code.clone(),
+                None,
+            ));
+        };
         if header.version != PROTOCOL_VERSION {
-            return None;
+            return Some(MultiplayerEvent::new(
+                "parse_error_version",
+                self.room_code.clone(),
+                None,
+            ));
         }
 
         let event = match header.packet_type {
@@ -739,7 +755,13 @@ impl WebTetris {
                 event.winner_player_id = Some(pkt.winner_player_id);
                 event
             }
-            _ => return None,
+            _ => {
+                return Some(MultiplayerEvent::new(
+                    "parse_error_unknown",
+                    self.room_code.clone(),
+                    None,
+                ));
+            }
         };
 
         self.last_event = Some(event.clone());

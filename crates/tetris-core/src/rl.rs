@@ -74,6 +74,12 @@ pub fn action_to_placement(action: usize) -> Option<(i8, Rot)> {
 }
 
 pub fn placement_to_action(col: i8, rot: Rot) -> Option<usize> {
+    // Negative `col` denotes an off-board (left-overhang) placement, which is not
+    // a legal landing column — `try_from` rejects it (returns None) so it is
+    // excluded from the action space. Intentionally NOT extended: the action
+    // space [0, BOARD_W*4) matches the trained policy weights; widening it would
+    // invalidate existing models. Such placements are extreme/degenerate and the
+    // policy does not rely on them.
     let col = usize::try_from(col).ok()?;
     if col >= BOARD_W {
         return None;

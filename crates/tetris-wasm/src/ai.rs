@@ -80,7 +80,8 @@ impl WasmAi {
     }
 
     pub fn receive_garbage(&mut self, lines: u8, hole_x: u8) {
-        self.engine.add_pending_garbage(lines, hole_x, 0);
+        // Clamp hole_x into [0, W-1] to keep the garbage row well-formed.
+        self.engine.add_pending_garbage(lines, hole_x.min(9), 0);
     }
 
     pub fn drain_pending_garbage(&mut self) -> Vec<u32> {

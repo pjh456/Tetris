@@ -36,19 +36,16 @@ pub enum KeyAction {
 }
 
 impl KeyAction {
-    pub fn from_u8(v: u8) -> Self {
+    pub fn from_u8(v: u8) -> Option<Self> {
         match v {
-            0 => KeyAction::KeyLeft,
-            1 => KeyAction::KeyRight,
-            2 => KeyAction::KeySoftDrop,
-            3 => KeyAction::KeyHardDrop,
-            4 => KeyAction::KeyRotateCW,
-            5 => KeyAction::KeyRotateCCW,
-            6 => KeyAction::KeyHold,
-            _ => {
-                debug_assert!(false, "invalid KeyAction value: {v}");
-                KeyAction::KeyLeft
-            }
+            0 => Some(KeyAction::KeyLeft),
+            1 => Some(KeyAction::KeyRight),
+            2 => Some(KeyAction::KeySoftDrop),
+            3 => Some(KeyAction::KeyHardDrop),
+            4 => Some(KeyAction::KeyRotateCW),
+            5 => Some(KeyAction::KeyRotateCCW),
+            6 => Some(KeyAction::KeyHold),
+            _ => None,
         }
     }
 }
@@ -92,8 +89,10 @@ mod tests {
 
     #[test]
     fn test_key_action_from_u8() {
-        assert_eq!(KeyAction::from_u8(0), KeyAction::KeyLeft);
-        assert_eq!(KeyAction::from_u8(6), KeyAction::KeyHold);
+        assert_eq!(KeyAction::from_u8(0), Some(KeyAction::KeyLeft));
+        assert_eq!(KeyAction::from_u8(6), Some(KeyAction::KeyHold));
+        assert_eq!(KeyAction::from_u8(7), None);
+        assert_eq!(KeyAction::from_u8(255), None);
     }
 
     #[test]

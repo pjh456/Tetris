@@ -62,7 +62,9 @@ impl<const W: usize, const H: usize> Board<W, H> {
     }
 
     pub fn place(&mut self, y: u8, mask: u64) {
-        self.rows[y as usize] |= mask;
+        // Mask off any bits beyond board width (defensive; current callers pass
+        // in-range masks). Keeps stored rows consistent with `FULL` semantics.
+        self.rows[y as usize] |= mask & Self::FULL;
     }
 
     pub fn full(&self, y: u8) -> bool {

@@ -31,6 +31,7 @@ export function create_gameover_screen(): HTMLElement {
     };
     const time_sec = s.game_time_ms / 1000;
     const pps = time_sec > 0 ? (s.total_pieces / time_sec).toFixed(1) : '0.0';
+    const apm = time_sec > 0 ? Math.round((s.total_pieces / time_sec) * 60) : 0;
     const rank = save_score_to_leaderboard(s.score, s.level, s.lines);
     const rank_html =
       rank > 0
@@ -45,7 +46,7 @@ export function create_gameover_screen(): HTMLElement {
       <div class="stat-row"><span class="stat-label">Max Combo</span><span class="stat-value">${s.max_combo}</span></div>
       <div class="stat-row"><span class="stat-label">T-Spins</span><span class="stat-value">${s.tspin_count}</span></div>
       <div class="stat-row"><span class="stat-label">PPS</span><span class="stat-value">${pps}</span></div>
-      <div class="stat-row"><span class="stat-label">APM</span><span class="stat-value">--</span></div>
+      <div class="stat-row"><span class="stat-label">APM</span><span class="stat-value">${apm}</span></div>
       <div class="stat-row"><span class="stat-label">Pieces</span><span class="stat-value">${s.total_pieces}</span></div>
     `;
   } catch {
