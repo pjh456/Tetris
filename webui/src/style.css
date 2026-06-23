@@ -11,6 +11,8 @@ body[data-theme='cyberpunk'] {
   --color-text: #e6f0ff;
   --color-muted: #8a96ad;
   --color-destructive: #ff4d4d;
+  --color-menu-badge-fg: #cfe3ff;
+  --color-menu-badge-bg: rgba(0, 0, 0, 0.4);
 
   --color-piece-i: #00ffff;
   --color-piece-o: #ffff00;
@@ -59,6 +61,8 @@ body[data-theme='retro'] {
   --color-text: #eeeeee;
   --color-muted: #999999;
   --color-destructive: #ff6b6b;
+  --color-menu-badge-fg: #f0e6e6;
+  --color-menu-badge-bg: rgba(0, 0, 0, 0.35);
 
   --color-piece-i: #5dade2;
   --color-piece-o: #f4d03f;
@@ -94,6 +98,8 @@ body[data-theme='minimal'] {
   --color-text: #1a1a1a;
   --color-muted: #999999;
   --color-destructive: #cc0000;
+  --color-menu-badge-fg: #2a2a2a;
+  --color-menu-badge-bg: #e4e4e4;
 
   --color-piece-i: #74b9ff;
   --color-piece-o: #ffeaa7;
@@ -248,26 +254,24 @@ body {
 }
 
 .home {
-  margin-top: var(--text-display);
-  display: grid;
-  gap: 28px;
-  width: 60%;
-  margin-left: auto;
-  margin-right: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 18px;
+  width: min(560px, 92%);
+  margin: 0 auto;
   flex: 1;
-  overflow: hidden;
-  padding-left: var(--space-lg);
+  padding: var(--space-lg) 0;
+  overflow-y: auto;
 }
 
 .menu-card {
   display: grid;
-  grid-template-columns: 120px 1fr;
-  height: 150px;
-  width: calc(100% + 48px);
-  margin-left: 0;
+  grid-template-columns: 104px 1fr;
+  height: 110px;
+  width: 100%;
   cursor: pointer;
   overflow: hidden;
-  transform: translateX(0);
   transition:
     transform 120ms ease,
     box-shadow 120ms ease;
@@ -279,7 +283,7 @@ body {
 }
 
 .menu-card:hover {
-  transform: translateX(-18px);
+  transform: translateX(8px);
   box-shadow: 0 14px 28px var(--color-panel-shadow);
 }
 
@@ -289,8 +293,8 @@ body {
   font-family: var(--font-display);
   font-size: var(--text-display);
   letter-spacing: 2px;
-  color: rgba(255, 255, 255, 0.35);
-  background: rgba(0, 0, 0, 0.25);
+  color: var(--color-menu-badge-fg);
+  background: var(--color-menu-badge-bg);
 }
 
 .menu-body {
