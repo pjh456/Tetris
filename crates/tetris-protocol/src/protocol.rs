@@ -130,6 +130,7 @@ pub struct PktRoomSettings {
     pub attack_mult: f32,
     pub garbage_delay_secs: u8,
     pub allow_hold: bool,
+    pub initial_garbage_lines: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -644,6 +645,20 @@ mod tests {
         let pkt = PktRemoveBot {
             header: PacketHeader::new(PacketType::RemoveBot, 0),
             target_player_id: 3,
+        };
+        bincode_round_trip(&pkt);
+    }
+
+    #[test]
+    fn test_room_settings_round_trip() {
+        let pkt = PktRoomSettings {
+            header: PacketHeader::new(PacketType::RoomSettings, 0),
+            max_players: 4,
+            start_level: 5,
+            attack_mult: 1.0,
+            garbage_delay_secs: 2,
+            allow_hold: false,
+            initial_garbage_lines: 3,
         };
         bincode_round_trip(&pkt);
     }

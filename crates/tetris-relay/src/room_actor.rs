@@ -1,16 +1,16 @@
+use crate::player_conn::Online;
+use crate::player_conn::PlayerConnection;
+use crate::relay::RelaySettings;
 use serde::{Deserialize, Serialize};
 use tetris_net::bot::AiBot;
 use tetris_protocol::newtypes::{PlayerSlot, Seed, TickNumber};
 use tetris_protocol::protocol::{
     InputEvent, PacketHeader, PacketType, PktRoomSnapshot, PktStateSnapshot, RoomPlayerSnapshot,
 };
-use tetris_sim::{AuthoritativeSim, RoomMode, SimOutbound};
+use tetris_sim::{AuthoritativeSim, RoomMode, SimConfig, SimOutbound};
 use tokio::sync::mpsc;
 use tokio::time::{Duration, interval};
 use tracing::warn;
-
-use crate::player_conn::Online;
-use crate::player_conn::PlayerConnection;
 
 pub const STATE_HASH_INTERVAL: u64 = 100;
 const BOT_WEIGHTS: &str = include_str!(concat!(
@@ -75,13 +75,23 @@ pub struct RoomActor {
 
 impl RoomActor {
     pub fn new(room_code: String, seed: Seed) -> Self {
+        Self::with_settings(room_code, seed, RelaySettings::default())
+    }
+
+    pub fn with_settings(room_code: String, seed: Seed, settings: RelaySettings) -> Self {
+        let config = SimConfig {
+            garbage_delay_ticks: settings.garbage_delay_ticks,
+            ..SimConfig::default()
+        };
+        let mut sim = AuthoritativeSim::with_config(seed, config);
+        sim.set_rules(settings.rules);
         Self {
             room_code,
             input_rxs: Vec::new(),
             connections: Vec::new(),
             outbound_txs: Vec::new(),
             active: true,
-            sim: AuthoritativeSim::new(seed),
+            sim,
             bots: Vec::new(),
         }
     }

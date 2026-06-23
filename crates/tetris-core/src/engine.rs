@@ -79,6 +79,25 @@ pub fn gravity_interval_ms(level: u32) -> u32 {
     TABLE[level.clamp(1, 15) as usize]
 }
 
+/// Per-room rules applied when (re)starting a game. Host-configured in lobby and
+/// applied identically on server sim + every client engine (seeded → parity).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RoomRules {
+    pub start_level: u32,
+    pub hold_enabled: bool,
+    pub initial_garbage_lines: u8,
+}
+
+impl Default for RoomRules {
+    fn default() -> Self {
+        Self {
+            start_level: 1,
+            hold_enabled: true,
+            initial_garbage_lines: 0,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Engine<const W: usize, const H: usize> {
     pub state: State<W, H>,
@@ -94,6 +113,7 @@ pub struct Engine<const W: usize, const H: usize> {
     gravity_accumulator: u32,
     pub garbage_hole_x: u8,
     pub pending_garbage_queue: Vec<PendingGarbageEntry>,
+    hold_enabled: bool,
 }
 
 impl<const W: usize, const H: usize> Default for Engine<W, H> {
@@ -139,6 +159,7 @@ impl<const W: usize, const H: usize> Engine<W, H> {
             gravity_accumulator: 0,
             garbage_hole_x: 0,
             pending_garbage_queue: Vec::new(),
+            hold_enabled: true,
         }
     }
 
@@ -367,12 +388,26 @@ impl<const W: usize, const H: usize> Engine<W, H> {
         self.gravity_accumulator = 0;
         self.garbage_hole_x = 0;
         self.pending_garbage_queue.clear();
+        self.hold_enabled = true;
 
         for i in 0..5 {
             self.state.next[i] = self.pop_next_piece();
         }
 
         self.spawn();
+    }
+
+    /// Reset and apply per-room rules: start level, hold toggle, and initial
+    /// garbage rows. Seeded identically on server + clients for state parity.
+    pub fn reset_with_rules(&mut self, seed: u32, rules: RoomRules) {
+        self.reset_with_level(seed, rules.start_level);
+        self.hold_enabled = rules.hold_enabled;
+        if rules.initial_garbage_lines > 0 {
+            let hole_x = (self.state.rng % W as u32) as u8;
+            self.state
+                .board
+                .insert_garbage(rules.initial_garbage_lines, hole_x);
+        }
     }
 
     pub fn spawn(&mut self) {
@@ -529,6 +564,9 @@ impl<const W: usize, const H: usize> Engine<W, H> {
                 AttackResult::default()
             }
             Action::Hold => {
+                if !self.hold_enabled {
+                    return AttackResult::default();
+                }
                 if !self.state.hold_used {
                     self.lock_delay_wall.cancel();
                     self.lock_delay_ticks.cancel();
@@ -1286,5 +1324,56 @@ mod tests {
         let mut engine = Engine::<10, 20>::new();
         engine.reset(42);
         assert!(engine.placement_to_actions(100, Rot::R0).is_empty());
+    }
+
+    #[test]
+    fn reset_with_rules_disables_hold() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset_with_rules(
+            42,
+            RoomRules {
+                start_level: 1,
+                hold_enabled: false,
+                initial_garbage_lines: 0,
+            },
+        );
+        assert!(!engine.has_hold);
+        engine.handle_action(Action::Hold);
+        assert!(!engine.has_hold, "hold disabled → Hold action is a no-op");
+    }
+
+    #[test]
+    fn reset_with_rules_sets_start_level() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset_with_rules(
+            42,
+            RoomRules {
+                start_level: 7,
+                hold_enabled: true,
+                initial_garbage_lines: 0,
+            },
+        );
+        assert_eq!(engine.scorer.level, 7);
+    }
+
+    #[test]
+    fn reset_with_rules_inserts_initial_garbage() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset_with_rules(
+            42,
+            RoomRules {
+                start_level: 1,
+                hold_enabled: true,
+                initial_garbage_lines: 3,
+            },
+        );
+        let filled = engine
+            .state
+            .board
+            .rows
+            .iter()
+            .filter(|row| **row != 0)
+            .count();
+        assert_eq!(filled, 3, "3 行初始垃圾应填充底部 3 行");
     }
 }

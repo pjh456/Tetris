@@ -10,14 +10,15 @@ use futures_util::{SinkExt, StreamExt};
 use tetris_protocol::protocol::{
     InputEvent, PROTOCOL_VERSION, PacketHeader, PacketType, PktAddBot, PktChatMessage,
     PktGameStart, PktJoinRoom, PktKickPlayer, PktPlayerReady, PktReconnect, PktRemoveBot,
-    PktReplay, PktResume, PktServerAccept, PktStartCountdown,
+    PktReplay, PktResume, PktRoomSettings, PktServerAccept, PktStartCountdown,
 };
 use tokio::sync::Mutex;
 use tokio::time::interval;
 use tracing::{info, warn};
 
-use crate::relay::{MAX_PLAYERS_PER_ROOM, RoomManager};
+use crate::relay::{MAX_PLAYERS_PER_ROOM, RelaySettings, RoomManager};
 use crate::room_actor::{RoomActor, RoomCommand};
+use tetris_core::engine::RoomRules;
 use tetris_protocol::newtypes::{PlayerSlot, Seed};
 use tetris_sim::RoomMode;
 
@@ -28,6 +29,8 @@ const MAX_REPLAY_EVENTS_PER_PACKET: usize = 120;
 const MAX_REPLAY_TICK_SPAN: u64 = 120;
 const MAX_MSG_PER_SEC: u32 = 60;
 const MAX_CHAT_LEN: usize = 256;
+const MAX_INITIAL_GARBAGE_LINES: u8 = 12;
+const MAX_GARBAGE_DELAY_TICKS: u16 = 600;
 /// Max wait for the first client packet during the connection handshake. A
 /// reconnecting client sends its `Resume` packet immediately on open, so this
 /// resolves near-instantly in practice; the bound only guards a silent client.
@@ -452,9 +455,12 @@ async fn handle_binary_message(
                                 }
                             } else {
                                 // 第一局：新建 RoomActor。
-                                let mut actor = RoomActor::new(
+                                let settings =
+                                    state.room_manager.room_settings(&room_code_owned).await;
+                                let mut actor = RoomActor::with_settings(
                                     room_code_owned.clone(),
                                     Seed(random_seed as i32),
+                                    settings,
                                 );
                                 let room_peers = state
                                     .room_manager
@@ -551,6 +557,35 @@ async fn handle_binary_message(
             }
         }
         // New protocol types (Replay, etc.) — forward to input_tx if RoomActor is active
+        PacketType::RoomSettings => {
+            let Ok(pkt) = deser::<PktRoomSettings>(&data) else {
+                return;
+            };
+            if !state.room_manager.is_host(room_code, peer_id).await {
+                warn!("non-host peer {peer_id} attempted RoomSettings; rejected");
+                return;
+            }
+            let rules = RoomRules {
+                start_level: u32::from(pkt.start_level).clamp(1, 15),
+                hold_enabled: pkt.allow_hold,
+                initial_garbage_lines: pkt.initial_garbage_lines.min(MAX_INITIAL_GARBAGE_LINES),
+            };
+            let garbage_delay_ticks = u16::from(pkt.garbage_delay_secs)
+                .saturating_mul(60)
+                .min(MAX_GARBAGE_DELAY_TICKS);
+            let _ = state
+                .room_manager
+                .set_room_settings(
+                    room_code,
+                    RelaySettings {
+                        rules,
+                        garbage_delay_ticks,
+                    },
+                )
+                .await;
+            // Re-broadcast so every client syncs the displayed rules.
+            let _ = state.room_manager.broadcast(room_code, data).await;
+        }
         PacketType::KickPlayer => {
             let Ok(pkt) = deser::<PktKickPlayer>(&data) else {
                 return;

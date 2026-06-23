@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
+use tetris_core::engine::RoomRules;
 use tetris_protocol::protocol::{
     PacketHeader, PacketType, PktCountdownCancel, PktRoomSnapshot, RoomPlayerSnapshot,
 };
@@ -11,6 +12,23 @@ use crate::error::RelayError;
 use crate::room_actor::RoomCommand;
 
 pub type RoomCode = String;
+
+/// Host-configured room rules + derived garbage delay (ticks), stored per room
+/// and applied to the sim at game start.
+#[derive(Clone, Copy)]
+pub struct RelaySettings {
+    pub rules: RoomRules,
+    pub garbage_delay_ticks: u16,
+}
+
+impl Default for RelaySettings {
+    fn default() -> Self {
+        Self {
+            rules: RoomRules::default(),
+            garbage_delay_ticks: 60,
+        }
+    }
+}
 
 const ROOM_CODE_ALPHABET: &[u8] = b"ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const ROOM_CODE_LEN: usize = 4;
@@ -28,6 +46,7 @@ pub struct RoomState {
     pub countdown_generation: AtomicU64,
     pub cancel_tx: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
     pub actor_tx: Mutex<Option<tokio::sync::mpsc::Sender<RoomCommand>>>,
+    pub settings: RwLock<RelaySettings>,
 }
 
 /// First-class player session, decoupled from the WS connection. Survives a
@@ -476,6 +495,7 @@ impl RoomManager {
             countdown_generation: AtomicU64::new(0),
             cancel_tx: Mutex::new(None),
             actor_tx: Mutex::new(None),
+            settings: RwLock::new(RelaySettings::default()),
         });
         rooms.insert(code.clone(), state);
         Ok(code)
@@ -551,6 +571,7 @@ impl RoomManager {
             countdown_generation: AtomicU64::new(0),
             cancel_tx: Mutex::new(None),
             actor_tx: Mutex::new(None),
+            settings: RwLock::new(RelaySettings::default()),
         });
         rooms.insert(code.to_string(), state);
         Ok(code.to_string())
@@ -591,6 +612,27 @@ impl RoomManager {
             .get(code)
             .ok_or_else(|| RelayError::RoomNotFound(code.into()))?;
         Ok(room.actor_tx.lock().await.clone())
+    }
+
+    pub async fn set_room_settings(
+        &self,
+        code: &str,
+        settings: RelaySettings,
+    ) -> Result<(), RelayError> {
+        let rooms = self.rooms.read().await;
+        let room = rooms
+            .get(code)
+            .ok_or_else(|| RelayError::RoomNotFound(code.into()))?;
+        *room.settings.write().await = settings;
+        Ok(())
+    }
+
+    pub async fn room_settings(&self, code: &str) -> RelaySettings {
+        let rooms = self.rooms.read().await;
+        match rooms.get(code) {
+            Some(room) => *room.settings.read().await,
+            None => RelaySettings::default(),
+        }
     }
 }
 

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use tetris_core::engine::Engine;
+use tetris_core::engine::RoomRules;
 use tetris_protocol::newtypes::{PlayerSlot, Seed, TickNumber};
 use tetris_protocol::protocol::{
     InputEvent, PacketHeader, PacketType, PktGameOver, PktIncomingGarbage, PktPlayerStatus,
@@ -58,6 +59,7 @@ pub struct AuthoritativeSim {
     player_paused: Vec<bool>,
     room_mode: RoomMode,
     game_over_countdown: u8,
+    rules: RoomRules,
 }
 
 impl AuthoritativeSim {
@@ -79,6 +81,7 @@ impl AuthoritativeSim {
             player_paused: Vec::new(),
             room_mode: RoomMode::Lobby,
             game_over_countdown: 0,
+            rules: RoomRules::default(),
         }
     }
 
@@ -92,7 +95,7 @@ impl AuthoritativeSim {
         }
 
         let mut engine = Engine::<10, 20>::new();
-        engine.reset(self.seed.0 as u32);
+        engine.reset_with_rules(self.seed.0 as u32, self.rules);
         self.engines[idx] = Some(engine);
         self.player_alive[idx] = true;
         self.player_spectating[idx] = None;
@@ -151,6 +154,16 @@ impl AuthoritativeSim {
 
     pub fn set_room_mode(&mut self, room_mode: RoomMode) {
         self.room_mode = room_mode;
+    }
+
+    /// Set per-room rules applied on subsequent (re)builds of player engines.
+    /// Must be called before `add_player` / `restart_game` to take effect.
+    pub fn set_rules(&mut self, rules: RoomRules) {
+        self.rules = rules;
+    }
+
+    pub fn rules(&self) -> RoomRules {
+        self.rules
     }
 
     pub fn room_mode(&self) -> RoomMode {
@@ -547,7 +560,7 @@ impl AuthoritativeSim {
         self.hash_ladder.clear();
         self.pending_inputs.clear();
         for engine in self.engines.iter_mut().flatten() {
-            engine.reset(seed.0 as u32);
+            engine.reset_with_rules(seed.0 as u32, self.rules);
         }
         for alive in &mut self.player_alive {
             *alive = true;
@@ -564,7 +577,7 @@ impl AuthoritativeSim {
 
     fn reset_to_lobby(&mut self) {
         for engine in self.engines.iter_mut().flatten() {
-            engine.reset(self.seed.0 as u32);
+            engine.reset_with_rules(self.seed.0 as u32, self.rules);
         }
         for alive in &mut self.player_alive {
             *alive = true;
@@ -910,6 +923,25 @@ mod tests {
             sim.hash_at(PlayerSlot(0), TickNumber(100)),
             Some(frozen),
             "paused slot 在 tick 100 记录的哈希应为冻结态哈希"
+        );
+    }
+
+    #[test]
+    fn rules_applied_to_new_engine() {
+        let mut sim = AuthoritativeSim::new(Seed(42));
+        sim.set_rules(RoomRules {
+            start_level: 5,
+            hold_enabled: true,
+            initial_garbage_lines: 2,
+        });
+        sim.add_player(PlayerSlot(0));
+        let engine = sim.engine(PlayerSlot(0)).unwrap();
+
+        assert_eq!(engine.scorer.level, 5);
+        assert_eq!(
+            engine.state.board.rows.iter().filter(|r| **r != 0).count(),
+            2,
+            "开局应有 2 行初始垃圾"
         );
     }
 }

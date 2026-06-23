@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use tetris_core::engine::Action;
 use tetris_core::engine::Engine;
+use tetris_core::engine::RoomRules;
 use tetris_protocol::protocol::*;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -42,6 +43,25 @@ pub struct OpponentInfo {
     pub spectating: bool,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct MpRoomSettings {
+    pub start_level: u8,
+    pub garbage_delay_secs: u8,
+    pub initial_garbage_lines: u8,
+    pub hold_enabled: bool,
+}
+
+impl Default for MpRoomSettings {
+    fn default() -> Self {
+        Self {
+            start_level: 1,
+            garbage_delay_secs: 1,
+            initial_garbage_lines: 0,
+            hold_enabled: true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MultiplayerSnapshot {
     pub local_player_id: Option<u8>,
@@ -49,6 +69,7 @@ pub struct MultiplayerSnapshot {
     pub countdown: Option<u8>,
     pub players: Vec<OpponentInfo>,
     pub opponents: Vec<OpponentInfo>,
+    pub settings: MpRoomSettings,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -114,6 +135,7 @@ pub struct WebTetris {
     input_buf: input_buffer::ClientInputBuffer,
     last_state_hash: Option<(tetris_protocol::newtypes::TickNumber, u32)>,
     mp_seed: u32,
+    room_settings: MpRoomSettings,
 }
 
 // 纯 Rust 逻辑 + 私有 helper：对 wasm 导出，对 native 普通方法（tests 可见）。
@@ -140,6 +162,7 @@ impl WebTetris {
             input_buf: input_buffer::ClientInputBuffer::new(),
             last_state_hash: None,
             mp_seed: 0,
+            room_settings: MpRoomSettings::default(),
         }
     }
 
@@ -167,6 +190,17 @@ impl WebTetris {
     pub fn reset_multiplayer_game(&mut self, seed: u32) {
         // 清对手引擎/网格（杜绝跨局 stale），保留房间名册（由 snapshot 重建）。
         self.reset_common(seed, 1, true, false);
+        // 应用房主规则到本地引擎，与服务器 sim 同 seed 同规则 → 状态对账一致。
+        let rules = self.current_room_rules();
+        self.engine.reset_with_rules(seed, rules);
+    }
+
+    fn current_room_rules(&self) -> RoomRules {
+        RoomRules {
+            start_level: u32::from(self.room_settings.start_level).clamp(1, 15),
+            hold_enabled: self.room_settings.hold_enabled,
+            initial_garbage_lines: self.room_settings.initial_garbage_lines.min(12),
+        }
     }
 
     pub fn reset_with_level(&mut self, seed: u32, start_level: u32) {
@@ -387,6 +421,7 @@ impl WebTetris {
             countdown: self.countdown,
             players: self.room_player_infos.clone(),
             opponents: self.opponent_infos.clone(),
+            settings: self.room_settings,
         };
         serde_wasm_bindgen::to_value(&snapshot).unwrap_or(JsValue::NULL)
     }
@@ -449,6 +484,25 @@ impl WebTetris {
         let pkt = PktRemoveBot {
             header: PacketHeader::new(PacketType::RemoveBot, self.local_player_id.unwrap_or(0)),
             target_player_id: target_id,
+        };
+        packet_to_uint8_array(&pkt)
+    }
+
+    pub fn make_room_settings_packet(
+        &self,
+        start_level: u8,
+        garbage_delay_secs: u8,
+        initial_garbage_lines: u8,
+        hold_enabled: bool,
+    ) -> js_sys::Uint8Array {
+        let pkt = PktRoomSettings {
+            header: PacketHeader::new(PacketType::RoomSettings, self.local_player_id.unwrap_or(0)),
+            max_players: 4,
+            start_level,
+            attack_mult: 1.0,
+            garbage_delay_secs,
+            allow_hold: hold_enabled,
+            initial_garbage_lines,
         };
         packet_to_uint8_array(&pkt)
     }
@@ -786,6 +840,16 @@ impl WebTetris {
                     MultiplayerEvent::new("bot_removed", self.room_code.clone(), self.countdown);
                 event.player_id = Some(pkt.target_player_id);
                 event
+            }
+            PacketType::RoomSettings => {
+                let pkt: PktRoomSettings = deser(data).ok()?;
+                self.room_settings = MpRoomSettings {
+                    start_level: pkt.start_level,
+                    garbage_delay_secs: pkt.garbage_delay_secs,
+                    initial_garbage_lines: pkt.initial_garbage_lines,
+                    hold_enabled: pkt.allow_hold,
+                };
+                MultiplayerEvent::new("room_settings", self.room_code.clone(), self.countdown)
             }
             _ => {
                 return Some(MultiplayerEvent::new(

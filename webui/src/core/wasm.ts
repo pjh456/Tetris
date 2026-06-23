@@ -171,12 +171,20 @@ export type MultiplayerPlayer = {
   is_bot: boolean;
 };
 
+export type MultiplayerRoomSettings = {
+  start_level: number;
+  garbage_delay_secs: number;
+  initial_garbage_lines: number;
+  hold_enabled: boolean;
+};
+
 export type MultiplayerSnapshot = {
   local_player_id: number | null;
   room_code: string | null;
   countdown: number | null;
   players: MultiplayerPlayer[];
   opponents: MultiplayerPlayer[];
+  settings: MultiplayerRoomSettings;
 };
 
 export type MultiplayerEvent = {
@@ -233,6 +241,20 @@ export function make_kick_player_packet(target_id: number): Uint8Array {
 
 export function make_remove_bot_packet(target_id: number): Uint8Array {
   return require_instance().make_remove_bot_packet(target_id);
+}
+
+export function make_room_settings_packet(
+  start_level: number,
+  garbage_delay_secs: number,
+  initial_garbage_lines: number,
+  hold_enabled: boolean,
+): Uint8Array {
+  return require_instance().make_room_settings_packet(
+    start_level,
+    garbage_delay_secs,
+    initial_garbage_lines,
+    hold_enabled,
+  );
 }
 
 export function push_input_event(key: number, pressed: boolean, subframe = 0): void {

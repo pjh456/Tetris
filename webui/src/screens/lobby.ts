@@ -14,9 +14,10 @@ import {
   make_kick_player_packet,
   make_player_ready_packet,
   make_remove_bot_packet,
+  make_room_settings_packet,
   reset_multiplayer_wasm,
 } from '../core/wasm';
-import type { MultiplayerPlayer } from '../core/wasm';
+import type { MultiplayerPlayer, MultiplayerRoomSettings } from '../core/wasm';
 
 const RELAY_URL = 'ws://localhost:9000';
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -60,9 +61,21 @@ export function create_lobby_screen(): HTMLElement {
   });
   const { btn: ready_btn, set_ready: set_ready_btn } = build_ready_button();
   const add_ai_btn = build_add_ai_button();
+  const { section: rules_section, update: update_rules } = build_rules_section({
+    on_change: (s) =>
+      current_ws.send(
+        make_room_settings_packet(
+          s.start_level,
+          s.garbage_delay_secs,
+          s.initial_garbage_lines,
+          s.hold_enabled,
+        ),
+      ),
+  });
 
   main.appendChild(room_section);
   main.appendChild(player_section);
+  main.appendChild(rules_section);
   main.appendChild(add_ai_btn);
   main.appendChild(ready_btn);
 
@@ -102,6 +115,7 @@ export function create_lobby_screen(): HTMLElement {
         my_player_id = me?.player_id ?? null;
         am_host = me?.is_host ?? false;
         update_players(peers);
+        update_rules(snapshot.settings, am_host);
         room_code.value = snapshot.room_code ?? room_code.value;
         const code_display = room_section.querySelector('.room-code');
         if (code_display) code_display.textContent = room_code.value ?? '----';
@@ -224,6 +238,97 @@ export function create_lobby_screen(): HTMLElement {
 
 function build_add_ai_button(): HTMLButtonElement {
   return create_button('加 AI', { ariaLabel: '加 AI 对手' });
+}
+
+function clamp_int(value: string, min: number, max: number, fallback: number): number {
+  const n = Number.parseInt(value, 10);
+  if (Number.isNaN(n)) return fallback;
+  return Math.min(Math.max(n, min), max);
+}
+
+function make_rule_row(label_text: string, control: HTMLElement): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'rules-row';
+  const label = document.createElement('span');
+  label.className = 'rules-label';
+  label.textContent = label_text;
+  row.append(label, control);
+  return row;
+}
+
+function build_rules_section(opts: { on_change: (settings: MultiplayerRoomSettings) => void }): {
+  section: HTMLElement;
+  update: (settings: MultiplayerRoomSettings, is_host: boolean) => void;
+} {
+  const section = document.createElement('div');
+  section.className = 'lobby-section rules-section';
+
+  const label = document.createElement('div');
+  label.className = 'lobby-label';
+  label.textContent = 'RULES';
+  section.appendChild(label);
+
+  let applying_remote = false;
+
+  const level_select = document.createElement('select');
+  level_select.className = 'rules-input';
+  for (let lv = 1; lv <= 15; lv++) {
+    const opt = document.createElement('option');
+    opt.value = String(lv);
+    opt.textContent = String(lv);
+    level_select.appendChild(opt);
+  }
+
+  const delay_input = document.createElement('input');
+  delay_input.type = 'number';
+  delay_input.className = 'rules-input';
+  delay_input.min = '0';
+  delay_input.max = '10';
+
+  const garbage_input = document.createElement('input');
+  garbage_input.type = 'number';
+  garbage_input.className = 'rules-input';
+  garbage_input.min = '0';
+  garbage_input.max = '12';
+
+  const hold_checkbox = document.createElement('input');
+  hold_checkbox.type = 'checkbox';
+  hold_checkbox.className = 'rules-checkbox';
+
+  function emit() {
+    if (applying_remote) return;
+    opts.on_change({
+      start_level: clamp_int(level_select.value, 1, 15, 1),
+      garbage_delay_secs: clamp_int(delay_input.value, 0, 10, 1),
+      initial_garbage_lines: clamp_int(garbage_input.value, 0, 12, 0),
+      hold_enabled: hold_checkbox.checked,
+    });
+  }
+
+  level_select.addEventListener('change', emit);
+  delay_input.addEventListener('change', emit);
+  garbage_input.addEventListener('change', emit);
+  hold_checkbox.addEventListener('change', emit);
+
+  section.appendChild(make_rule_row('起始等级', level_select));
+  section.appendChild(make_rule_row('Garbage 延迟 (秒)', delay_input));
+  section.appendChild(make_rule_row('初始垃圾行', garbage_input));
+  section.appendChild(make_rule_row('允许 Hold', hold_checkbox));
+
+  function update(settings: MultiplayerRoomSettings, is_host: boolean) {
+    applying_remote = true;
+    level_select.value = String(settings.start_level);
+    delay_input.value = String(settings.garbage_delay_secs);
+    garbage_input.value = String(settings.initial_garbage_lines);
+    hold_checkbox.checked = settings.hold_enabled;
+    level_select.disabled = !is_host;
+    delay_input.disabled = !is_host;
+    garbage_input.disabled = !is_host;
+    hold_checkbox.disabled = !is_host;
+    applying_remote = false;
+  }
+
+  return { section, update };
 }
 
 function build_room_code_section(): {
