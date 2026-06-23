@@ -52,22 +52,14 @@ pub struct TetrisEnv {
 #[pymethods]
 impl TetrisEnv {
     #[new]
-    #[pyo3(signature = (max_steps=None, hole_penalty=None, height_penalty=None, bumpiness_penalty=None, well_penalty=None))]
-    fn new(
-        max_steps: Option<u32>,
-        hole_penalty: Option<f32>,
-        height_penalty: Option<f32>,
-        bumpiness_penalty: Option<f32>,
-        well_penalty: Option<f32>,
-    ) -> Self {
+    #[pyo3(signature = (max_steps=None, alive=None, hole_penalty=None))]
+    fn new(max_steps: Option<u32>, alive: Option<f32>, hole_penalty: Option<f32>) -> Self {
+        let d = RewardConfig::default();
         Self::new_with_config(
             max_steps.unwrap_or(10_000),
             RewardConfig {
-                hole_penalty: hole_penalty.unwrap_or(RewardConfig::default().hole_penalty),
-                height_penalty: height_penalty.unwrap_or(RewardConfig::default().height_penalty),
-                bumpiness_penalty: bumpiness_penalty
-                    .unwrap_or(RewardConfig::default().bumpiness_penalty),
-                well_penalty: well_penalty.unwrap_or(RewardConfig::default().well_penalty),
+                alive: alive.unwrap_or(d.alive),
+                hole_penalty: hole_penalty.unwrap_or(d.hole_penalty),
             },
         )
     }
@@ -154,10 +146,12 @@ impl TetrisEnv {
 
         let reward = compute_reward(
             lines_cleared,
+            attack.is_tspin,
+            attack.perfect_clear,
             self.engine.game_over,
             &board_before,
             &self.engine.state.board,
-            self.config,
+            &self.config,
         );
         let truncated = self.step_count >= self.max_steps;
         StepOutcome {
@@ -182,11 +176,13 @@ impl TetrisEnv {
     }
 
     fn invalid_action_outcome(&mut self) -> StepOutcome {
+        // Illegal actions end the episode (safety net). Masking via MaskablePPO is
+        // the primary mechanism; with a live mask this path should not be hit.
         self.step_count = self.step_count.saturating_add(1);
         StepOutcome {
             obs: self.current_obs(),
-            reward: -0.1,
-            terminated: self.engine.game_over,
+            reward: 0.0,
+            terminated: true,
             truncated: self.step_count >= self.max_steps,
             info: self.current_info(0, false, 0),
         }
@@ -241,6 +237,15 @@ mod tests {
 
     fn env() -> TetrisEnv {
         TetrisEnv::new_with_config(10_000, RewardConfig::default())
+    }
+
+    #[test]
+    fn illegal_action_terminates_episode() {
+        let mut env = env();
+        env.reset_rust(42);
+        let outcome = env.step_rust(usize::MAX);
+        assert!(outcome.terminated, "illegal action must end the episode");
+        assert_eq!(outcome.reward, 0.0, "no -0.1 nudge remains");
     }
 
     #[test]

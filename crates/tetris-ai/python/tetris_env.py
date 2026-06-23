@@ -21,12 +21,12 @@ class TetrisEnv(gym.Env):
 
     def __init__(self, max_steps: int = 10_000, **reward_kwargs: Any) -> None:
         super().__init__()
+        # Survival-dominant reward (08-07). Defaults mirror the Rust
+        # RewardConfig::default() so omitting kwargs matches the crate default.
         self._env = RustTetrisEnv(
             max_steps=max_steps,
-            hole_penalty=reward_kwargs.get("hole_penalty", -0.5),
-            height_penalty=reward_kwargs.get("height_penalty", -0.3),
-            bumpiness_penalty=reward_kwargs.get("bumpiness_penalty", -0.2),
-            well_penalty=reward_kwargs.get("well_penalty", -0.3),
+            alive=reward_kwargs.get("alive", 1.0),
+            hole_penalty=reward_kwargs.get("hole_penalty", 0.1),
         )
         self.action_space = gym.spaces.Discrete(ACTION_SPACE_SIZE)
         self.observation_space = gym.spaces.Box(
@@ -57,6 +57,10 @@ class TetrisEnv(gym.Env):
 
     def action_mask(self) -> np.ndarray:
         return np.asarray(self._env.action_mask(), dtype=bool)
+
+    def action_masks(self) -> np.ndarray:
+        """Mask consumed by sb3-contrib MaskablePPO via ActionMasker."""
+        return self.action_mask()
 
 
 if ENV_ID not in gym.envs.registry:
