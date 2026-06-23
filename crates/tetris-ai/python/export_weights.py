@@ -46,21 +46,34 @@ def export(
 
 
 def load_actor_weights(model_path: Path) -> dict[str, Any] | None:
-    if not model_path.exists() and not model_path.with_suffix(".zip").exists():
+    zip_path = model_path if model_path.suffix == ".zip" else model_path.with_suffix(".zip")
+    if not zip_path.exists():
         return None
 
-    from stable_baselines3 import PPO
+    # Read the policy state_dict straight from the SB3 zip instead of
+    # reconstructing the algorithm. This is class-agnostic, so it works for
+    # MaskablePPO (08-07) whose policy reconstruction needs the maskable policy
+    # class. The actor MLP (mlp_extractor.policy_net + action_net) is identical
+    # to plain PPO — masking only affects sampling.
+    from stable_baselines3.common.save_util import load_from_zip_file
 
-    model = PPO.load(model_path)
+    _data, params, _pytorch = load_from_zip_file(zip_path)
+    state_dict = params["policy"]
+
     layers = []
-    for module in list(model.policy.mlp_extractor.policy_net) + [model.policy.action_net]:
-        if hasattr(module, "weight"):
-            layers.append(
-                {
-                    "weight": module.weight.detach().cpu().tolist(),
-                    "bias": module.bias.detach().cpu().tolist(),
-                }
-            )
+    index = 0
+    while f"mlp_extractor.policy_net.{index}.weight" in state_dict:
+        weight = state_dict[f"mlp_extractor.policy_net.{index}.weight"]
+        bias = state_dict[f"mlp_extractor.policy_net.{index}.bias"]
+        layers.append({"weight": weight.cpu().tolist(), "bias": bias.cpu().tolist()})
+        index += 2  # skip the interleaved activation module
+
+    layers.append(
+        {
+            "weight": state_dict["action_net.weight"].cpu().tolist(),
+            "bias": state_dict["action_net.bias"].cpu().tolist(),
+        }
+    )
     return schema_from_layers(layers)
 
 
