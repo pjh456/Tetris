@@ -782,16 +782,24 @@ body {
 .connect-lan-list {
   min-height: 80px;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   justify-content: center;
+  gap: var(--space-sm);
   border: 1px dashed var(--color-panel-border);
   border-radius: 6px;
   padding: var(--space-md);
 }
 
 .connect-lan-empty {
+  margin: auto;
   font-size: var(--text-label);
   color: var(--color-muted);
+}
+
+.connect-lan-item {
+  width: 100%;
+  text-align: left;
 }
 
 html {

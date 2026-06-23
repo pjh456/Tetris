@@ -5,8 +5,10 @@ use std::sync::Arc;
 use axum::{Router, routing::get};
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
+use tetris_net::error::NetError;
+use tetris_net::lan_discovery::LanDiscovery;
 use tetris_relay::logging::init_logging;
 use tetris_relay::relay::RoomManager;
 use tetris_relay::ws_handler::{AppState, ws_handler};
@@ -28,6 +30,21 @@ async fn main() {
 
     let addr = format!("0.0.0.0:{port}");
     info!("tetris-relay listening on {addr}");
+
+    // Announce on the LAN via mDNS so desktop clients can auto-discover this
+    // relay. Held until shutdown (Drop unregisters). `--no-lan` opts out.
+    let _lan = if parse_no_lan() {
+        info!("LAN mDNS announce disabled (--no-lan)");
+        None
+    } else {
+        match announce_lan(port) {
+            Ok(discovery) => Some(discovery),
+            Err(e) => {
+                warn!("LAN mDNS announce failed: {e}");
+                None
+            }
+        }
+    };
 
     let listener = TcpListener::bind(&addr).await.unwrap_or_else(|e| {
         error!("failed to bind {addr}: {e}");
@@ -65,6 +82,25 @@ fn parse_log_file() -> Option<PathBuf> {
         }
     }
     None
+}
+
+fn parse_no_lan() -> bool {
+    std::env::args().any(|arg| arg == "--no-lan")
+}
+
+fn relay_label(port: u16) -> String {
+    let host = std::env::var("COMPUTERNAME")
+        .or_else(|_| std::env::var("HOSTNAME"))
+        .unwrap_or_else(|_| "Tetris Relay".to_string());
+    format!("{host}:{port}")
+}
+
+fn announce_lan(port: u16) -> Result<LanDiscovery, NetError> {
+    let mut discovery = LanDiscovery::new()?;
+    let label = relay_label(port);
+    discovery.publish_relay(port, &label)?;
+    info!("LAN mDNS announced as '{label}'");
+    Ok(discovery)
 }
 
 async fn shutdown_signal() {

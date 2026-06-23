@@ -9,9 +9,11 @@ const SERVICE_TYPE: &str = "_tetris._udp.local.";
 
 #[derive(Debug, Clone)]
 pub struct DiscoveredHost {
-    pub name: String,
+    /// Friendly label advertised by the host (mDNS TXT `name`).
+    pub label: String,
     pub address: SocketAddr,
-    pub player_name: String,
+    /// Advertised crate version (mDNS TXT `version`).
+    pub version: String,
 }
 
 pub struct LanDiscovery {
@@ -53,6 +55,28 @@ impl LanDiscovery {
         Ok(())
     }
 
+    /// Publish a relay server so LAN clients can discover it. Broadcasts the
+    /// `label` (TXT `name`) + crate `version`; the port lives in the SRV record.
+    pub fn publish_relay(&mut self, port: u16, label: &str) -> Result<(), NetError> {
+        let host = "tetris-relay";
+
+        let service = ServiceInfo::new(
+            SERVICE_TYPE,
+            label,
+            &format!("{host}.local."),
+            "",
+            port,
+            [("name", label), ("version", env!("CARGO_PKG_VERSION"))].as_slice(),
+        )
+        .map_err(|e| NetError::MdnsError(e.to_string()))?;
+
+        self.service_fullname = Some(service.get_fullname().to_string());
+        self.daemon
+            .register(service)
+            .map_err(|e| NetError::MdnsError(e.to_string()))?;
+        Ok(())
+    }
+
     /// Blocking — call from `tokio::task::spawn_blocking` in async contexts.
     pub fn browse(&self, timeout: Duration) -> Result<Vec<DiscoveredHost>, NetError> {
         let receiver = self
@@ -66,18 +90,23 @@ impl LanDiscovery {
         while std::time::Instant::now() < deadline {
             match receiver.recv_timeout(Duration::from_millis(100)) {
                 Ok(ServiceEvent::ServiceResolved(info)) => {
-                    let player_name = info
-                        .get_properties()
+                    let props = info.get_properties();
+                    let label = props
                         .get("name")
+                        .map(|v| v.val_str().to_string())
+                        .filter(|s| !s.is_empty())
+                        .unwrap_or_else(|| info.get_fullname().to_string());
+                    let version = props
+                        .get("version")
                         .map(|v| v.val_str().to_string())
                         .unwrap_or_default();
 
                     // NOTE: mDNS data from LAN is inherently untrusted — display after sanitization.
                     for addr in info.get_addresses() {
                         hosts.push(DiscoveredHost {
-                            name: info.get_fullname().to_string(),
+                            label: label.clone(),
                             address: SocketAddr::new(*addr, info.get_port()),
-                            player_name: player_name.clone(),
+                            version: version.clone(),
                         });
                     }
                 }
