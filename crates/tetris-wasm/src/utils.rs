@@ -1,6 +1,12 @@
 use serde::Serialize;
 use tetris_core::state::State;
 
+/// Grid cell value for inserted garbage cells. Sits above the active-piece
+/// range (3..=9) so renderers can apply the dedicated red-border/gray-fill
+/// style without colliding with empty (0), locked (1), ghost (2), or piece
+/// values.
+pub const GARBAGE_CELL: u8 = 10;
+
 #[derive(Serialize)]
 #[allow(dead_code)]
 pub struct HardDropInfo {
@@ -48,7 +54,11 @@ pub fn fill_grid_buf(state: &State<10, 20>, ghost_y: i32, game_over: bool, buf: 
     for y in 0..20usize {
         for x in 0..10usize {
             if state.board.rows[y] & (1u64 << x) != 0 {
-                buf[y * 10 + x] = 1;
+                buf[y * 10 + x] = if state.board.garbage[y] & (1u64 << x) != 0 {
+                    GARBAGE_CELL
+                } else {
+                    1
+                };
             }
         }
     }
@@ -149,6 +159,25 @@ mod tests {
         let mut buf = vec![0u8; 200];
         fill_grid_buf(&e.state, ghost_y, false, &mut buf);
         assert_eq!(&buf[..], &expected[..]);
+    }
+
+    #[test]
+    fn test_build_grid_marks_garbage_cells() {
+        let mut e = test_engine();
+        e.state.board.insert_garbage(2, 3);
+        let grid = build_grid(&e.state, -1, true);
+        // Bottom row (y=19), hole at x=3 stays empty, rest are garbage.
+        assert_eq!(grid[19 * 10 + 3], 0, "garbage hole stays empty");
+        for x in 0..10 {
+            if x == 3 {
+                continue;
+            }
+            assert_eq!(
+                grid[19 * 10 + x],
+                GARBAGE_CELL,
+                "garbage cell at x={x} should use the dedicated value"
+            );
+        }
     }
 
     #[test]

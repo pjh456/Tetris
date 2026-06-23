@@ -1,6 +1,8 @@
 import { get_theme_colors } from './colors';
 import { setup_canvas_ctx } from './canvas';
 
+const GARBAGE_CELL = 10;
+
 type BoardRenderer = {
   render: (grid: ArrayLike<number>, colors?: string[]) => void;
   destroy: () => void;
@@ -21,7 +23,13 @@ function draw_cell(
   ctx.lineWidth = 1;
   ctx.strokeRect(x * cell + 0.5, y * cell + 0.5, cell - 1, cell - 1);
 
-  if (val > 0) {
+  if (val === GARBAGE_CELL) {
+    ctx.fillStyle = colors[GARBAGE_CELL] ?? '#555a66';
+    ctx.fillRect(x * cell, y * cell, cell - 1, cell - 1);
+    ctx.strokeStyle = colors[GARBAGE_CELL + 1] ?? '#ff3344';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x * cell + 1, y * cell + 1, cell - 3, cell - 3);
+  } else if (val > 0) {
     ctx.fillStyle = colors[val] ?? colors[1];
     ctx.fillRect(x * cell, y * cell, cell - 1, cell - 1);
   }

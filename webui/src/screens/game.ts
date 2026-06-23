@@ -7,7 +7,7 @@ import {
   type WebTetris,
 } from '../core/wasm';
 import { InputBuffer } from '../core/input_buffer';
-import { is_hud_data, is_hard_drop_info } from '../types/predicates';
+import { is_hud_data, is_hard_drop_info, has_garbage_inserted } from '../types/predicates';
 import {
   page,
   score,
@@ -343,8 +343,12 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
 
     const prev_level = level.value;
     const prev_lines = lines.value;
-    wasm.tick(delta_ms);
+    const tick_result: unknown = wasm.tick(delta_ms);
     last_tick = now;
+
+    if (has_garbage_inserted(tick_result)) {
+      shake_screen(board_frame);
+    }
 
     const hud_after: unknown = wasm.get_hud_data();
     if (is_hud_data(hud_after)) {

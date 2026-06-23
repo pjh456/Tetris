@@ -24,6 +24,8 @@ body[data-theme='cyberpunk'] {
   --color-ghost: rgba(68, 68, 68, 0.5);
   --color-ghost-border: rgba(68, 68, 68, 0.8);
   --color-locked: #aaaaaa;
+  --color-garbage: #555a66;
+  --color-garbage-border: #ff3344;
 
   --font-display: 'Oxanium', sans-serif;
   --font-body: 'Rajdhani', sans-serif;
@@ -74,6 +76,8 @@ body[data-theme='retro'] {
   --color-ghost: rgba(136, 136, 136, 0.3);
   --color-ghost-border: #888888;
   --color-locked: #aaaaaa;
+  --color-garbage: #6b6b6b;
+  --color-garbage-border: #e94560;
 
   --font-display: 'Press Start 2P', monospace;
   --font-body: 'Press Start 2P', monospace;
@@ -111,6 +115,8 @@ body[data-theme='minimal'] {
   --color-ghost: rgba(200, 200, 200, 0.4);
   --color-ghost-border: rgba(180, 180, 180, 0.6);
   --color-locked: #cccccc;
+  --color-garbage: #b0b4ba;
+  --color-garbage-border: #cc0000;
 
   --font-display: 'Inter', sans-serif;
   --font-body: 'Inter', sans-serif;

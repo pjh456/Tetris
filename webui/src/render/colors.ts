@@ -11,5 +11,7 @@ export function get_theme_colors(): string[] {
     style.getPropertyValue('--color-piece-z').trim() || '#ff0000',
     style.getPropertyValue('--color-piece-j').trim() || '#0000ff',
     style.getPropertyValue('--color-piece-l').trim() || '#ff8800',
+    style.getPropertyValue('--color-garbage').trim() || '#555a66',
+    style.getPropertyValue('--color-garbage-border').trim() || '#ff3344',
   ];
 }

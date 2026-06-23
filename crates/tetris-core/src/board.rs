@@ -3,6 +3,11 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 #[derive(Debug, Clone)]
 pub struct Board<const W: usize, const H: usize> {
     pub rows: [u64; H],
+    /// Per-cell garbage marker, parallel to `rows`. A set bit means that cell
+    /// originates from inserted garbage (rendered red/gray) rather than a locked
+    /// piece. Render-only: not serialized, so deserialized boards (snapshots)
+    /// carry no garbage marking and fall back to normal locked rendering.
+    pub garbage: [u64; H],
 }
 
 impl<const W: usize, const H: usize> Serialize for Board<W, H> {
@@ -34,7 +39,10 @@ impl<'de, const W: usize, const H: usize> Deserialize<'de> for Board<W, H> {
                         .next_element()?
                         .ok_or_else(|| serde::de::Error::invalid_length(i, &self))?;
                 }
-                Ok(Board { rows })
+                Ok(Board {
+                    rows,
+                    garbage: [0u64; H],
+                })
             }
         }
         deserializer.deserialize_tuple(H, BoardVisitor::<W, H>)
@@ -54,7 +62,10 @@ impl<const W: usize, const H: usize> Board<W, H> {
     };
 
     pub fn new() -> Self {
-        Board { rows: [0; H] }
+        Board {
+            rows: [0; H],
+            garbage: [0; H],
+        }
     }
 
     pub fn collide(&self, y: u8, mask: u64) -> bool {
@@ -182,11 +193,13 @@ impl<const W: usize, const H: usize> Board<W, H> {
             } else {
                 write = write.wrapping_sub(1);
                 self.rows[write] = self.rows[read];
+                self.garbage[write] = self.garbage[read];
             }
         }
 
         for y in 0..write {
             self.rows[y] = 0;
+            self.garbage[y] = 0;
         }
 
         ClearResult {
@@ -203,10 +216,12 @@ impl<const W: usize, const H: usize> Board<W, H> {
         let l = (lines as usize).min(H);
         for y in 0..(H - l) {
             self.rows[y] = self.rows[y + l];
+            self.garbage[y] = self.garbage[y + l];
         }
         let garbage_row = Self::FULL & !(1u64 << hole_x);
         for y in (H - l)..H {
             self.rows[y] = garbage_row;
+            self.garbage[y] = garbage_row;
         }
     }
 }
@@ -318,6 +333,32 @@ mod tests {
         assert_eq!(board.rows[19], garbage_row);
         assert_eq!(board.rows[18], garbage_row);
         assert_eq!(board.rows[17], garbage_row);
+    }
+
+    #[test]
+    fn insert_garbage_marks_garbage_mask() {
+        let mut board = Board::<10, 20>::new();
+        board.insert_garbage(2, 3);
+        let garbage_row = Board::<10, 20>::FULL & !(1u64 << 3);
+        assert_eq!(board.garbage[19], garbage_row);
+        assert_eq!(board.garbage[18], garbage_row);
+        assert_eq!(board.garbage[17], 0, "non-garbage rows stay unmarked");
+        assert_eq!(board.garbage[0], 0);
+    }
+
+    #[test]
+    fn clear_lines_shifts_garbage_mask_in_lockstep() {
+        let mut board = Board::<10, 20>::new();
+        board.insert_garbage(2, 3);
+        // Fill the garbage hole in the bottom row so it becomes a full line.
+        board.rows[19] |= 1u64 << 3;
+        let result = board.clear_lines();
+        assert_eq!(result.count, 1);
+        // Remaining garbage row dropped to the bottom; its mask follows.
+        let garbage_row = Board::<10, 20>::FULL & !(1u64 << 3);
+        assert_eq!(board.rows[19], garbage_row);
+        assert_eq!(board.garbage[19], garbage_row);
+        assert_eq!(board.garbage[18], 0);
     }
 
     #[test]

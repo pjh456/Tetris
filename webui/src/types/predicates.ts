@@ -33,6 +33,11 @@ export function is_hard_drop_info(data: unknown): data is HardDropInfo {
   );
 }
 
+export function has_garbage_inserted(data: unknown): boolean {
+  if (typeof data !== 'object' || data === null) return false;
+  return (data as Record<string, unknown>).garbage_inserted === true;
+}
+
 export function is_valid_theme(s: unknown): s is 'cyberpunk' | 'retro' | 'minimal' {
   return s === 'cyberpunk' || s === 'retro' || s === 'minimal';
 }
