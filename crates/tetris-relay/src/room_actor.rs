@@ -286,6 +286,7 @@ impl RoomActor {
                     alive: self.sim.engine(PlayerSlot(idx as u8)).is_some(),
                     away: false,
                     is_host: idx == 0,
+                    is_bot: self.bots.iter().any(|(slot, _)| slot.0 == idx as u8),
                 })
             })
             .collect()

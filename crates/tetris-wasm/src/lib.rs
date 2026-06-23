@@ -38,6 +38,7 @@ pub struct OpponentInfo {
     pub alive: bool,
     pub away: bool,
     pub is_host: bool,
+    pub is_bot: bool,
     pub spectating: bool,
 }
 
@@ -436,6 +437,22 @@ impl WebTetris {
         packet_to_uint8_array(&pkt)
     }
 
+    pub fn make_kick_player_packet(&self, target_id: u8) -> js_sys::Uint8Array {
+        let pkt = PktKickPlayer {
+            header: PacketHeader::new(PacketType::KickPlayer, self.local_player_id.unwrap_or(0)),
+            target_player_id: target_id,
+        };
+        packet_to_uint8_array(&pkt)
+    }
+
+    pub fn make_remove_bot_packet(&self, target_id: u8) -> js_sys::Uint8Array {
+        let pkt = PktRemoveBot {
+            header: PacketHeader::new(PacketType::RemoveBot, self.local_player_id.unwrap_or(0)),
+            target_player_id: target_id,
+        };
+        packet_to_uint8_array(&pkt)
+    }
+
     pub fn get_opponent_grid(&self, player_id: u8) -> js_sys::Uint8Array {
         let idx = player_id as usize;
         if idx >= self.opponent_grid_bufs.len() {
@@ -633,6 +650,7 @@ impl WebTetris {
                         alive: player.alive,
                         away: player.away,
                         is_host: player.is_host,
+                        is_bot: player.is_bot,
                         spectating: false,
                     })
                     .collect();
@@ -755,6 +773,20 @@ impl WebTetris {
                 event.winner_player_id = Some(pkt.winner_player_id);
                 event
             }
+            PacketType::KickPlayer => {
+                let pkt: PktKickPlayer = deser(data).ok()?;
+                let mut event =
+                    MultiplayerEvent::new("kicked", self.room_code.clone(), self.countdown);
+                event.player_id = Some(pkt.target_player_id);
+                event
+            }
+            PacketType::RemoveBot => {
+                let pkt: PktRemoveBot = deser(data).ok()?;
+                let mut event =
+                    MultiplayerEvent::new("bot_removed", self.room_code.clone(), self.countdown);
+                event.player_id = Some(pkt.target_player_id);
+                event
+            }
             _ => {
                 return Some(MultiplayerEvent::new(
                     "parse_error_unknown",
@@ -820,6 +852,7 @@ mod tests {
                     alive: true,
                     away: false,
                     is_host: true,
+                    is_bot: false,
                 },
                 RoomPlayerSnapshot {
                     player_id: 1,
@@ -828,6 +861,7 @@ mod tests {
                     alive: true,
                     away: false,
                     is_host: false,
+                    is_bot: false,
                 },
             ],
         };
@@ -890,6 +924,7 @@ mod tests {
                     alive: true,
                     away: false,
                     is_host: true,
+                    is_bot: false,
                 },
                 RoomPlayerSnapshot {
                     player_id: 1,
@@ -898,6 +933,7 @@ mod tests {
                     alive: true,
                     away: false,
                     is_host: false,
+                    is_bot: true,
                 },
             ],
         };

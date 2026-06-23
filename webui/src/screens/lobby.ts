@@ -11,7 +11,9 @@ import {
   get_wasm,
   make_chat_message_packet,
   make_join_room_packet,
+  make_kick_player_packet,
   make_player_ready_packet,
+  make_remove_bot_packet,
   reset_multiplayer_wasm,
 } from '../core/wasm';
 import type { MultiplayerPlayer } from '../core/wasm';
@@ -40,6 +42,8 @@ export function create_lobby_screen(): HTMLElement {
   const my_name = get_display_name();
   let is_ready = false;
   let last_room_sync_count: number | null = null;
+  let am_host = false;
+  let my_player_id: number | null = null;
 
   const layout = document.createElement('div');
   layout.className = 'lobby-layout';
@@ -48,7 +52,12 @@ export function create_lobby_screen(): HTMLElement {
   main.className = 'lobby-main';
 
   const { section: room_section, join_input, join_btn } = build_room_code_section();
-  const { section: player_section, update: update_players } = build_player_list();
+  const { section: player_section, update: update_players } = build_player_list({
+    is_host: () => am_host,
+    local_id: () => my_player_id,
+    on_kick: (player_id) => current_ws.send(make_kick_player_packet(player_id)),
+    on_remove_bot: (player_id) => current_ws.send(make_remove_bot_packet(player_id)),
+  });
   const { btn: ready_btn, set_ready: set_ready_btn } = build_ready_button();
   const add_ai_btn = build_add_ai_button();
 
@@ -86,14 +95,16 @@ export function create_lobby_screen(): HTMLElement {
       const snapshot = get_multiplayer_snapshot();
       if (snapshot) {
         peers = snapshot.players;
-        update_players(peers);
-        room_code.value = snapshot.room_code ?? room_code.value;
-        const code_display = room_section.querySelector('.room-code');
-        if (code_display) code_display.textContent = room_code.value ?? '----';
         const me =
           typeof snapshot.local_player_id === 'number'
             ? peers.find((player) => player.player_id === snapshot.local_player_id)
             : peers.find((player) => player.name === my_name);
+        my_player_id = me?.player_id ?? null;
+        am_host = me?.is_host ?? false;
+        update_players(peers);
+        room_code.value = snapshot.room_code ?? room_code.value;
+        const code_display = room_section.querySelector('.room-code');
+        if (code_display) code_display.textContent = room_code.value ?? '----';
         is_ready = me?.ready ?? false;
         set_ready_btn(is_ready);
         countdown_el.textContent =
@@ -117,6 +128,9 @@ export function create_lobby_screen(): HTMLElement {
         countdown_el.textContent = `STARTING IN ${last_event.countdown}`;
       } else if (last_event.kind === 'countdown_cancel') {
         countdown_el.textContent = '';
+      } else if (last_event.kind === 'kicked' && last_event.player_id === my_player_id) {
+        cleanup();
+        page.value = 'home';
       } else if (last_event.kind === 'game_start' && typeof last_event.random_seed === 'number') {
         is_multiplayer.value = true;
         set_multiplayer_ws(current_ws);
@@ -259,7 +273,12 @@ function build_room_code_section(): {
   return { section, join_input, join_btn };
 }
 
-function build_player_list(): {
+function build_player_list(opts: {
+  is_host: () => boolean;
+  local_id: () => number | null;
+  on_kick: (player_id: number) => void;
+  on_remove_bot: (player_id: number) => void;
+}): {
   section: HTMLElement;
   update: (peers: MultiplayerPlayer[]) => void;
 } {
@@ -293,6 +312,24 @@ function build_player_list(): {
         status_span.className = status_class;
         status_span.textContent = status_text;
         card.appendChild(status_span);
+        const is_self = player.player_id === opts.local_id();
+        if (opts.is_host() && !is_self) {
+          if (player.is_bot) {
+            const remove_btn = create_button('删 AI', {
+              ariaLabel: `删除 ${player.name}`,
+              onClick: () => opts.on_remove_bot(player.player_id),
+            });
+            remove_btn.classList.add('player-card-action');
+            card.appendChild(remove_btn);
+          } else {
+            const kick_btn = create_button('踢出', {
+              ariaLabel: `踢出 ${player.name}`,
+              onClick: () => opts.on_kick(player.player_id),
+            });
+            kick_btn.classList.add('player-card-action');
+            card.appendChild(kick_btn);
+          }
+        }
       } else {
         const name_span = document.createElement('span');
         name_span.className = 'player-name';

@@ -9,8 +9,8 @@ use bincode::serialize;
 use futures_util::{SinkExt, StreamExt};
 use tetris_protocol::protocol::{
     InputEvent, PROTOCOL_VERSION, PacketHeader, PacketType, PktAddBot, PktChatMessage,
-    PktGameStart, PktJoinRoom, PktPlayerReady, PktReconnect, PktReplay, PktResume, PktServerAccept,
-    PktStartCountdown,
+    PktGameStart, PktJoinRoom, PktKickPlayer, PktPlayerReady, PktReconnect, PktRemoveBot,
+    PktReplay, PktResume, PktServerAccept, PktStartCountdown,
 };
 use tokio::sync::Mutex;
 use tokio::time::interval;
@@ -545,6 +545,67 @@ async fn handle_binary_message(
             }
         }
         // New protocol types (Replay, etc.) — forward to input_tx if RoomActor is active
+        PacketType::KickPlayer => {
+            let Ok(pkt) = deser::<PktKickPlayer>(&data) else {
+                return;
+            };
+            // Only the host may kick, and never kick the host (self).
+            if !state.room_manager.is_host(room_code, peer_id).await {
+                warn!("non-host peer {peer_id} attempted KickPlayer; rejected");
+                return;
+            }
+            let Ok(target) = state
+                .room_manager
+                .peer_by_player_id(room_code, pkt.target_player_id)
+                .await
+            else {
+                return;
+            };
+            if target.id == peer_id {
+                return;
+            }
+            // Notify the kicked client (still subscribed) so it returns home, then
+            // tear down its slot in the sim (if any) and remove the peer.
+            let _ = state.room_manager.broadcast(room_code, data).await;
+            if let Ok(Some(actor_tx)) = state.room_manager.actor_tx(room_code).await {
+                let _ = actor_tx
+                    .send(RoomCommand::PlayerLeave {
+                        slot: PlayerSlot(target.session.player_id),
+                    })
+                    .await;
+            }
+            state.room_manager.remove_peer(room_code, target.id).await;
+            state.room_manager.broadcast_room_snapshot(room_code).await;
+        }
+        PacketType::RemoveBot => {
+            let Ok(pkt) = deser::<PktRemoveBot>(&data) else {
+                return;
+            };
+            if !state.room_manager.is_host(room_code, peer_id).await {
+                warn!("non-host peer {peer_id} attempted RemoveBot; rejected");
+                return;
+            }
+            let Ok(target) = state
+                .room_manager
+                .peer_by_player_id(room_code, pkt.target_player_id)
+                .await
+            else {
+                return;
+            };
+            if !target.session.is_bot {
+                return;
+            }
+            if let Ok(Some(actor_tx)) = state.room_manager.actor_tx(room_code).await {
+                let _ = actor_tx
+                    .send(RoomCommand::PlayerLeave {
+                        slot: PlayerSlot(target.session.player_id),
+                    })
+                    .await;
+            }
+            state.room_manager.remove_peer(room_code, target.id).await;
+            state.room_manager.broadcast_room_snapshot(room_code).await;
+        }
+        // New protocol types (Replay, etc.) — forward to input_tx if RoomActor is active
         PacketType::Replay => {
             if let Ok(pkt) = deser::<PktReplay>(&data)
                 && replay_packet_is_valid(&pkt)
@@ -771,6 +832,73 @@ mod tests {
                 .await
                 .unwrap()
         );
+    }
+
+    #[tokio::test]
+    async fn kick_player_rejected_for_non_host() {
+        use tetris_protocol::protocol::PktKickPlayer;
+        let manager = Arc::new(RoomManager::new(4));
+        manager.get_or_create_room("ABCD").await.unwrap();
+        let host_id = RoomManager::alloc_peer_id();
+        let other_id = RoomManager::alloc_peer_id();
+        manager.join_room("ABCD").await.unwrap();
+        let host_peers = manager.add_peer("ABCD", host_id).await.unwrap();
+        manager.join_room("ABCD").await.unwrap();
+        manager.add_peer("ABCD", other_id).await.unwrap();
+        let host_slot = host_peers[0].session.player_id;
+        let state = Arc::new(AppState {
+            room_manager: Arc::clone(&manager),
+            pending_inputs: Arc::new(Mutex::new(HashMap::new())),
+        });
+
+        // Non-host (other_id) tries to kick the host slot → must be rejected.
+        let pkt = PktKickPlayer {
+            header: PacketHeader::new(PacketType::KickPlayer, 1),
+            target_player_id: host_slot,
+        };
+        let data = serialize(&pkt).unwrap();
+        let (input_tx, _rx) = tokio::sync::mpsc::channel::<InputEvent>(4);
+
+        handle_binary_message(&state, "ABCD", other_id, &input_tx, data).await;
+
+        assert_eq!(manager.room_peers("ABCD").await.unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn kick_player_removes_target_for_host() {
+        use tetris_protocol::protocol::PktKickPlayer;
+        let manager = Arc::new(RoomManager::new(4));
+        manager.get_or_create_room("ABCD").await.unwrap();
+        let host_id = RoomManager::alloc_peer_id();
+        let other_id = RoomManager::alloc_peer_id();
+        manager.join_room("ABCD").await.unwrap();
+        manager.add_peer("ABCD", host_id).await.unwrap();
+        manager.join_room("ABCD").await.unwrap();
+        let other_peers = manager.add_peer("ABCD", other_id).await.unwrap();
+        let target_slot = other_peers
+            .iter()
+            .find(|p| p.id == other_id)
+            .unwrap()
+            .session
+            .player_id;
+        let state = Arc::new(AppState {
+            room_manager: Arc::clone(&manager),
+            pending_inputs: Arc::new(Mutex::new(HashMap::new())),
+        });
+
+        // Host kicks the other player → removed.
+        let pkt = PktKickPlayer {
+            header: PacketHeader::new(PacketType::KickPlayer, 0),
+            target_player_id: target_slot,
+        };
+        let data = serialize(&pkt).unwrap();
+        let (input_tx, _rx) = tokio::sync::mpsc::channel::<InputEvent>(4);
+
+        handle_binary_message(&state, "ABCD", host_id, &input_tx, data).await;
+
+        let peers = manager.room_peers("ABCD").await.unwrap();
+        assert_eq!(peers.len(), 1);
+        assert_eq!(peers[0].id, host_id);
     }
 }
 

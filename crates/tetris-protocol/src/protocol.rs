@@ -35,6 +35,8 @@ pub enum PacketType {
     Batch = 33,
     AddBot = 34,
     CountdownCancel = 35,
+    KickPlayer = 36,
+    RemoveBot = 37,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -185,6 +187,7 @@ pub struct RoomPlayerSnapshot {
     pub alive: bool,
     pub away: bool,
     pub is_host: bool,
+    pub is_bot: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -198,6 +201,20 @@ pub struct PktRoomSnapshot {
 pub struct PktAddBot {
     pub header: PacketHeader,
     pub temperature: f32,
+}
+
+/// Host-only: kick another player from the room (lobby or in-game).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PktKickPlayer {
+    pub header: PacketHeader,
+    pub target_player_id: u8,
+}
+
+/// Host-only: remove an AI bot from the room.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PktRemoveBot {
+    pub header: PacketHeader,
+    pub target_player_id: u8,
 }
 
 // ── 0x11 protocol types (per D-02, D-05, D-06, D-10, D-12) ──
@@ -446,6 +463,7 @@ mod tests {
                 alive: true,
                 away: false,
                 is_host: true,
+                is_bot: false,
             }],
         };
         bincode_round_trip(&pkt);
@@ -602,6 +620,30 @@ mod tests {
         let pkt = PktAddBot {
             header: PacketHeader::new(PacketType::AddBot, 0),
             temperature: 0.5,
+        };
+        bincode_round_trip(&pkt);
+    }
+
+    #[test]
+    fn test_kick_remove_packet_types() {
+        assert_eq!(PacketType::KickPlayer as u8, 36);
+        assert_eq!(PacketType::RemoveBot as u8, 37);
+    }
+
+    #[test]
+    fn test_kick_player_round_trip() {
+        let pkt = PktKickPlayer {
+            header: PacketHeader::new(PacketType::KickPlayer, 0),
+            target_player_id: 2,
+        };
+        bincode_round_trip(&pkt);
+    }
+
+    #[test]
+    fn test_remove_bot_round_trip() {
+        let pkt = PktRemoveBot {
+            header: PacketHeader::new(PacketType::RemoveBot, 0),
+            target_player_id: 3,
         };
         bincode_round_trip(&pkt);
     }

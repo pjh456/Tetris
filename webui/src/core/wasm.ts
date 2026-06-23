@@ -168,6 +168,7 @@ export type MultiplayerPlayer = {
   alive: boolean;
   away: boolean;
   is_host: boolean;
+  is_bot: boolean;
 };
 
 export type MultiplayerSnapshot = {
@@ -224,6 +225,14 @@ export function make_chat_message_packet(message: string): Uint8Array {
 
 export function make_add_bot_packet(temperature: number): Uint8Array {
   return require_instance().make_add_bot_packet(temperature);
+}
+
+export function make_kick_player_packet(target_id: number): Uint8Array {
+  return require_instance().make_kick_player_packet(target_id);
+}
+
+export function make_remove_bot_packet(target_id: number): Uint8Array {
+  return require_instance().make_remove_bot_packet(target_id);
 }
 
 export function push_input_event(key: number, pressed: boolean, subframe = 0): void {

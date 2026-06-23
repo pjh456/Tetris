@@ -329,6 +329,7 @@ impl RoomManager {
                     alive: true,
                     away: peer.session.away,
                     is_host: host_peer_id.is_some_and(|host_id| host_id == peer.id),
+                    is_bot: peer.session.is_bot,
                 })
                 .collect(),
         };
@@ -375,6 +376,38 @@ impl RoomManager {
             .find(|peer| peer.id == id)
             .cloned()
             .ok_or(RelayError::PeerNotFound)
+    }
+
+    /// Find a peer by its in-game `player_id` (slot). Used for host-issued
+    /// kick / remove-bot, where the target is addressed by slot, not connection.
+    pub async fn peer_by_player_id(
+        &self,
+        code: &str,
+        player_id: u8,
+    ) -> Result<PeerInfo, RelayError> {
+        let rooms = self.rooms.read().await;
+        let room = rooms
+            .get(code)
+            .ok_or_else(|| RelayError::RoomNotFound(code.into()))?;
+        room.peers
+            .lock()
+            .await
+            .iter()
+            .find(|peer| peer.session.player_id == player_id)
+            .cloned()
+            .ok_or(RelayError::PeerNotFound)
+    }
+
+    /// True iff connection `id` is the current host of room `code`.
+    pub async fn is_host(&self, code: &str, id: u64) -> bool {
+        let rooms = self.rooms.read().await;
+        let Some(room) = rooms.get(code) else {
+            return false;
+        };
+        room.host_peer_id
+            .read()
+            .await
+            .is_some_and(|host_id| host_id == id)
     }
 
     pub async fn countdown_active(&self, code: &str) -> Result<bool, RelayError> {
