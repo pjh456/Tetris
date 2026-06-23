@@ -38,6 +38,7 @@ pub enum PacketType {
     KickPlayer = 36,
     RemoveBot = 37,
     Standings = 38,
+    Connect = 39,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -236,6 +237,15 @@ pub struct StandingEntry {
 pub struct PktStandings {
     pub header: PacketHeader,
     pub entries: Vec<StandingEntry>,
+}
+
+/// Explicit connection handshake (always the client's first packet). Declares
+/// intent: empty `resume_token` = fresh join; non-empty = resume attempt with a
+/// server-issued token. Replaces the old peek-with-timeout heuristic.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PktConnect {
+    pub header: PacketHeader,
+    pub resume_token: String,
 }
 
 // ── 0x11 protocol types (per D-02, D-05, D-06, D-10, D-12) ──
@@ -709,5 +719,20 @@ mod tests {
         };
         bincode_round_trip(&pkt);
         assert_eq!(pkt.entries.len(), 2);
+    }
+
+    #[test]
+    fn test_connect_round_trip() {
+        assert_eq!(PacketType::Connect as u8, 39);
+        let fresh = PktConnect {
+            header: PacketHeader::new(PacketType::Connect, 0),
+            resume_token: String::new(),
+        };
+        bincode_round_trip(&fresh);
+        let resume = PktConnect {
+            header: PacketHeader::new(PacketType::Connect, 1),
+            resume_token: "deadbeefcafef00d".into(),
+        };
+        bincode_round_trip(&resume);
     }
 }

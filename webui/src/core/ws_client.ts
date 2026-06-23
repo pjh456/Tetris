@@ -55,6 +55,10 @@ export class WsClient {
       this.reconnect_attempt = 0;
       this.last_pong_time = Date.now();
       this.start_heartbeat();
+      // Explicit handshake: the first packet always declares intent. A non-empty
+      // resume_token = resume attempt; empty = fresh join. Sent raw (not buffered)
+      // so the server resolves intent before any other packet.
+      this.send_connect_packet(should_resume ? (this._resume_token ?? '') : '');
       if (should_resume) {
         this.send_resume_packets();
       } else {
@@ -186,6 +190,12 @@ export class WsClient {
 
   can_resume(): boolean {
     return this._resume_token !== null && this._socket_id !== null;
+  }
+
+  private send_connect_packet(token: string) {
+    if (!this.wasm) return;
+    const pkt = this.wasm.make_connect_packet(token);
+    this.socket?.send(pkt.buffer.slice(pkt.byteOffset, pkt.byteOffset + pkt.byteLength));
   }
 
   private send_resume_packets() {

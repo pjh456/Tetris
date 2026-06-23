@@ -568,6 +568,14 @@ impl WebTetris {
         packet_to_uint8_array(&pkt)
     }
 
+    pub fn make_connect_packet(&self, resume_token: &str) -> js_sys::Uint8Array {
+        let pkt = PktConnect {
+            header: PacketHeader::new(PacketType::Connect, self.local_player_id.unwrap_or(0)),
+            resume_token: resume_token.to_string(),
+        };
+        packet_to_uint8_array(&pkt)
+    }
+
     pub fn make_reconnect_packet(&self) -> js_sys::Uint8Array {
         packet_to_uint8_array(&self.build_reconnect_packet())
     }

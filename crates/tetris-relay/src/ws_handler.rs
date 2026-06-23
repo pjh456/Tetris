@@ -8,7 +8,7 @@ use bincode::Options;
 use bincode::serialize;
 use futures_util::{SinkExt, StreamExt};
 use tetris_protocol::protocol::{
-    InputEvent, PROTOCOL_VERSION, PacketHeader, PacketType, PktAddBot, PktChatMessage,
+    InputEvent, PROTOCOL_VERSION, PacketHeader, PacketType, PktAddBot, PktChatMessage, PktConnect,
     PktGameStart, PktJoinRoom, PktKickPlayer, PktPlayerReady, PktReconnect, PktRemoveBot,
     PktReplay, PktResume, PktRoomSettings, PktServerAccept, PktStartCountdown,
 };
@@ -31,10 +31,6 @@ const MAX_MSG_PER_SEC: u32 = 60;
 const MAX_CHAT_LEN: usize = 256;
 const MAX_INITIAL_GARBAGE_LINES: u8 = 12;
 const MAX_GARBAGE_DELAY_TICKS: u16 = 600;
-/// Max wait for the first client packet during the connection handshake. A
-/// reconnecting client sends its `Resume` packet immediately on open, so this
-/// resolves near-instantly in practice; the bound only guards a silent client.
-const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(2);
 /// Grace window after an in-game disconnect before the slot/engine is removed.
 /// A reconnect with a valid resume token within this window reclaims the slot.
 const RECONNECT_GRACE_SECS: u64 = 10;
@@ -98,21 +94,41 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
     // outbound_tx, so the handshake never touches the raw sink directly.
     let send_task = tokio::spawn(send_loop(sender, outbound_rx, broadcast_rx));
 
-    // Handshake: peek the first client packet. A reconnecting client sends a
-    // `Resume` packet first (ws_client.send_resume_packets); a fresh client sends
-    // its JoinRoom. We must learn this before allocating a slot so that a valid
-    // Resume reclaims the away peer's existing slot + engine instead of grabbing a
-    // brand-new slot (which would lose game progress).
-    let first_packet = read_first_binary(&mut receiver, HANDSHAKE_TIMEOUT).await;
-    let resume_token = first_packet.as_deref().and_then(parse_resume_token);
+    // Handshake: the client's first packet is always an explicit `PktConnect`
+    // declaring intent — empty resume_token = fresh join, non-empty = resume
+    // attempt. No peek/timeout heuristic: the WS is already open so this arrives
+    // immediately, and the intent is stated rather than inferred from packet type.
+    let connect_bytes = loop {
+        match receiver.next().await {
+            Some(Ok(Message::Binary(data))) if !data.is_empty() => break data.to_vec(),
+            Some(Ok(_)) => {}
+            Some(Err(e)) => {
+                warn!("handshake recv error from {peer_id}: {e}");
+                send_task.abort();
+                state.room_manager.leave_room(&room_code).await;
+                return;
+            }
+            None => {
+                send_task.abort();
+                state.room_manager.leave_room(&room_code).await;
+                return;
+            }
+        }
+    };
+    let Ok(connect) = deser::<PktConnect>(&connect_bytes) else {
+        warn!("handshake: first packet from {peer_id} was not a PktConnect; closing");
+        send_task.abort();
+        state.room_manager.leave_room(&room_code).await;
+        return;
+    };
 
-    let reclaimed = if let Some(token) = resume_token.as_deref() {
+    let reclaimed = if connect.resume_token.is_empty() {
+        None
+    } else {
         state
             .room_manager
-            .reclaim_away_peer(&room_code, peer_id, token)
+            .reclaim_away_peer(&room_code, peer_id, &connect.resume_token)
             .await
-    } else {
-        None
     };
 
     let peer = if let Some(peer) = reclaimed {
@@ -177,13 +193,6 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
 
     info!("client {peer_id} joined room {room_code}");
     state.room_manager.broadcast_room_snapshot(&room_code).await;
-
-    // A non-resume first packet (e.g. JoinRoom) must still be processed.
-    if let Some(data) = first_packet
-        && resume_token.is_none()
-    {
-        handle_binary_message(&state, &room_code, peer_id, &input_tx, data).await;
-    }
 
     let mut msg_count: u32 = 0;
     let mut msg_window_start = tokio::time::Instant::now();
@@ -714,6 +723,9 @@ async fn handle_binary_message(
                     .await;
             }
         }
+        PacketType::Connect => {
+            warn!("unexpected mid-session Connect packet from peer {peer_id}");
+        }
         _ => {}
     }
 }
@@ -727,33 +739,6 @@ fn make_player_connection(
         tx,
         format!("Player {}", player_id + 1),
     )
-}
-
-/// Extract the resume token from a packet iff it is a `Resume` packet on the
-/// current protocol version. Returns None for anything else.
-fn parse_resume_token(data: &[u8]) -> Option<String> {
-    let header = deser::<PacketHeader>(data).ok()?;
-    if header.version != PROTOCOL_VERSION || header.packet_type != PacketType::Resume {
-        return None;
-    }
-    deser::<PktResume>(data).ok().map(|pkt| pkt.resume_token)
-}
-
-/// Read the first non-empty binary message, skipping pings, empty heartbeats,
-/// and text frames. Returns None on close, error, or timeout.
-async fn read_first_binary(
-    receiver: &mut futures_util::stream::SplitStream<WebSocket>,
-    timeout: Duration,
-) -> Option<Vec<u8>> {
-    loop {
-        match tokio::time::timeout(timeout, receiver.next()).await {
-            Ok(Some(Ok(Message::Binary(data)))) if !data.is_empty() => {
-                return Some(data.to_vec());
-            }
-            Ok(Some(Ok(_))) => {}
-            Ok(Some(Err(_)) | None) | Err(_) => return None,
-        }
-    }
 }
 
 fn binary_packet_is_replay(data: &[u8]) -> bool {
