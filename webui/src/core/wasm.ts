@@ -187,6 +187,15 @@ export type MultiplayerSnapshot = {
   settings: MultiplayerRoomSettings;
 };
 
+export type MultiplayerStandingEntry = {
+  player_id: number;
+  name: string;
+  placement: number;
+  score: number;
+  lines: number;
+  survival_ticks: number;
+};
+
 export type MultiplayerEvent = {
   kind: string;
   room_code?: string | null;
@@ -205,6 +214,7 @@ export type MultiplayerEvent = {
   event_count?: number | null;
   resume_token?: string | null;
   events?: unknown[];
+  standings?: MultiplayerStandingEntry[];
 };
 
 export function get_multiplayer_snapshot(): MultiplayerSnapshot | null {

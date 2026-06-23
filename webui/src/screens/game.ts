@@ -18,6 +18,8 @@ import {
   settings,
   is_multiplayer,
   connection_status,
+  match_standings,
+  type StandingRow,
 } from '../state';
 import { createBoardRenderer, create_opponent_panel } from '../render/board';
 import { createPreviewRenderer, createNextStackRenderer } from '../render/preview';
@@ -214,9 +216,14 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
       finish_ws_resync();
       return;
     }
-    if (event.kind === 'game_over') {
-      finish_game();
+    if (event.kind === 'standings') {
+      match_standings.value = (event.standings ?? []) as StandingRow[];
+      finish_to_result();
+      return;
     }
+    // Multiplayer 'game_over' is informational; the authoritative result arrives
+    // via the 'standings' packet broadcast immediately after. No single-player
+    // gameover transition here.
   }
 
   function finish_ws_resync() {
@@ -299,6 +306,26 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
       destroy();
       page.value = 'gameover';
     });
+  }
+
+  // Multiplayer: local player topped out but the match continues → spectate the
+  // remaining players. ws stays open (main only tears it down on 'home'); the
+  // spectator screen rebinds onpacket. No collapse anim (that's single-player).
+  function go_spectator() {
+    if (is_tearing_down) return;
+    is_tearing_down = true;
+    cleanup_runtime();
+    audio_manager.stop_bgm();
+    page.value = 'spectator';
+  }
+
+  // Multiplayer: global match end → show the standings result screen.
+  function finish_to_result() {
+    if (is_tearing_down) return;
+    is_tearing_down = true;
+    cleanup_runtime();
+    audio_manager.stop_bgm();
+    page.value = 'multiplayer_result';
   }
 
   function advance_game(now: number) {
@@ -425,7 +452,7 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
       advance_game(time);
       if (is_tearing_down) return;
     } else if (wasm.is_game_over) {
-      finish_game();
+      go_spectator();
       return;
     } else {
       flush_multiplayer_input_if_ready();

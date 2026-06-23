@@ -37,6 +37,7 @@ pub enum PacketType {
     CountdownCancel = 35,
     KickPlayer = 36,
     RemoveBot = 37,
+    Standings = 38,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -216,6 +217,25 @@ pub struct PktKickPlayer {
 pub struct PktRemoveBot {
     pub header: PacketHeader,
     pub target_player_id: u8,
+}
+
+/// Final result for a single player in a multiplayer match.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StandingEntry {
+    pub player_id: u8,
+    pub name: String,
+    /// 1 = winner / last survivor; higher = eliminated earlier.
+    pub placement: u8,
+    pub score: u32,
+    pub lines: u32,
+    pub survival_ticks: u32,
+}
+
+/// Broadcast at global match end: full standings table for the result screen.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PktStandings {
+    pub header: PacketHeader,
+    pub entries: Vec<StandingEntry>,
 }
 
 // ── 0x11 protocol types (per D-02, D-05, D-06, D-10, D-12) ──
@@ -661,5 +681,33 @@ mod tests {
             initial_garbage_lines: 3,
         };
         bincode_round_trip(&pkt);
+    }
+
+    #[test]
+    fn test_standings_round_trip() {
+        assert_eq!(PacketType::Standings as u8, 38);
+        let pkt = PktStandings {
+            header: PacketHeader::new(PacketType::Standings, 0),
+            entries: vec![
+                StandingEntry {
+                    player_id: 0,
+                    name: "Alice".into(),
+                    placement: 1,
+                    score: 12345,
+                    lines: 40,
+                    survival_ticks: 3600,
+                },
+                StandingEntry {
+                    player_id: 1,
+                    name: "Bob".into(),
+                    placement: 2,
+                    score: 6789,
+                    lines: 20,
+                    survival_ticks: 1800,
+                },
+            ],
+        };
+        bincode_round_trip(&pkt);
+        assert_eq!(pkt.entries.len(), 2);
     }
 }

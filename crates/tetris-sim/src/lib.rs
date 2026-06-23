@@ -8,5 +8,5 @@ pub mod snapshot;
 pub mod transport;
 
 pub use replay::{HashLadder, ReplayBuffer};
-pub use sim::{AuthoritativeSim, RoomMode, SimConfig, SimError};
+pub use sim::{AuthoritativeSim, RoomMode, SimConfig, SimError, StandingStat};
 pub use transport::{SimCommand, SimOutbound, Transport};

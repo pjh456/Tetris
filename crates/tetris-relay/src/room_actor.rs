@@ -5,9 +5,10 @@ use serde::{Deserialize, Serialize};
 use tetris_net::bot::AiBot;
 use tetris_protocol::newtypes::{PlayerSlot, Seed, TickNumber};
 use tetris_protocol::protocol::{
-    InputEvent, PacketHeader, PacketType, PktRoomSnapshot, PktStateSnapshot, RoomPlayerSnapshot,
+    InputEvent, PacketHeader, PacketType, PktRoomSnapshot, PktStandings, PktStateSnapshot,
+    RoomPlayerSnapshot, StandingEntry,
 };
-use tetris_sim::{AuthoritativeSim, RoomMode, SimConfig, SimOutbound};
+use tetris_sim::{AuthoritativeSim, RoomMode, SimConfig, SimOutbound, StandingStat};
 use tokio::sync::mpsc;
 use tokio::time::{Duration, interval};
 use tracing::warn;
@@ -232,10 +233,48 @@ impl RoomActor {
     pub fn run_one_tick(&mut self) {
         self.collect_bot_inputs();
         self.collect_inputs();
+        let mode_before = self.sim.room_mode();
         let Ok(outbound) = self.sim.tick() else {
             return;
         };
         self.dispatch_outbound(outbound);
+        // On the Playing→GameOver edge, broadcast the final standings table so
+        // clients can show the multiplayer result screen (names filled here).
+        if mode_before == RoomMode::Playing && self.sim.room_mode() == RoomMode::GameOver {
+            self.broadcast_standings();
+        }
+    }
+
+    fn broadcast_standings(&self) {
+        let entries: Vec<StandingEntry> = self
+            .sim
+            .standings_stats()
+            .into_iter()
+            .map(|stat: StandingStat| {
+                let idx = stat.slot.0 as usize;
+                let name = self
+                    .connections
+                    .get(idx)
+                    .and_then(|conn| conn.as_ref())
+                    .map(|conn| conn.peer_name.clone())
+                    .unwrap_or_else(|| format!("Player {}", stat.slot.0 + 1));
+                StandingEntry {
+                    player_id: stat.slot.0,
+                    name,
+                    placement: stat.placement,
+                    score: stat.score,
+                    lines: stat.lines,
+                    survival_ticks: stat.survival_ticks,
+                }
+            })
+            .collect();
+        let pkt = PktStandings {
+            header: PacketHeader::new(PacketType::Standings, 0),
+            entries,
+        };
+        if let Ok(data) = bincode::serialize(&pkt) {
+            self.broadcast(data);
+        }
     }
 
     fn dispatch_outbound(&self, outbound: Vec<SimOutbound>) {

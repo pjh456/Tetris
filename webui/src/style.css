@@ -1176,6 +1176,81 @@ html {
   color: var(--color-muted);
 }
 
+/* Multiplayer result */
+.multiplayer-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  animation: fade-in 200ms ease;
+}
+
+.result-title {
+  font-family: var(--font-display);
+  letter-spacing: 4px;
+  color: var(--color-accent);
+}
+
+.result-winner {
+  font-size: var(--text-body);
+  font-weight: 700;
+  color: var(--color-accent);
+}
+
+.result-table {
+  display: flex;
+  flex-direction: column;
+  min-width: 420px;
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--space-sm);
+  overflow: hidden;
+}
+
+.result-row {
+  display: grid;
+  grid-template-columns: 40px 1fr 100px 70px 70px;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--color-panel-border);
+}
+
+.result-header {
+  background: var(--color-panel);
+  color: var(--color-muted);
+  font-size: var(--text-label);
+}
+
+.result-row-winner {
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+
+.result-cell {
+  font-size: var(--text-label);
+}
+
+.result-back-btn {
+  margin-top: var(--space-md);
+}
+
+/* Lobby rules */
+.rules-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: 2px 0;
+}
+
+.rules-label {
+  font-size: var(--text-label);
+  color: var(--color-muted);
+}
+
+.rules-input {
+  width: 96px;
+}
+
 .player-ready {
   color: var(--color-accent);
   font-weight: 700;

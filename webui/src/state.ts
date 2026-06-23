@@ -9,7 +9,19 @@ export type Page =
   | 'lobby'
   | 'leaderboard'
   | 'spectator'
+  | 'multiplayer_result'
   | 'watch_ai';
+
+export type StandingRow = {
+  player_id: number;
+  name: string;
+  placement: number;
+  score: number;
+  lines: number;
+  survival_ticks: number;
+};
+
+export const match_standings = signal<StandingRow[]>([]);
 
 export const page = signal<Page>('home');
 export const is_multiplayer = signal(false);

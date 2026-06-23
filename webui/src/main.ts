@@ -11,6 +11,7 @@ import { create_gameover_screen } from './screens/gameover';
 import { create_leaderboard_screen } from './screens/leaderboard';
 import { create_lobby_screen } from './screens/lobby';
 import { create_spectator_screen } from './screens/spectator';
+import { create_multiplayer_result_screen } from './screens/multiplayer_result';
 import { create_watch_ai_screen } from './screens/watch_ai';
 import { reset_multiplayer_ws } from './core/multiplayer';
 import { get_display_name } from './core/user_profile';
@@ -186,10 +187,18 @@ effect(() => {
       break;
     }
     case 'spectator': {
-      const sp_el = create_spectator_screen([{ id: 1, name: 'Player 1' }]) as CleanableElement;
+      const sp_el = create_spectator_screen() as CleanableElement;
       app.appendChild(sp_el);
       mount_back_button(app);
       _cleanups.push(() => sp_el._cleanup?.());
+      break;
+    }
+    case 'multiplayer_result': {
+      mount_topbar(app);
+      const content = document.createElement('div');
+      content.className = 'content';
+      content.appendChild(create_multiplayer_result_screen());
+      app.appendChild(content);
       break;
     }
     case 'watch_ai': {

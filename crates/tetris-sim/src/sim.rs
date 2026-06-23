@@ -60,6 +60,18 @@ pub struct AuthoritativeSim {
     room_mode: RoomMode,
     game_over_countdown: u8,
     rules: RoomRules,
+    elimination_order: Vec<PlayerSlot>,
+    death_tick: Vec<Option<u32>>,
+}
+
+/// Per-player final stats used to build the standings table at match end.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StandingStat {
+    pub slot: PlayerSlot,
+    pub placement: u8,
+    pub score: u32,
+    pub lines: u32,
+    pub survival_ticks: u32,
 }
 
 impl AuthoritativeSim {
@@ -82,6 +94,8 @@ impl AuthoritativeSim {
             room_mode: RoomMode::Lobby,
             game_over_countdown: 0,
             rules: RoomRules::default(),
+            elimination_order: Vec::new(),
+            death_tick: Vec::new(),
         }
     }
 
@@ -92,6 +106,7 @@ impl AuthoritativeSim {
             self.player_alive.resize_with(idx + 1, || true);
             self.player_spectating.resize_with(idx + 1, || None);
             self.player_paused.resize_with(idx + 1, || false);
+            self.death_tick.resize_with(idx + 1, || None);
         }
 
         let mut engine = Engine::<10, 20>::new();
@@ -100,6 +115,7 @@ impl AuthoritativeSim {
         self.player_alive[idx] = true;
         self.player_spectating[idx] = None;
         self.player_paused[idx] = false;
+        self.death_tick[idx] = None;
         self.replay_buffers.insert(slot, ReplayBuffer::default());
     }
 
@@ -164,6 +180,54 @@ impl AuthoritativeSim {
 
     pub fn rules(&self) -> RoomRules {
         self.rules
+    }
+
+    /// Build final per-player standings at match end. Placement 1 = last
+    /// survivor; earlier eliminations rank lower (higher number). Includes all
+    /// players whose engine still exists (alive or eliminated, incl. bots).
+    pub fn standings_stats(&self) -> Vec<StandingStat> {
+        let total = self
+            .engines
+            .iter()
+            .filter(|engine| engine.is_some())
+            .count() as u8;
+        // Elimination order restricted to current participants (earliest death first).
+        let elim: Vec<usize> = self
+            .elimination_order
+            .iter()
+            .map(|slot| slot.0 as usize)
+            .filter(|idx| self.engines.get(*idx).is_some_and(Option::is_some))
+            .collect();
+
+        self.engines
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, engine_opt)| engine_opt.as_ref().map(|engine| (idx, engine)))
+            .map(|(idx, engine)| {
+                let alive = self.player_alive.get(idx).copied().unwrap_or(false);
+                let placement = if alive {
+                    1
+                } else {
+                    match elim.iter().position(|&e| e == idx) {
+                        Some(p) => total.saturating_sub(p as u8),
+                        None => total,
+                    }
+                };
+                let survival_ticks = self
+                    .death_tick
+                    .get(idx)
+                    .copied()
+                    .flatten()
+                    .unwrap_or(self.tick.0 as u32);
+                StandingStat {
+                    slot: PlayerSlot(idx as u8),
+                    placement,
+                    score: engine.scorer.score.min(u32::MAX as u64) as u32,
+                    lines: engine.scorer.total_lines,
+                    survival_ticks,
+                }
+            })
+            .collect()
     }
 
     pub fn room_mode(&self) -> RoomMode {
@@ -397,6 +461,10 @@ impl AuthoritativeSim {
             for slot in &newly_dead {
                 let idx = slot.0 as usize;
                 self.player_alive[idx] = false;
+                self.elimination_order.push(*slot);
+                if let Some(slot_death) = self.death_tick.get_mut(idx) {
+                    *slot_death = Some(self.tick.0 as u32);
+                }
                 self.player_spectating[idx] = self
                     .engines
                     .iter()
@@ -559,6 +627,10 @@ impl AuthoritativeSim {
         self.tick = TickNumber(0);
         self.hash_ladder.clear();
         self.pending_inputs.clear();
+        self.elimination_order.clear();
+        for slot_death in &mut self.death_tick {
+            *slot_death = None;
+        }
         for engine in self.engines.iter_mut().flatten() {
             engine.reset_with_rules(seed.0 as u32, self.rules);
         }
@@ -576,6 +648,10 @@ impl AuthoritativeSim {
     }
 
     fn reset_to_lobby(&mut self) {
+        self.elimination_order.clear();
+        for slot_death in &mut self.death_tick {
+            *slot_death = None;
+        }
         for engine in self.engines.iter_mut().flatten() {
             engine.reset_with_rules(self.seed.0 as u32, self.rules);
         }
@@ -943,5 +1019,27 @@ mod tests {
             2,
             "开局应有 2 行初始垃圾"
         );
+    }
+
+    #[test]
+    fn standings_ranks_by_elimination_order() {
+        let mut sim = AuthoritativeSim::new(Seed(42));
+        sim.add_player(PlayerSlot(0));
+        sim.add_player(PlayerSlot(1));
+        sim.add_player(PlayerSlot(2));
+        sim.set_room_mode(RoomMode::Playing);
+
+        // p1 死（仍有 p0/p2 存活，对局继续）
+        sim.engine_mut(PlayerSlot(1)).unwrap().game_over = true;
+        sim.tick().unwrap();
+        // p2 死 → 仅 p0 存活 → 全局结束
+        sim.engine_mut(PlayerSlot(2)).unwrap().game_over = true;
+        sim.tick().unwrap();
+
+        let stats = sim.standings_stats();
+        let placement = |slot: u8| stats.iter().find(|s| s.slot.0 == slot).unwrap().placement;
+        assert_eq!(placement(0), 1, "存活者第一");
+        assert_eq!(placement(2), 2, "最后淘汰第二");
+        assert_eq!(placement(1), 3, "最先淘汰第三");
     }
 }

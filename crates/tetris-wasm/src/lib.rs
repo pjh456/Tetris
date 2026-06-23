@@ -73,6 +73,16 @@ pub struct MultiplayerSnapshot {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StandingEntryView {
+    pub player_id: u8,
+    pub name: String,
+    pub placement: u8,
+    pub score: u32,
+    pub lines: u32,
+    pub survival_ticks: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MultiplayerEvent {
     pub kind: String,
     pub room_code: Option<String>,
@@ -91,6 +101,7 @@ pub struct MultiplayerEvent {
     pub event_count: Option<usize>,
     pub resume_token: Option<String>,
     pub events: Vec<InputEvent>,
+    pub standings: Vec<StandingEntryView>,
 }
 
 impl MultiplayerEvent {
@@ -114,6 +125,7 @@ impl MultiplayerEvent {
             event_count: None,
             resume_token: None,
             events: Vec::new(),
+            standings: Vec::new(),
         }
     }
 }
@@ -850,6 +862,24 @@ impl WebTetris {
                     hold_enabled: pkt.allow_hold,
                 };
                 MultiplayerEvent::new("room_settings", self.room_code.clone(), self.countdown)
+            }
+            PacketType::Standings => {
+                let pkt: PktStandings = deser(data).ok()?;
+                let mut event =
+                    MultiplayerEvent::new("standings", self.room_code.clone(), self.countdown);
+                event.standings = pkt
+                    .entries
+                    .iter()
+                    .map(|entry| StandingEntryView {
+                        player_id: entry.player_id,
+                        name: entry.name.clone(),
+                        placement: entry.placement,
+                        score: entry.score,
+                        lines: entry.lines,
+                        survival_ticks: entry.survival_ticks,
+                    })
+                    .collect();
+                event
             }
             _ => {
                 return Some(MultiplayerEvent::new(
