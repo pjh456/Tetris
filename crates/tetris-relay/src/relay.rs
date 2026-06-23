@@ -154,7 +154,18 @@ impl RoomManager {
             .ok_or_else(|| RelayError::RoomNotFound(code.into()))?;
         let mut peers = room.peers.lock().await;
         if peers.len() >= MAX_PLAYERS_PER_ROOM {
-            return Err(RelayError::RoomFull("too many players".into()));
+            // Distinguish "all human slots away" (reserved for reconnect reclaim)
+            // from a genuinely active full room, so the client can show the right
+            // message. Bots never count as active.
+            let all_away = peers
+                .iter()
+                .filter(|peer| !peer.session.is_bot)
+                .all(|peer| peer.session.away);
+            return Err(if all_away {
+                RelayError::RoomFullAllAway
+            } else {
+                RelayError::RoomFull("too many players".into())
+            });
         }
         // Pick lowest unused player_id instead of peers.len() — avoids collision on leave+join
         let player_id = alloc_player_slot(&peers);
@@ -310,6 +321,11 @@ impl RoomManager {
     /// rebinding it to the new connection `new_id` and clearing the away flag.
     /// Returns the reclaimed peer (with its original `slot`/`player_id`) or None when
     /// no away peer matches — e.g. a forged or stale token.
+    ///
+    /// Concurrency: the whole find→unmark→rebind runs under the `peers` mutex, so
+    /// two connections racing the same token resolve atomically — exactly one wins
+    /// (clears `away`), the other finds no away match and returns None (→ fresh
+    /// join or `RoomFull`). A token is therefore single-use per away window.
     pub async fn reclaim_away_peer(
         &self,
         code: &str,
@@ -507,10 +523,9 @@ impl RoomManager {
         let room = rooms
             .get(code)
             .ok_or_else(|| RelayError::RoomNotFound(code.into()))?;
-        // 容量闸以 peers.len() 为唯一记账源（add_peer 同样校验，双重防护）。
-        if room.peers.lock().await.len() >= MAX_PLAYERS_PER_ROOM {
-            return Err(RelayError::RoomFull(code.into()));
-        }
+        // No capacity gate here: `add_peer` is the authoritative gate for fresh
+        // joins, and a reclaim (reconnect) must be allowed to reach the handshake
+        // even when the room is full of away peers (it rebinds, not adds).
         Ok(room.tx.subscribe())
     }
 
@@ -816,6 +831,139 @@ mod tests {
                 .reclaim_away_peer("ABCD", new_id, "")
                 .await
                 .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_reclaim_only_one_succeeds() {
+        let manager = std::sync::Arc::new(RoomManager::new(4));
+        manager.get_or_create_room("ABCD").await.unwrap();
+        let first_id = RoomManager::alloc_peer_id();
+        manager.join_room("ABCD").await.unwrap();
+        let peers = manager.add_peer("ABCD", first_id).await.unwrap();
+        let token = peers[0].session.resume_token.clone();
+        manager.mark_peer_away("ABCD", first_id).await.unwrap();
+
+        let id_a = RoomManager::alloc_peer_id();
+        let id_b = RoomManager::alloc_peer_id();
+        let m_a = std::sync::Arc::clone(&manager);
+        let m_b = std::sync::Arc::clone(&manager);
+        let t_a = token.clone();
+        let t_b = token.clone();
+        let h_a = tokio::spawn(async move { m_a.reclaim_away_peer("ABCD", id_a, &t_a).await });
+        let h_b = tokio::spawn(async move { m_b.reclaim_away_peer("ABCD", id_b, &t_b).await });
+        let r_a = h_a.await.unwrap();
+        let r_b = h_b.await.unwrap();
+
+        let success_count = [&r_a, &r_b].iter().filter(|r| r.is_some()).count();
+        assert_eq!(success_count, 1, "并发 reclaim 恰好一个成功");
+    }
+
+    #[tokio::test]
+    async fn test_reclaim_token_single_use() {
+        let manager = RoomManager::new(4);
+        manager.get_or_create_room("ABCD").await.unwrap();
+        let first_id = RoomManager::alloc_peer_id();
+        manager.join_room("ABCD").await.unwrap();
+        let peers = manager.add_peer("ABCD", first_id).await.unwrap();
+        let token = peers[0].session.resume_token.clone();
+        manager.mark_peer_away("ABCD", first_id).await.unwrap();
+
+        let id_a = RoomManager::alloc_peer_id();
+        assert!(
+            manager
+                .reclaim_away_peer("ABCD", id_a, &token)
+                .await
+                .is_some()
+        );
+        let id_b = RoomManager::alloc_peer_id();
+        assert!(
+            manager
+                .reclaim_away_peer("ABCD", id_b, &token)
+                .await
+                .is_none(),
+            "token 一次性消费：二次 reclaim 失败"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_bot_away_not_reclaimable() {
+        let manager = RoomManager::new(4);
+        manager.get_or_create_room("ABCD").await.unwrap();
+        manager.join_room("ABCD").await.unwrap();
+        let bot = manager.add_bot_peer("ABCD", 0.5).await.unwrap();
+        manager.mark_peer_away("ABCD", bot.id).await.unwrap();
+
+        let new_id = RoomManager::alloc_peer_id();
+        assert!(
+            manager
+                .reclaim_away_peer("ABCD", new_id, "anytoken")
+                .await
+                .is_none(),
+            "bot slot 不可被 reclaim"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_room_full_all_away_rejects_fresh_join() {
+        let manager = RoomManager::new(4);
+        manager.get_or_create_room("ABCD").await.unwrap();
+        let mut ids = Vec::new();
+        for _ in 0..MAX_PLAYERS_PER_ROOM {
+            let id = RoomManager::alloc_peer_id();
+            manager.join_room("ABCD").await.unwrap();
+            manager.add_peer("ABCD", id).await.unwrap();
+            ids.push(id);
+        }
+        let token = manager
+            .room_peers("ABCD")
+            .await
+            .unwrap()
+            .iter()
+            .find(|p| p.id == ids[0])
+            .unwrap()
+            .session
+            .resume_token
+            .clone();
+        for id in &ids {
+            manager.mark_peer_away("ABCD", *id).await.unwrap();
+        }
+
+        let fresh_id = RoomManager::alloc_peer_id();
+        assert!(
+            matches!(
+                manager.add_peer("ABCD", fresh_id).await,
+                Err(RelayError::RoomFullAllAway)
+            ),
+            "满房全 away → RoomFullAllAway"
+        );
+        // Reclaim is still possible for a matching token.
+        let reclaim_id = RoomManager::alloc_peer_id();
+        assert!(
+            manager
+                .reclaim_away_peer("ABCD", reclaim_id, &token)
+                .await
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_room_full_alive_rejects_fresh_join() {
+        let manager = RoomManager::new(4);
+        manager.get_or_create_room("ABCD").await.unwrap();
+        for _ in 0..MAX_PLAYERS_PER_ROOM {
+            let id = RoomManager::alloc_peer_id();
+            manager.join_room("ABCD").await.unwrap();
+            manager.add_peer("ABCD", id).await.unwrap();
+        }
+
+        let fresh_id = RoomManager::alloc_peer_id();
+        assert!(
+            matches!(
+                manager.add_peer("ABCD", fresh_id).await,
+                Err(RelayError::RoomFull(_))
+            ),
+            "满房有活连接 → RoomFull"
         );
     }
 }

@@ -141,6 +141,20 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
         // Fresh join (or a forged/stale resume token → no hijack, join anew).
         if let Err(e) = state.room_manager.add_peer(&room_code, peer_id).await {
             warn!("add_peer failed: {e}");
+            // Explicit rejection so the client isn't left guessing on a silent
+            // close: a ServerAccept with assigned_player_id = u8::MAX signals
+            // "connection rejected" (room full / all away).
+            let reject = PktServerAccept {
+                header: PacketHeader::new(PacketType::ServerAccept, 0),
+                assigned_player_id: u8::MAX,
+                max_players: 0,
+                resume_token: String::new(),
+            };
+            if let Ok(data) = serialize(&reject) {
+                let _ = outbound_tx.send(data).await;
+                // Give send_loop a moment to flush the rejection before abort.
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
             send_task.abort();
             state.room_manager.leave_room(&room_code).await;
             return;
@@ -701,10 +715,12 @@ async fn handle_binary_message(
             let Ok(pkt) = deser::<PktResume>(&data) else {
                 return;
             };
-            if let Ok(peer) = state.room_manager.peer_by_id(room_code, peer_id).await
-                && pkt.resume_token != peer.session.resume_token
-            {
-                warn!("ignoring mid-session resume with non-matching token for peer {peer_id}");
+            if let Ok(peer) = state.room_manager.peer_by_id(room_code, peer_id).await {
+                if pkt.resume_token == peer.session.resume_token {
+                    debug!("mid-session resume from peer {peer_id} (matching token, no-op)");
+                } else {
+                    warn!("ignoring mid-session resume with non-matching token for peer {peer_id}");
+                }
             }
         }
         PacketType::Reconnect => {

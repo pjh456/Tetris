@@ -6,6 +6,8 @@ pub enum RelayError {
     RoomNotFound(String),
     #[error("Room full: {0}")]
     RoomFull(String),
+    #[error("room is full and all players are away — only reconnect reclaim is allowed")]
+    RoomFullAllAway,
     #[error("WebSocket error: {0}")]
     WsError(String),
     #[error("Peer not found")]

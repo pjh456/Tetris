@@ -73,6 +73,11 @@ export class WsClient {
       if (this.wasm) {
         try {
           const parsed = this.wasm.parse_packet(data) as MultiplayerEvent | null;
+          if (parsed?.kind === 'server_accept' && parsed.player_id === 255) {
+            // Server rejected the connection (room full / all away).
+            connection_status.value = 'disconnected';
+            return;
+          }
           if (parsed?.kind === 'server_accept' && typeof parsed.resume_token === 'string') {
             const socket_id = typeof parsed.player_id === 'number' ? String(parsed.player_id) : '';
             this.set_resume_token(parsed.resume_token, socket_id);
