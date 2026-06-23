@@ -15,6 +15,8 @@ import { create_multiplayer_result_screen } from './screens/multiplayer_result';
 import { create_watch_ai_screen } from './screens/watch_ai';
 import { reset_multiplayer_ws } from './core/multiplayer';
 import { get_display_name } from './core/user_profile';
+import { create_connect_dialog } from './screens/connect_dialog';
+import { is_offline } from './core/server_config';
 
 const CONNECTION_LABELS: Record<string, string> = {
   offline: 'OFFLINE',
@@ -82,6 +84,20 @@ let active_lobby: CleanableElement | null = null;
 let active_game: CleanableElement | null = null;
 let _cleanups: (() => void)[] = [];
 
+function open_multiplayer() {
+  if (connection_status.value === 'online') {
+    page.value = 'lobby';
+    return;
+  }
+  const dispose = create_connect_dialog({
+    on_connected: () => {
+      page.value = 'lobby';
+    },
+    on_offline: () => {},
+  });
+  _cleanups.push(dispose);
+}
+
 effect(() => {
   const current = page.value;
   active_lobby?._cleanup?.();
@@ -114,13 +130,22 @@ effect(() => {
           () => {
             page.value = 'game';
           },
-          () => {},
+          open_multiplayer,
           () => {
             page.value = 'settings';
           },
         ),
       );
       app.appendChild(content);
+      // First visit / not connected: prompt for a relay server unless the user
+      // explicitly chose offline mode. Modal forces connect / LAN / offline.
+      if (!is_offline() && connection_status.value !== 'online') {
+        const dispose = create_connect_dialog({
+          on_connected: () => {},
+          on_offline: () => {},
+        });
+        _cleanups.push(dispose);
+      }
       break;
     }
     case 'game': {

@@ -3,6 +3,7 @@ import { create_button } from '../core/dom';
 import { page, is_multiplayer, room_code, connection_status } from '../state';
 import { WsClient } from '../core/ws_client';
 import { set_multiplayer_ws } from '../core/multiplayer';
+import { get_server_url } from '../core/server_config';
 import { add_multiplayer_ai_opponent } from '../core/ai_opponent';
 import { get_display_name } from '../core/user_profile';
 import {
@@ -19,7 +20,6 @@ import {
 } from '../core/wasm';
 import type { MultiplayerPlayer, MultiplayerRoomSettings } from '../core/wasm';
 
-const RELAY_URL = 'ws://localhost:9000';
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 
 function gen_room_code(): string {
@@ -38,7 +38,7 @@ export function create_lobby_screen(): HTMLElement {
   }
 
   const wasm = get_wasm();
-  let current_ws = new WsClient(`${RELAY_URL}/room/${room_code.value}`, wasm);
+  let current_ws = new WsClient(`${get_server_url()}/room/${room_code.value}`, wasm);
   let peers: MultiplayerPlayer[] = [];
   const my_name = get_display_name();
   let is_ready = false;
@@ -165,7 +165,7 @@ export function create_lobby_screen(): HTMLElement {
     last_room_sync_count = null;
     set_ready_btn(false);
     update_players([]);
-    current_ws = new WsClient(`${RELAY_URL}/room/${code}`, wasm);
+    current_ws = new WsClient(`${get_server_url()}/room/${code}`, wasm);
     attach_handlers(current_ws);
     current_ws.connect();
   }

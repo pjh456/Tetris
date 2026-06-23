@@ -37,6 +37,8 @@ export type ConnectionState =
 
 export const connection_status = signal<ConnectionState>('offline');
 
+export const server_offline = signal(false);
+
 export const score = signal(0);
 export const level = signal(1);
 export const combo = signal(0);

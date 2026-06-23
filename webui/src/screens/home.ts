@@ -2,7 +2,7 @@ import { page } from '../state';
 
 export function create_home_screen(
   on_solo: () => void,
-  _on_multi: () => void,
+  on_multi: () => void,
   on_settings: () => void,
 ): HTMLElement {
   const container = document.createElement('div');
@@ -26,9 +26,7 @@ export function create_home_screen(
       title: 'MULTIPLAYER',
       subtitle: 'PLAY ONLINE WITH FRIENDS AND FOES',
       css_class: 'menu-multi',
-      onclick: () => {
-        page.value = 'lobby';
-      },
+      onclick: on_multi,
     }),
   );
 
