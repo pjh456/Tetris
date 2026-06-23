@@ -11,7 +11,7 @@ use tetris_protocol::protocol::{
 use tetris_sim::{AuthoritativeSim, RoomMode, SimConfig, SimOutbound, StandingStat};
 use tokio::sync::mpsc;
 use tokio::time::{Duration, interval};
-use tracing::warn;
+use tracing::{error, info, trace, warn};
 
 pub const STATE_HASH_INTERVAL: u64 = 100;
 const BOT_WEIGHTS: &str = include_str!(concat!(
@@ -234,9 +234,14 @@ impl RoomActor {
         self.collect_bot_inputs();
         self.collect_inputs();
         let mode_before = self.sim.room_mode();
-        let Ok(outbound) = self.sim.tick() else {
-            return;
+        let outbound = match self.sim.tick() {
+            Ok(outbound) => outbound,
+            Err(e) => {
+                error!("sim tick error in room {}: {e}", self.room_code);
+                return;
+            }
         };
+        trace!("tick {} in room {}", self.sim.tick.0, self.room_code);
         self.dispatch_outbound(outbound);
         // On the Playing→GameOver edge, broadcast the final standings table so
         // clients can show the multiplayer result screen (names filled here).
@@ -256,8 +261,10 @@ impl RoomActor {
                     .connections
                     .get(idx)
                     .and_then(|conn| conn.as_ref())
-                    .map(|conn| conn.peer_name.clone())
-                    .unwrap_or_else(|| format!("Player {}", stat.slot.0 + 1));
+                    .map_or_else(
+                        || format!("Player {}", stat.slot.0 + 1),
+                        |conn| conn.peer_name.clone(),
+                    );
                 StandingEntry {
                     player_id: stat.slot.0,
                     name,
@@ -272,6 +279,12 @@ impl RoomActor {
             header: PacketHeader::new(PacketType::Standings, 0),
             entries,
         };
+        let winner = pkt
+            .entries
+            .iter()
+            .find(|entry| entry.placement == 1)
+            .map_or("draw", |entry| entry.name.as_str());
+        info!("match over in room {}: winner = {winner}", self.room_code);
         if let Ok(data) = bincode::serialize(&pkt) {
             self.broadcast(data);
         }

@@ -7,6 +7,7 @@ use tetris_protocol::protocol::{
     PacketHeader, PacketType, PktCountdownCancel, PktRoomSnapshot, RoomPlayerSnapshot,
 };
 use tokio::sync::{Mutex, RwLock, broadcast};
+use tracing::info;
 
 use crate::error::RelayError;
 use crate::room_actor::RoomCommand;
@@ -534,6 +535,7 @@ impl RoomManager {
                 room.countdown_active.store(0, Ordering::SeqCst);
                 room.countdown_generation.fetch_add(1, Ordering::SeqCst);
                 rooms.remove(code);
+                info!("room {code} destroyed (empty)");
             }
         }
     }
@@ -574,6 +576,7 @@ impl RoomManager {
             settings: RwLock::new(RelaySettings::default()),
         });
         rooms.insert(code.to_string(), state);
+        info!("room {code} created");
         Ok(code.to_string())
     }
 

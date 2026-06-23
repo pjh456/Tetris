@@ -14,7 +14,7 @@ use tetris_protocol::protocol::{
 };
 use tokio::sync::Mutex;
 use tokio::time::interval;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use crate::relay::{MAX_PLAYERS_PER_ROOM, RelaySettings, RoomManager};
 use crate::room_actor::{RoomActor, RoomCommand};
@@ -308,7 +308,17 @@ async fn handle_binary_message(
 
     let header = match deser::<PacketHeader>(&data) {
         Ok(header) if header.version == PROTOCOL_VERSION => header,
-        _ => return,
+        Ok(header) => {
+            warn!(
+                "dropping packet with unexpected protocol version {} from peer {peer_id}",
+                header.version
+            );
+            return;
+        }
+        Err(e) => {
+            warn!("failed to decode packet header from peer {peer_id}: {e}");
+            return;
+        }
     };
 
     match header.packet_type {
@@ -440,6 +450,7 @@ async fn handle_binary_message(
                             if let Ok(data) = serialize(&game_start) {
                                 let _ = state.room_manager.broadcast(&room_code_owned, data).await;
                             }
+                            info!("game starting in room {room_code_owned} (seed {random_seed})");
 
                             if player_channels.is_empty() {
                                 // 第二局+：actor 仍在运行（GameOver 后未销毁），发 StartGame
@@ -546,6 +557,10 @@ async fn handle_binary_message(
             else {
                 return;
             };
+            info!(
+                "bot added to room {room_code} as player {}",
+                bot_peer.session.player_id
+            );
             state.room_manager.broadcast_room_snapshot(room_code).await;
             if let Ok(Some(actor_tx)) = state.room_manager.actor_tx(room_code).await {
                 let _ = actor_tx
@@ -616,6 +631,10 @@ async fn handle_binary_message(
                     .await;
             }
             state.room_manager.remove_peer(room_code, target.id).await;
+            info!(
+                "host {peer_id} kicked player {} from room {room_code}",
+                target.session.player_id
+            );
             state.room_manager.broadcast_room_snapshot(room_code).await;
         }
         PacketType::RemoveBot => {
@@ -644,6 +663,10 @@ async fn handle_binary_message(
                     .await;
             }
             state.room_manager.remove_peer(room_code, target.id).await;
+            info!(
+                "host {peer_id} removed bot {} from room {room_code}",
+                target.session.player_id
+            );
             state.room_manager.broadcast_room_snapshot(room_code).await;
         }
         // New protocol types (Replay, etc.) — forward to input_tx if RoomActor is active
@@ -651,6 +674,11 @@ async fn handle_binary_message(
             if let Ok(pkt) = deser::<PktReplay>(&data)
                 && replay_packet_is_valid(&pkt)
             {
+                debug!(
+                    "replay input from peer {peer_id}: {} events @ start_tick {}",
+                    pkt.events.len(),
+                    pkt.start_tick.0
+                );
                 for ev in pkt.events {
                     let _ = input_tx.try_send(ev);
                 }

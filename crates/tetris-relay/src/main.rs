@@ -1,17 +1,19 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::{Router, routing::get};
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
-use tracing::info;
+use tracing::{error, info};
 
+use tetris_relay::logging::init_logging;
 use tetris_relay::relay::RoomManager;
 use tetris_relay::ws_handler::{AppState, ws_handler};
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt::init();
+    init_logging(parse_log_file());
 
     let port = parse_port();
     let state = Arc::new(AppState {
@@ -28,7 +30,7 @@ async fn main() {
     info!("tetris-relay listening on {addr}");
 
     let listener = TcpListener::bind(&addr).await.unwrap_or_else(|e| {
-        eprintln!("Failed to bind {addr}: {e}");
+        error!("failed to bind {addr}: {e}");
         std::process::exit(1);
     });
 
@@ -36,7 +38,7 @@ async fn main() {
         .with_graceful_shutdown(shutdown_signal())
         .await
         .unwrap_or_else(|e| {
-            eprintln!("Server error: {e}");
+            error!("server error: {e}");
             std::process::exit(1);
         });
 }
@@ -51,6 +53,18 @@ fn parse_port() -> u16 {
         }
     }
     9000
+}
+
+fn parse_log_file() -> Option<PathBuf> {
+    let args: Vec<String> = std::env::args().collect();
+    for i in 0..args.len() {
+        if args[i] == "--log-file"
+            && let Some(path) = args.get(i + 1)
+        {
+            return Some(PathBuf::from(path));
+        }
+    }
+    None
 }
 
 async fn shutdown_signal() {

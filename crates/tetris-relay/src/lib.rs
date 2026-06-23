@@ -1,4 +1,5 @@
 pub mod error;
+pub mod logging;
 pub mod player_conn;
 pub mod relay;
 pub mod room_actor;
