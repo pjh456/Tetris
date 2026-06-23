@@ -45,8 +45,13 @@ export function createBoardRenderer(canvas: HTMLCanvasElement): BoardRenderer {
 
   if (supports_offscreen) {
     offscreen = new OffscreenCanvas(canvas.width, canvas.height);
-    off_ctx = offscreen.getContext('2d')!;
-    off_ctx.scale(dpr, dpr);
+    off_ctx = offscreen.getContext('2d');
+    if (off_ctx) {
+      off_ctx.scale(dpr, dpr);
+    } else {
+      console.warn('OffscreenCanvas 2d context unavailable, falling back to direct rendering');
+      offscreen = null;
+    }
   }
 
   const target_ctx = (off_ctx ?? ctx) as
@@ -103,7 +108,8 @@ export function create_mini_board_renderer(
   canvas: HTMLCanvasElement,
   cell_size: number,
 ): BoardRenderer {
-  const ctx = canvas.getContext('2d')!;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Failed to get 2d context for mini board');
   const w = 10 * cell_size;
   const h = 20 * cell_size;
   canvas.width = w;
