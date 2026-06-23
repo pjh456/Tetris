@@ -55,6 +55,7 @@ pub struct AuthoritativeSim {
     pending_inputs: Vec<(PlayerSlot, InputEvent)>,
     player_alive: Vec<bool>,
     player_spectating: Vec<Option<PlayerSlot>>,
+    player_paused: Vec<bool>,
     room_mode: RoomMode,
     game_over_countdown: u8,
 }
@@ -75,6 +76,7 @@ impl AuthoritativeSim {
             pending_inputs: Vec::new(),
             player_alive: Vec::new(),
             player_spectating: Vec::new(),
+            player_paused: Vec::new(),
             room_mode: RoomMode::Lobby,
             game_over_countdown: 0,
         }
@@ -86,6 +88,7 @@ impl AuthoritativeSim {
             self.engines.resize_with(idx + 1, || None);
             self.player_alive.resize_with(idx + 1, || true);
             self.player_spectating.resize_with(idx + 1, || None);
+            self.player_paused.resize_with(idx + 1, || false);
         }
 
         let mut engine = Engine::<10, 20>::new();
@@ -93,6 +96,7 @@ impl AuthoritativeSim {
         self.engines[idx] = Some(engine);
         self.player_alive[idx] = true;
         self.player_spectating[idx] = None;
+        self.player_paused[idx] = false;
         self.replay_buffers.insert(slot, ReplayBuffer::default());
     }
 
@@ -102,8 +106,36 @@ impl AuthoritativeSim {
             self.engines[idx] = None;
             self.player_alive[idx] = false;
             self.player_spectating[idx] = None;
+            self.player_paused[idx] = false;
         }
         self.replay_buffers.remove(&slot);
+    }
+
+    /// Pause a slot's engine: it keeps its state + hash but is skipped by
+    /// `tick_engines` and never selected as an attack target. No-op if the slot
+    /// has no engine. Used during the disconnect grace window to freeze the
+    /// engine instead of ghost-ticking it.
+    pub fn pause_slot(&mut self, slot: PlayerSlot) {
+        let idx = slot.0 as usize;
+        if self.engine(slot).is_some()
+            && let Some(paused) = self.player_paused.get_mut(idx)
+        {
+            *paused = true;
+        }
+    }
+
+    /// Resume a paused slot so its engine ticks again (called on reclaim).
+    pub fn unpause_slot(&mut self, slot: PlayerSlot) {
+        if let Some(paused) = self.player_paused.get_mut(slot.0 as usize) {
+            *paused = false;
+        }
+    }
+
+    pub fn is_paused(&self, slot: PlayerSlot) -> bool {
+        self.player_paused
+            .get(slot.0 as usize)
+            .copied()
+            .unwrap_or(false)
     }
 
     pub fn engine_count(&self) -> usize {
@@ -280,6 +312,9 @@ impl AuthoritativeSim {
             let Some(engine) = engine_opt else {
                 continue;
             };
+            if self.player_paused.get(idx).copied().unwrap_or(false) {
+                continue;
+            }
             let inputs = per_replay
                 .get(&idx)
                 .into_iter()
@@ -411,7 +446,9 @@ impl AuthoritativeSim {
             .iter()
             .enumerate()
             .filter(|(idx, engine)| {
-                engine.as_ref().is_some_and(|eng| !eng.game_over) && *idx != source.0 as usize
+                engine.as_ref().is_some_and(|eng| !eng.game_over)
+                    && *idx != source.0 as usize
+                    && !self.player_paused.get(*idx).copied().unwrap_or(false)
             })
             .map(|(idx, _)| idx)
             .collect();
@@ -518,6 +555,9 @@ impl AuthoritativeSim {
         for spec in &mut self.player_spectating {
             *spec = None;
         }
+        for paused in &mut self.player_paused {
+            *paused = false;
+        }
         self.game_over_countdown = 0;
         self.room_mode = RoomMode::Playing;
     }
@@ -531,6 +571,9 @@ impl AuthoritativeSim {
         }
         for spec in &mut self.player_spectating {
             *spec = None;
+        }
+        for paused in &mut self.player_paused {
+            *paused = false;
         }
     }
 }
@@ -766,5 +809,107 @@ mod tests {
         sim.restart_game(Seed(99));
         assert_eq!(sim.seed.0, 99);
         assert!(!sim.engine(PlayerSlot(0)).unwrap().game_over);
+    }
+
+    #[test]
+    fn paused_slot_not_ticked() {
+        let mut sim = AuthoritativeSim::new(Seed(42));
+        sim.add_player(PlayerSlot(0));
+        sim.add_player(PlayerSlot(1));
+        sim.pause_slot(PlayerSlot(0));
+        let p0_frozen = sim.engine(PlayerSlot(0)).unwrap().state_hash();
+        let p1_before = sim.engine(PlayerSlot(1)).unwrap().state_hash();
+        sim.enqueue_input(PlayerSlot(1), make_event(KeyAction::KeyHardDrop, true));
+        for _ in 0..100 {
+            sim.tick().unwrap();
+        }
+
+        assert_eq!(
+            sim.engine(PlayerSlot(0)).unwrap().state_hash(),
+            p0_frozen,
+            "paused slot 的 engine 状态必须冻结"
+        );
+        assert_ne!(
+            sim.engine(PlayerSlot(1)).unwrap().state_hash(),
+            p1_before,
+            "未暂停 slot 必须继续推进"
+        );
+    }
+
+    #[test]
+    fn paused_slot_not_attack_target() {
+        let mut sim = AuthoritativeSim::new(Seed(42));
+        sim.add_player(PlayerSlot(0));
+        sim.add_player(PlayerSlot(1));
+        sim.add_player(PlayerSlot(2));
+        sim.pause_slot(PlayerSlot(1));
+        for _ in 0..20 {
+            if let Some(target) = sim.route_attack_target(PlayerSlot(0)) {
+                assert_ne!(target, PlayerSlot(1), "暂停的玩家不应被选为攻击目标");
+            }
+            if let Some(target) = sim.route_attack_target(PlayerSlot(2)) {
+                assert_ne!(target, PlayerSlot(1), "暂停的玩家不应被选为攻击目标");
+            }
+        }
+    }
+
+    #[test]
+    fn unpause_slot_resumes_tick() {
+        let mut sim = AuthoritativeSim::new(Seed(42));
+        sim.add_player(PlayerSlot(0));
+        sim.pause_slot(PlayerSlot(0));
+        for _ in 0..10 {
+            sim.tick().unwrap();
+        }
+        let piece_frozen = sim.engine(PlayerSlot(0)).unwrap().state.piece;
+
+        sim.unpause_slot(PlayerSlot(0));
+        sim.enqueue_input(PlayerSlot(0), make_event(KeyAction::KeyHardDrop, true));
+        sim.tick().unwrap();
+
+        assert_ne!(
+            sim.engine(PlayerSlot(0)).unwrap().state.piece,
+            piece_frozen,
+            "unpause 后 engine 必须恢复 tick"
+        );
+    }
+
+    #[test]
+    fn remove_player_clears_paused() {
+        let mut sim = AuthoritativeSim::new(Seed(42));
+        sim.add_player(PlayerSlot(0));
+        sim.pause_slot(PlayerSlot(0));
+        assert!(sim.is_paused(PlayerSlot(0)));
+        sim.remove_player(PlayerSlot(0));
+
+        assert!(!sim.is_paused(PlayerSlot(0)));
+        assert!(sim.engine(PlayerSlot(0)).is_none());
+    }
+
+    #[test]
+    fn paused_slot_hash_ladder_unchanged() {
+        let mut sim = AuthoritativeSim::new(Seed(42));
+        sim.add_player(PlayerSlot(0));
+        sim.add_player(PlayerSlot(1));
+        sim.enqueue_input(PlayerSlot(1), make_event(KeyAction::KeyHardDrop, true));
+        for _ in 0..50 {
+            sim.tick().unwrap();
+        }
+        sim.pause_slot(PlayerSlot(0));
+        let frozen = sim.engine(PlayerSlot(0)).unwrap().state_hash();
+        for _ in 0..50 {
+            sim.tick().unwrap();
+        }
+
+        assert_eq!(
+            sim.engine(PlayerSlot(0)).unwrap().state_hash(),
+            frozen,
+            "paused engine 状态冻结"
+        );
+        assert_eq!(
+            sim.hash_at(PlayerSlot(0), TickNumber(100)),
+            Some(frozen),
+            "paused slot 在 tick 100 记录的哈希应为冻结态哈希"
+        );
     }
 }

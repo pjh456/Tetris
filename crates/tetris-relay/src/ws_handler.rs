@@ -243,6 +243,12 @@ async fn handle_socket(socket: WebSocket, room_code: String, state: Arc<AppState
         let grace_code = room_code.clone();
         let slot = PlayerSlot(peer.session.player_id);
         tokio::spawn(async move {
+            // Freeze the slot's engine immediately so it does not ghost-tick during
+            // the grace window. A reclaim (ResumePlayer) unpauses it; grace expiry
+            // removes the player outright.
+            if let Ok(Some(actor_tx)) = grace_state.room_manager.actor_tx(&grace_code).await {
+                let _ = actor_tx.send(RoomCommand::PauseSlot { slot }).await;
+            }
             tokio::time::sleep(Duration::from_secs(RECONNECT_GRACE_SECS)).await;
             // Reclaimed during grace (peer.id rebound to a new connection) → no-op.
             if !grace_state

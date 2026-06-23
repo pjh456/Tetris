@@ -46,6 +46,9 @@ pub enum RoomCommand {
     PlayerLeave {
         slot: PlayerSlot,
     },
+    PauseSlot {
+        slot: PlayerSlot,
+    },
     StartGame {
         seed: Seed,
     },
@@ -166,6 +169,8 @@ impl RoomActor {
         self.input_rxs[idx] = Some(input_rx);
         self.connections[idx] = Some(conn);
         self.outbound_txs[idx] = Some(outbound_tx);
+        // Reclaim: the slot was paused during the grace window; resume ticking.
+        self.sim.unpause_slot(slot);
     }
 
     pub fn remove_player(&mut self, slot: PlayerSlot) {
@@ -334,6 +339,7 @@ impl RoomActor {
                             self.sim.enqueue_input(slot, event);
                         }
                         Some(RoomCommand::PlayerLeave { slot }) => self.remove_player(slot),
+                        Some(RoomCommand::PauseSlot { slot }) => self.sim.pause_slot(slot),
                         Some(RoomCommand::StartGame { seed }) => self.sim.restart_game(seed),
                         Some(RoomCommand::PlayerReady { .. }) => {}
                         Some(RoomCommand::Shutdown) | None => break,
