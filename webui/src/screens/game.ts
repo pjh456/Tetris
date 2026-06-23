@@ -47,6 +47,7 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   try {
     wasm = await init_wasm(root);
   } catch {
+    root.innerHTML = '<div class="error">Failed to initialize WASM. Please reload.</div>';
     return () => {};
   }
 

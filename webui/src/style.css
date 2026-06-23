@@ -707,6 +707,16 @@ body {
   }
 }
 
+.error {
+  margin: var(--space-2xl) auto;
+  max-width: 480px;
+  padding: var(--space-lg);
+  text-align: center;
+  color: var(--color-destructive);
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+}
+
 .connect-overlay {
   position: fixed;
   inset: 0;
