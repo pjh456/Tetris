@@ -149,7 +149,7 @@ export function create_lobby_screen(): HTMLElement {
         is_multiplayer.value = true;
         set_multiplayer_ws(current_ws);
         reset_multiplayer_wasm(last_event.random_seed);
-        dispose();
+        safe_dispose();
         page.value = 'game';
       }
     };
@@ -215,8 +215,16 @@ export function create_lobby_screen(): HTMLElement {
     }
   });
 
+  let effect_disposed = false;
+  function safe_dispose() {
+    if (!effect_disposed) {
+      effect_disposed = true;
+      dispose();
+    }
+  }
+
   function cleanup() {
-    dispose();
+    safe_dispose();
     // Only close ws if we didn't hand it off to the game
     if (!is_multiplayer.value) {
       current_ws.close();
