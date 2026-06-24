@@ -42,11 +42,13 @@ class ValueMLP(nn.Module):
 
     def __init__(self, input_dim: int = OBS_DIM, hidden: int = 64) -> None:
         super().__init__()
+        # Tanh (not ReLU) to match tetris-infer MlpPolicy::forward, which hardcodes
+        # tanh between layers — keeps Rust/Python parity (08-11) exact.
         self.net = nn.Sequential(
             nn.Linear(input_dim, hidden),
-            nn.ReLU(inplace=True),
+            nn.Tanh(),
             nn.Linear(hidden, hidden),
-            nn.ReLU(inplace=True),
+            nn.Tanh(),
             nn.Linear(hidden, 1),
         )
 

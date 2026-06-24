@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Export SB3 actor weights into the tetris-infer JSON schema."""
+"""Export the afterstate-DQN value net into the tetris-infer JSON schema.
+
+The value net (train_dqn.ValueMLP: 61 -> 64 -> 64 -> 1, Tanh hidden) is a plain
+MLP, so it serializes to the same weights.json schema tetris-infer reads — only
+output_dim is 1 (a scalar board value) instead of the old 40 action logits.
+tetris-infer's MlpPolicy::forward hardcodes tanh between layers, so the value net
+uses tanh and the parity fixture matches exactly.
+"""
 
 from __future__ import annotations
 
@@ -11,16 +18,20 @@ from typing import Any
 
 import gymnasium as gym
 import numpy as np
+import torch
 
 import tetris_env  # noqa: F401
-from tetris_env import ACTION_SPACE_SIZE, ENV_ID, OBS_DIM
+from tetris_env import ENV_ID, OBS_DIM
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_MODEL_PATH = PROJECT_ROOT / "models" / "ppo_tetris"
+DEFAULT_MODEL_PATH = PROJECT_ROOT / "models" / "dqn_value.pt"
 DEFAULT_OUT_PATH = PROJECT_ROOT / "models" / "weights.json"
 DEFAULT_FIXTURE_PATH = PROJECT_ROOT / "crates" / "tetris-infer" / "tests" / "fixtures" / "parity.json"
 PLACEHOLDER_SEED = 42
 HIDDEN_DIM = 64
+VALUE_OUTPUT_DIM = 1
+# ValueMLP Sequential: Linear @ 0, 2, 4 (Tanh at 1, 3).
+LINEAR_INDICES = (0, 2, 4)
 
 
 def export(
@@ -32,48 +43,32 @@ def export(
     out_path = Path(out_path)
     fixture_path = Path(fixture_path) if fixture_path is not None else None
 
-    weights = load_actor_weights(model_path)
-    if weights is None or weights["input_dim"] != OBS_DIM or weights["output_dim"] != ACTION_SPACE_SIZE:
-        # Placeholder exists only to unblock downstream load/embed paths until 08-08 retrains.
+    weights = load_value_weights(model_path)
+    if weights is None or weights["input_dim"] != OBS_DIM or weights["output_dim"] != VALUE_OUTPUT_DIM:
+        # Placeholder unblocks the load/embed/parity paths until 08-12 trains the real net.
         weights = build_placeholder_weights()
 
     write_json(out_path, weights)
     if fixture_path is not None:
         obs = fixture_obs()
-        logits = forward_logits(weights, obs)
-        write_json(fixture_path, {"obs": obs, "logits": logits, "weights": weights})
+        value = forward_logits(weights, obs)
+        write_json(fixture_path, {"obs": obs, "logits": value, "weights": weights})
     return weights
 
 
-def load_actor_weights(model_path: Path) -> dict[str, Any] | None:
-    zip_path = model_path if model_path.suffix == ".zip" else model_path.with_suffix(".zip")
-    if not zip_path.exists():
+def load_value_weights(model_path: Path) -> dict[str, Any] | None:
+    pt_path = model_path if model_path.suffix == ".pt" else model_path.with_suffix(".pt")
+    if not pt_path.exists():
         return None
 
-    # Read the policy state_dict straight from the SB3 zip instead of
-    # reconstructing the algorithm. This is class-agnostic, so it works for
-    # MaskablePPO (08-07) whose policy reconstruction needs the maskable policy
-    # class. The actor MLP (mlp_extractor.policy_net + action_net) is identical
-    # to plain PPO — masking only affects sampling.
-    from stable_baselines3.common.save_util import load_from_zip_file
-
-    _data, params, _pytorch = load_from_zip_file(zip_path)
-    state_dict = params["policy"]
-
+    # state_dict of train_dqn.ValueMLP (keys net.{0,2,4}.weight/bias). Read directly
+    # so we do not need to import the training module / rebuild the env.
+    state_dict = torch.load(pt_path, map_location="cpu", weights_only=True)
     layers = []
-    index = 0
-    while f"mlp_extractor.policy_net.{index}.weight" in state_dict:
-        weight = state_dict[f"mlp_extractor.policy_net.{index}.weight"]
-        bias = state_dict[f"mlp_extractor.policy_net.{index}.bias"]
+    for index in LINEAR_INDICES:
+        weight = state_dict[f"net.{index}.weight"]
+        bias = state_dict[f"net.{index}.bias"]
         layers.append({"weight": weight.cpu().tolist(), "bias": bias.cpu().tolist()})
-        index += 2  # skip the interleaved activation module
-
-    layers.append(
-        {
-            "weight": state_dict["action_net.weight"].cpu().tolist(),
-            "bias": state_dict["action_net.bias"].cpu().tolist(),
-        }
-    )
     return schema_from_layers(layers)
 
 
@@ -88,7 +83,7 @@ def schema_from_layers(layers: list[dict[str, list[Any]]]) -> dict[str, Any]:
 
 def build_placeholder_weights() -> dict[str, Any]:
     rng = random.Random(PLACEHOLDER_SEED)
-    dims = [OBS_DIM, HIDDEN_DIM, HIDDEN_DIM, ACTION_SPACE_SIZE]
+    dims = [OBS_DIM, HIDDEN_DIM, HIDDEN_DIM, VALUE_OUTPUT_DIM]
     layers = []
     for in_dim, out_dim in zip(dims, dims[1:]):
         layers.append(

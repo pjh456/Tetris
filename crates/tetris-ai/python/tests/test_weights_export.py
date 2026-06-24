@@ -5,7 +5,7 @@ import shutil
 from pathlib import Path
 
 import export_weights
-from tetris_env import ACTION_SPACE_SIZE, OBS_DIM
+from tetris_env import OBS_DIM
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 TEST_OUTPUT_DIR = PROJECT_ROOT / "target" / "pytest_weights_export"
@@ -14,7 +14,7 @@ TEST_OUTPUT_DIR = PROJECT_ROOT / "target" / "pytest_weights_export"
 def assert_dim_chain(weights: dict) -> None:
     assert set(weights) == {"input_dim", "output_dim", "activation", "layers"}
     assert weights["input_dim"] == OBS_DIM
-    assert weights["output_dim"] == ACTION_SPACE_SIZE
+    assert weights["output_dim"] == export_weights.VALUE_OUTPUT_DIM
     assert weights["activation"] == "tanh"
     assert weights["layers"]
 
@@ -52,5 +52,5 @@ def test_parity_fixture_matches_schema() -> None:
     export_weights.export(output_dir / "missing_model.zip", weights_path, fixture_path)
     fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
     assert len(fixture["obs"]) == OBS_DIM
-    assert len(fixture["logits"]) == ACTION_SPACE_SIZE
+    assert len(fixture["logits"]) == export_weights.VALUE_OUTPUT_DIM
     assert_dim_chain(fixture["weights"])
