@@ -20,25 +20,28 @@ export function create_gameover_screen(): HTMLElement {
   let stats_html: string;
   try {
     const wasm = get_wasm();
-    const s = wasm.get_game_stats() as {
-      score: number;
-      lines: number;
-      level: number;
-      game_time_ms: number;
-      max_combo: number;
-      tspin_count: number;
-      total_pieces: number;
-    };
-    const time_sec = s.game_time_ms / 1000;
-    const pps = time_sec > 0 ? (s.total_pieces / time_sec).toFixed(1) : '0.0';
-    const apm = time_sec > 0 ? Math.round((s.total_pieces / time_sec) * 60) : 0;
-    const rank = save_score_to_leaderboard(s.score, s.level, s.lines);
-    const rank_html =
-      rank > 0
-        ? `<div class="stat-row"><span class="stat-label">Rank</span><span class="stat-value stat-score">NEW #${rank}</span></div>`
-        : '';
+    if (!wasm) {
+      stats_html = '<div class="stat-row"><span class="stat-label">统计不可用</span></div>';
+    } else {
+      const s = wasm.get_game_stats() as {
+        score: number;
+        lines: number;
+        level: number;
+        game_time_ms: number;
+        max_combo: number;
+        tspin_count: number;
+        total_pieces: number;
+      };
+      const time_sec = s.game_time_ms / 1000;
+      const pps = time_sec > 0 ? (s.total_pieces / time_sec).toFixed(1) : '0.0';
+      const apm = time_sec > 0 ? Math.round((s.total_pieces / time_sec) * 60) : 0;
+      const rank = save_score_to_leaderboard(s.score, s.level, s.lines);
+      const rank_html =
+        rank > 0
+          ? `<div class="stat-row"><span class="stat-label">Rank</span><span class="stat-value stat-score">NEW #${rank}</span></div>`
+          : '';
 
-    stats_html = `${rank_html}
+      stats_html = `${rank_html}
       <div class="stat-row"><span class="stat-label">Score</span><span class="stat-value stat-score">${s.score.toLocaleString()}</span></div>
       <div class="stat-row"><span class="stat-label">Level</span><span class="stat-value">${s.level}</span></div>
       <div class="stat-row"><span class="stat-label">Lines</span><span class="stat-value">${s.lines}</span></div>
@@ -49,6 +52,7 @@ export function create_gameover_screen(): HTMLElement {
       <div class="stat-row"><span class="stat-label">APM</span><span class="stat-value">${apm}</span></div>
       <div class="stat-row"><span class="stat-label">Pieces</span><span class="stat-value">${s.total_pieces}</span></div>
     `;
+    }
   } catch {
     stats_html = '<div class="stat-row"><span class="stat-label">No stats available</span></div>';
   }
