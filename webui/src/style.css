@@ -928,6 +928,13 @@ html {
   .gameover-buttons {
     flex-direction: column !important;
   }
+
+  body[data-theme='retro'] .menu-sub,
+  body[data-theme='retro'] .player-name,
+  body[data-theme='retro'] .player-status {
+    font-size: 8px !important;
+    letter-spacing: 0 !important;
+  }
 }
 
 /* Leaderboard */
