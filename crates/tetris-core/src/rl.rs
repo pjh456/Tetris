@@ -101,11 +101,12 @@ pub fn afterstate_features_flat(engine: &Engine<BOARD_W, BOARD_H>) -> (Vec<i64>,
         let Some(action) = placement_to_action(col, rot) else {
             continue;
         };
-        let mut clone = engine.clone();
-        clone.apply_placement(col, rot);
+        let Some(state) = engine.ghost_afterstate(col, rot) else {
+            continue;
+        };
         actions.push(i64::try_from(action).unwrap_or(0));
         let before = flat.len();
-        encode_obs_into(&mut flat, &clone.state);
+        encode_obs_into(&mut flat, &state);
         debug_assert_eq!(flat.len() - before, OBS_DIM);
     }
     debug_assert_eq!(actions.len() * OBS_DIM, flat.len());

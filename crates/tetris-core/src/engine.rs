@@ -116,6 +116,23 @@ pub struct Engine<const W: usize, const H: usize> {
     hold_enabled: bool,
 }
 
+/// Deterministic LCG step (same as Engine::next_rand, but without &mut self).
+fn lcg_step(rng: u32) -> u32 {
+    rng.wrapping_mul(1664525).wrapping_add(1013904223)
+}
+
+/// Shuffle a 7-piece bag using a mutable RNG reference (deterministic, no &self).
+fn shuffle_bag_static(bag: &mut [Piece; 7], rng: &mut u32) {
+    for i in 0..7 {
+        bag[i] = Piece::from_u8(i as u8);
+    }
+    for i in (1..7).rev() {
+        *rng = lcg_step(*rng);
+        let j = (*rng % (i as u32 + 1)) as usize;
+        bag.swap(i, j);
+    }
+}
+
 impl<const W: usize, const H: usize> Default for Engine<W, H> {
     fn default() -> Self {
         Self::new()
@@ -226,10 +243,7 @@ impl<const W: usize, const H: usize> Engine<W, H> {
         for i in 0..7 {
             self.bag[i] = Piece::from_u8(i as u8);
         }
-        for i in (1..7).rev() {
-            let j = (self.next_rand() % (i as u32 + 1)) as usize;
-            self.bag.swap(i, j);
-        }
+        shuffle_bag_static(&mut self.bag, &mut self.state.rng);
     }
 
     fn pop_next_piece(&mut self) -> Piece {
@@ -240,6 +254,58 @@ impl<const W: usize, const H: usize> Engine<W, H> {
         let p = self.bag[self.bag_idx];
         self.bag_idx += 1;
         p
+    }
+
+    /// Peek the next piece from the bag without consuming any Engine state.
+    /// Clones bag/rng internally; deterministic and side-effect-free.
+    pub fn peek_next_piece(&self) -> Piece {
+        let mut bag = self.bag;
+        let mut bag_idx = self.bag_idx;
+        let mut rng = self.state.rng;
+        if bag_idx >= 7 {
+            shuffle_bag_static(&mut bag, &mut rng);
+            bag_idx = 0;
+        }
+        bag[bag_idx]
+    }
+
+    /// Lightweight afterstate: clones only `State`, applies a placement (hard-drop,
+    /// lock, line-clear, attack update, spawn), and returns the resulting State.
+    /// Skips Engine-only fields (Scorer, LockDelay, GarbageQueue) — only what
+    /// `encode_obs` needs. Does NOT mutate `self`.
+    pub fn ghost_afterstate(&self, col: i8, rot: Rot) -> Option<State<W, H>> {
+        if self.game_over {
+            return None;
+        }
+        let mut state = self.state.clone();
+        if !can_place(&state, col, state.y, rot) {
+            return None;
+        }
+        state.x = col;
+        state.rot = rot;
+        hard_drop(&mut state);
+        let lines = lock_piece(&mut state);
+        calculate_attack(&mut state, lines);
+        // spawn next piece — shift queue forward
+        state.piece = state.next[0];
+        for i in 0..4 {
+            state.next[i] = state.next[i + 1];
+        }
+        state.next[4] = self.peek_next_piece();
+        state.rot = Rot::R0;
+        state.x = (W / 2) as i8 - 2;
+        state.y = 0;
+        state.hold_used = false;
+        // game-over check: if spawn position is blocked, mark the board as topped
+        if !can_place(&state, state.x, state.y, state.rot) {
+            // Board is topped — fill top rows as death signal. The actual game_over
+            // flag lives on Engine; here we just make the state encode high death.
+            for r in 0..4 {
+                let row_idx = (H - 1).saturating_sub(r);
+                state.board.rows[row_idx] = (1 << W) - 1; // fill row
+            }
+        }
+        Some(state)
     }
 
     fn lock_and_spawn(&mut self) -> AttackResult {
