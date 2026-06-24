@@ -98,7 +98,7 @@ function build_best_rank(entries: LeaderboardEntry[]): HTMLElement {
   div.className = 'leaderboard-best';
   if (entries.length > 0) {
     const best = entries[0];
-    div.textContent = `Your best: #1 · ${best.score.toLocaleString('en-US')}`;
+    div.textContent = `Best: ${best.score.toLocaleString('en-US')}`;
   } else {
     div.textContent = 'Not ranked yet';
   }
