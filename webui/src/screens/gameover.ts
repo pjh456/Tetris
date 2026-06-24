@@ -1,5 +1,5 @@
 import { get_wasm } from '../core/wasm';
-import { page } from '../state';
+import { page, is_multiplayer, connection_status } from '../state';
 import { audio_manager } from '../core/audio';
 import { save_score_to_leaderboard } from '../core/settings_store';
 
@@ -70,11 +70,9 @@ export function create_gameover_screen(): HTMLElement {
     page.value = 'game';
   });
   el.querySelector('#go-new')!.addEventListener('click', () => {
-    // New Game: force single-player with fresh settings
-    page.value = 'home';
-    setTimeout(() => {
-      page.value = 'game';
-    }, 0);
+    is_multiplayer.value = false;
+    connection_status.value = 'offline';
+    page.value = 'game';
   });
   el.querySelector('#go-menu')!.addEventListener('click', () => {
     page.value = 'home';
