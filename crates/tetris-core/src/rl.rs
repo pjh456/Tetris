@@ -15,6 +15,11 @@ const COMBO_DIVISOR: f32 = 20.0;
 
 pub fn encode_obs(state: &State<BOARD_W, BOARD_H>) -> Vec<f32> {
     let mut obs = Vec::with_capacity(OBS_DIM);
+    encode_obs_into(&mut obs, state);
+    obs
+}
+
+pub fn encode_obs_into(obs: &mut Vec<f32>, state: &State<BOARD_W, BOARD_H>) {
     let heights = state.board.column_heights();
 
     for height in heights {
@@ -35,17 +40,14 @@ pub fn encode_obs(state: &State<BOARD_W, BOARD_H>) -> Vec<f32> {
     ));
     obs.push(u32_to_unit(state.board.covered_holes(), BOARD_AREA_DIVISOR));
 
-    push_piece_one_hot(&mut obs, state.hold as usize);
+    push_piece_one_hot(obs, state.hold as usize);
     for piece in state.next {
-        push_piece_one_hot(&mut obs, piece as usize);
+        push_piece_one_hot(obs, piece as usize);
     }
 
     let combo = u8::try_from(state.combo.clamp(0, 20)).unwrap_or(0);
     obs.push(f32::from(combo) / COMBO_DIVISOR);
     obs.push(u8::from(state.b2b).into());
-
-    debug_assert_eq!(obs.len(), OBS_DIM);
-    obs
 }
 
 pub fn action_mask(placements: &[(i8, Rot)]) -> Vec<bool> {
@@ -85,6 +87,29 @@ pub fn placement_to_action(col: i8, rot: Rot) -> Option<usize> {
         return None;
     }
     Some(col * 4 + rot as usize)
+}
+
+/// Contiguous flat-buffer variant of `afterstate_features` for zero-copy FFI.
+/// Returns `(actions [n], features [n * OBS_DIM])` built with a single allocation.
+/// The inference path (`afterstate_features`) is unchanged (CONTEXT D9 freeze).
+pub fn afterstate_features_flat(engine: &Engine<BOARD_W, BOARD_H>) -> (Vec<i64>, Vec<f32>) {
+    let placements = engine.enumerate_placements();
+    let n = placements.len();
+    let mut actions = Vec::with_capacity(n);
+    let mut flat = Vec::with_capacity(n * OBS_DIM);
+    for (col, rot) in placements {
+        let Some(action) = placement_to_action(col, rot) else {
+            continue;
+        };
+        let mut clone = engine.clone();
+        clone.apply_placement(col, rot);
+        actions.push(i64::try_from(action).unwrap_or(0));
+        let before = flat.len();
+        encode_obs_into(&mut flat, &clone.state);
+        debug_assert_eq!(flat.len() - before, OBS_DIM);
+    }
+    debug_assert_eq!(actions.len() * OBS_DIM, flat.len());
+    (actions, flat)
 }
 
 /// For every legal placement, the engineered obs of the board that WOULD result
@@ -200,5 +225,43 @@ mod tests {
         } else {
             assert!(false, "first afterstate action must map to a placement");
         }
+    }
+
+    #[test]
+    fn afterstate_features_flat_parity_with_pair_form() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset(42);
+        let (actions_flat, flat) = afterstate_features_flat(&engine);
+        let pairs = afterstate_features(&engine);
+        assert_eq!(
+            actions_flat.len(),
+            pairs.len(),
+            "flat and pair form have same action count"
+        );
+        assert_eq!(
+            flat.len(),
+            actions_flat.len() * OBS_DIM,
+            "flat len == n_actions * OBS_DIM"
+        );
+        for (i, (action, f)) in pairs.iter().enumerate() {
+            assert_eq!(
+                usize::try_from(actions_flat[i]).unwrap(),
+                *action,
+                "action {i} matches"
+            );
+            let row = &flat[i * OBS_DIM..(i + 1) * OBS_DIM];
+            assert_eq!(row, f.as_slice(), "flat row {i} == pair features[{i}]");
+        }
+    }
+
+    #[test]
+    fn afterstate_features_flat_does_not_mutate_engine() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset(42);
+        let before = engine.state_hash();
+        let (actions, flat) = afterstate_features_flat(&engine);
+        assert!(!actions.is_empty());
+        assert_eq!(engine.state_hash(), before);
+        assert_eq!(flat.len(), actions.len() * OBS_DIM);
     }
 }

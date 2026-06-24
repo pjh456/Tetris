@@ -1,10 +1,11 @@
-use numpy::{PyArray1, PyArray2};
+use numpy::{PyArray1, PyArray2, PyArrayMethods};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use tetris_core::Engine;
 use tetris_core::rl::{
-    ACTION_SPACE_SIZE, OBS_DIM, action_mask, action_to_placement, afterstate_features, encode_obs,
+    ACTION_SPACE_SIZE, OBS_DIM, action_mask, action_to_placement, afterstate_features_flat,
+    encode_obs,
 };
 
 use crate::reward::{RewardConfig, compute_reward};
@@ -109,19 +110,16 @@ impl TetrisEnv {
     /// For each legal placement: its action index and the 61-dim obs of the
     /// resulting board. Returns `(actions [n], features [n, OBS_DIM])` for the
     /// afterstate-DQN loop. Empty `actions` + `[0, OBS_DIM]` features when no
-    /// legal placement exists (terminal).
+    /// legal placement exists (terminal). Zero-copy: flat buffer → PyArray2::from_shape_vec.
     fn afterstate_features<'py>(&self, py: Python<'py>) -> PyAfterstateResult<'py> {
-        let pairs = self.current_afterstate_features();
-        let actions: Vec<i64> = pairs
-            .iter()
-            .map(|(a, _)| i64::try_from(*a).unwrap_or(0))
-            .collect();
-        let rows: Vec<Vec<f32>> = pairs.into_iter().map(|(_, f)| f).collect();
-        let actions_arr = PyArray1::from_vec(py, actions);
-        let feats_arr = if rows.is_empty() {
-            PyArray2::<f32>::zeros(py, [0, OBS_DIM], false)
+        let (actions, flat) = self.current_afterstate_features_flat();
+        let n = actions.len();
+        let actions_arr: Bound<'py, PyArray1<i64>> = PyArray1::from_vec(py, actions);
+        let feats_arr: Bound<'py, PyArray2<f32>> = if n == 0 {
+            PyArray2::zeros(py, [0, OBS_DIM], false)
         } else {
-            PyArray2::from_vec2(py, &rows).map_err(|e| PyValueError::new_err(e.to_string()))?
+            let flat_arr = PyArray1::from_vec(py, flat);
+            flat_arr.reshape([n, OBS_DIM])?
         };
         Ok((actions_arr, feats_arr))
     }
@@ -205,8 +203,8 @@ impl TetrisEnv {
         action_mask(&self.engine.enumerate_placements())
     }
 
-    pub fn current_afterstate_features(&self) -> Vec<(usize, Vec<f32>)> {
-        afterstate_features(&self.engine)
+    pub fn current_afterstate_features_flat(&self) -> (Vec<i64>, Vec<f32>) {
+        afterstate_features_flat(&self.engine)
     }
 
     pub fn state_hash(&self) -> u32 {
@@ -364,11 +362,18 @@ mod tests {
         let mut env = env();
         env.reset_rust(42);
         let mask = env.current_action_mask();
-        let feats = env.current_afterstate_features();
-        assert!(!feats.is_empty(), "a fresh game has legal placements");
-        for (action, vec) in &feats {
-            assert!(mask[*action], "every afterstate action must be legal");
-            assert_eq!(vec.len(), OBS_DIM);
+        let (actions, flat) = env.current_afterstate_features_flat();
+        assert!(!actions.is_empty(), "a fresh game has legal placements");
+        assert_eq!(
+            flat.len(),
+            actions.len() * OBS_DIM,
+            "flat len == n_actions * OBS_DIM"
+        );
+        for &action in &actions {
+            assert!(
+                mask[action as usize],
+                "every afterstate action must be legal"
+            );
         }
     }
 }
