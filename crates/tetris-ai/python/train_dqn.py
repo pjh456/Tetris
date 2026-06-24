@@ -16,15 +16,19 @@ afterstate loop needs a variable-size action set per step.
 from __future__ import annotations
 
 import argparse
+import functools
 import os
 import random
 from collections import deque
 from dataclasses import dataclass
 
+import gymnasium as gym
 import numpy as np
 import torch
 import torch.nn as nn
-from tetris_ai import TetrisEnv
+from gymnasium.vector import AsyncVectorEnv, SyncVectorEnv
+
+import tetris_env  # noqa: F401  registers the "Tetris-v0" gym env
 
 OBS_DIM = 61
 
@@ -95,6 +99,8 @@ def pick_action(
 ) -> tuple[int, np.ndarray]:
     """Epsilon-greedy over afterstate values. Returns (env_action, chosen_feats)."""
     n = len(actions)
+    if n == 0:
+        return 0, np.zeros(OBS_DIM, dtype=np.float32)
     if random.random() < epsilon:
         idx = random.randrange(n)
     else:
@@ -157,76 +163,146 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--gamma", type=float, default=0.95)
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--epsilon-end-frac", type=float, default=0.75)
+    p.add_argument("--epsilon-min", type=float, default=0.02)
+    # Anneal epsilon over a FIXED number of episodes (decoupled from --episodes),
+    # so raising --episodes lengthens the low-epsilon LEARNING tail instead of
+    # stretching the random-exploration phase.
+    p.add_argument("--epsilon-decay-episodes", type=int, default=1500)
     p.add_argument("--target-sync", type=int, default=500)
     p.add_argument("--train-start", type=int, default=1000)
+    # Speed: train once every N env steps (not every step). nuno-faria trains ~1x
+    # per episode; every-step is ~19x more backprops than needed.
+    p.add_argument("--train-interval", type=int, default=4)
+    # Tiny MLP (61->64->64->1): GPU host<->device transfer often costs more than
+    # the matmul. "auto" picks cuda if present; try "cpu" for this small net.
+    p.add_argument("--device", type=str, default="auto", choices=["auto", "cpu", "cuda"])
+    # Parallel environments: AsyncVectorEnv runs N envs in separate processes
+    # (dodges the GIL so the Rust env work runs truly in parallel). Set near your
+    # physical core count for the biggest speedup.
+    p.add_argument("--n-envs", type=int, default=8)
+    p.add_argument("--vec-backend", type=str, default="async", choices=["async", "sync"])
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--save-path", type=str, default="models/dqn_value.pt")
     return p.parse_args()
 
 
-def make_env(max_steps: int) -> TetrisEnv:
-    # Afterstate reward scale (nuno-faria): the value net learns board quality, so
-    # alive/death stay small; lines^2 * clear_width is the objective.
-    return TetrisEnv(max_steps=max_steps, alive=1.0, death_penalty=1.0, clear_width=10.0)
+# Module-level (picklable for AsyncVectorEnv "spawn" workers). Afterstate reward
+# scale (nuno-faria): the value net learns board quality, so alive/death stay
+# small; lines^2 * clear_width is the objective.
+def make_gym_env(max_steps: int):
+    import tetris_env  # noqa: F401  ensure "Tetris-v0" is registered in the worker
+
+    return gym.make(
+        "Tetris-v0", max_steps=max_steps, alive=1.0, death_penalty=1.0, clear_width=10.0
+    )
+
+
+def build_vec_env(args: argparse.Namespace):
+    thunks = [functools.partial(make_gym_env, args.max_steps) for _ in range(args.n_envs)]
+    backend = AsyncVectorEnv if args.vec_backend == "async" else SyncVectorEnv
+    return backend(thunks)
 
 
 def train(args: argparse.Namespace) -> ValueMLP:
     set_seed(args.seed)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using {device} device")
+    if args.device == "auto":
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    else:
+        device = torch.device(args.device)
+    print(f"Using {device} device | {args.n_envs} envs ({args.vec_backend})")
 
-    env = make_env(args.max_steps)
+    n = args.n_envs
+    venv = build_vec_env(args)
+    venv.reset(seed=args.seed)
+    # Per-env current candidates: list of (actions, feats) from each parallel env.
+    cur = list(venv.call("afterstate_features"))
+
     online = ValueMLP().to(device)
     target = ValueMLP().to(device)
     target.load_state_dict(online.state_dict())
     optimizer = torch.optim.Adam(online.parameters(), lr=args.lr)
     replay = ReplayBuffer(args.replay_size)
 
-    global_step = 0
-    total_decay_steps = args.episodes * 200  # rough horizon for epsilon anneal
     recent_rew: deque[float] = deque(maxlen=50)
     recent_len: deque[float] = deque(maxlen=50)
     recent_lines: deque[int] = deque(maxlen=50)
 
-    for episode in range(args.episodes):
-        env.reset(args.seed + episode)
-        actions, feats = env.afterstate_features()
-        ep_rew = 0.0
-        ep_len = 0
-        last_lines = 0
-        while len(actions) > 0:
-            eps = epsilon_at(global_step, total_decay_steps, args.epsilon_end_frac)
-            action, chosen = pick_action(online, actions, feats, eps, device)
-            _obs, reward, terminated, truncated, info = env.step(action)
-            done = bool(terminated or truncated)
-            next_actions, next_feats = (np.empty(0), np.zeros((0, OBS_DIM), dtype=np.float32))
-            if not done:
-                next_actions, next_feats = env.afterstate_features()
-            replay.push(Transition(chosen, float(reward), np.asarray(next_feats, dtype=np.float32), done))
+    # gymnasium NEXT_STEP autoreset: the step AFTER a sub-env terminates resets it
+    # and ignores that step's action. Track a per-env flag to skip that bogus step.
+    autoreset = [False] * n
+    ep_rew = [0.0] * n
+    ep_len = [0] * n
+    ep_lines = [0] * n
+    episodes_done = 0
+    update_count = 0
+    # Each iteration collects ~n_envs new transitions. Do n_envs/train_interval
+    # gradient steps per iteration so the updates-per-env-step ratio matches the
+    # single-env run (1 update per train_interval steps) regardless of n_envs —
+    # otherwise more parallel envs silently dilutes the training signal.
+    updates_per_iter = max(1, n // args.train_interval)
 
-            ep_rew += float(reward)
-            ep_len += 1
-            last_lines = int(info.get("total_lines", last_lines))
-            global_step += 1
+    try:
+        while episodes_done < args.episodes:
+            eps = max(args.epsilon_min, epsilon_at(episodes_done, args.epsilon_decay_episodes, 1.0))
+            actions = np.zeros(n, dtype=np.int64)
+            chosen: list[np.ndarray | None] = [None] * n
+            for i in range(n):
+                if autoreset[i]:
+                    continue
+                a_i, c_i = pick_action(online, cur[i][0], cur[i][1], eps, device)
+                actions[i] = a_i
+                chosen[i] = c_i
 
-            if len(replay) >= args.train_start:
-                train_step(online, target, replay.sample(args.batch_size), optimizer, args.gamma, device)
-                if global_step % args.target_sync == 0:
-                    target.load_state_dict(online.state_dict())
+            _obs, rews, terms, truncs, infos = venv.step(actions)
+            nxt = list(venv.call("afterstate_features"))
+            total_lines = infos.get("total_lines")
+            tl_mask = infos.get("_total_lines")
 
-            if done:
-                break
-            actions, feats = next_actions, next_feats
+            for i in range(n):
+                if autoreset[i]:
+                    # This step just reset env i (action ignored) — start fresh, no push.
+                    autoreset[i] = False
+                    cur[i] = nxt[i]
+                    ep_rew[i] = 0.0
+                    ep_len[i] = 0
+                    ep_lines[i] = 0
+                    continue
 
-        recent_rew.append(ep_rew)
-        recent_len.append(ep_len)
-        recent_lines.append(last_lines)
-        if (episode + 1) % 50 == 0:
-            print(
-                f"ep {episode + 1:5d} | eps {eps:.3f} | "
-                f"rew {np.mean(recent_rew):7.2f} | len {np.mean(recent_len):6.1f} | "
-                f"lines/ep {np.mean(recent_lines):6.2f}"
-            )
+                done = bool(terms[i] or truncs[i])
+                next_feats = (
+                    np.zeros((0, OBS_DIM), dtype=np.float32)
+                    if done
+                    else np.asarray(nxt[i][1], dtype=np.float32)
+                )
+                replay.push(Transition(chosen[i], float(rews[i]), next_feats, done))
+                ep_rew[i] += float(rews[i])
+                ep_len[i] += 1
+                if total_lines is not None and tl_mask is not None and tl_mask[i]:
+                    ep_lines[i] = int(total_lines[i])
+
+                if done:
+                    recent_rew.append(ep_rew[i])
+                    recent_len.append(ep_len[i])
+                    recent_lines.append(ep_lines[i])
+                    episodes_done += 1
+                    autoreset[i] = True  # next step resets this env
+                    if episodes_done % 50 == 0:
+                        print(
+                            f"ep {episodes_done:5d} | eps {eps:.3f} | "
+                            f"rew {np.mean(recent_rew):7.2f} | len {np.mean(recent_len):6.1f} | "
+                            f"lines/ep {np.mean(recent_lines):6.2f}"
+                        )
+                else:
+                    cur[i] = nxt[i]
+
+            if len(replay) >= max(args.train_start, args.batch_size):
+                for _ in range(updates_per_iter):
+                    train_step(online, target, replay.sample(args.batch_size), optimizer, args.gamma, device)
+                    update_count += 1
+                    if update_count % args.target_sync == 0:
+                        target.load_state_dict(online.state_dict())
+    finally:
+        venv.close()
 
     os.makedirs(os.path.dirname(args.save_path) or ".", exist_ok=True)
     torch.save(online.state_dict(), args.save_path)

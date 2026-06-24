@@ -61,6 +61,15 @@ class TetrisEnv(gym.Env):
         )
         return obs_array, float(reward), bool(terminated), bool(truncated), dict(info)
 
+    def afterstate_features(self) -> tuple[np.ndarray, np.ndarray]:
+        """Legal action indices + their resulting-board 61-dim features.
+
+        Exposed on the wrapper so gymnasium VectorEnv.call("afterstate_features")
+        reaches it in each parallel worker (afterstate-DQN vectorized training).
+        """
+        actions, feats = self._env.afterstate_features()
+        return np.asarray(actions, dtype=np.int64), np.asarray(feats, dtype=np.float32)
+
     def action_mask(self) -> np.ndarray:
         return np.asarray(self._env.action_mask(), dtype=bool)
 
