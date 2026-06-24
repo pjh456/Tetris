@@ -1,4 +1,4 @@
-use crate::{Rot, State};
+use crate::{Engine, Rot, State};
 
 pub const BOARD_W: usize = 10;
 pub const BOARD_H: usize = 20;
@@ -87,6 +87,25 @@ pub fn placement_to_action(col: i8, rot: Rot) -> Option<usize> {
     Some(col * 4 + rot as usize)
 }
 
+/// For every legal placement, the engineered obs of the board that WOULD result
+/// from that placement — computed on a clone, leaving `engine` unmutated. Returns
+/// `(action, features)` pairs where `action` is the same index as
+/// `action_to_placement` (range `0..ACTION_SPACE_SIZE`). Placements with no valid
+/// action index (off-board overhang, see `placement_to_action`) are skipped,
+/// matching `action_mask`. Substrate for afterstate value learning/inference.
+pub fn afterstate_features(engine: &Engine<BOARD_W, BOARD_H>) -> Vec<(usize, Vec<f32>)> {
+    let mut out = Vec::new();
+    for (col, rot) in engine.enumerate_placements() {
+        let Some(action) = placement_to_action(col, rot) else {
+            continue;
+        };
+        let mut clone = engine.clone();
+        clone.apply_placement(col, rot);
+        out.push((action, encode_obs(&clone.state)));
+    }
+    out
+}
+
 fn push_piece_one_hot(obs: &mut Vec<f32>, piece_index: usize) {
     for idx in 0..PIECE_COUNT {
         obs.push(if idx == piece_index { 1.0 } else { 0.0 });
@@ -142,5 +161,44 @@ mod tests {
     #[test]
     fn action_to_placement_maps_flat_index() {
         assert_eq!(action_to_placement(5), Some((1, Rot::R90)));
+    }
+
+    #[test]
+    fn afterstate_features_does_not_mutate_engine() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset(42);
+        let before = engine.state_hash();
+        let feats = afterstate_features(&engine);
+        assert!(!feats.is_empty(), "a fresh game has legal placements");
+        assert_eq!(
+            engine.state_hash(),
+            before,
+            "peek must not mutate the live engine"
+        );
+        assert!(
+            feats.iter().all(|(_, f)| f.len() == OBS_DIM),
+            "every afterstate vector is OBS_DIM"
+        );
+    }
+
+    #[test]
+    fn afterstate_features_match_applied_placement() {
+        let mut engine = Engine::<10, 20>::new();
+        engine.reset(42);
+        let feats = afterstate_features(&engine);
+        assert!(!feats.is_empty());
+        let action = feats[0].0;
+        let peeked = feats[0].1.clone();
+        if let Some((col, rot)) = action_to_placement(action) {
+            let mut applied = engine.clone();
+            applied.apply_placement(col, rot);
+            assert_eq!(
+                peeked,
+                encode_obs(&applied.state),
+                "peeked features == features of the applied clone"
+            );
+        } else {
+            assert!(false, "first afterstate action must map to a placement");
+        }
     }
 }

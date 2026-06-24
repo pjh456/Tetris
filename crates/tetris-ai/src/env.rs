@@ -1,8 +1,11 @@
-use numpy::PyArray1;
+use numpy::{PyArray1, PyArray2};
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use tetris_core::Engine;
-use tetris_core::rl::{ACTION_SPACE_SIZE, action_mask, action_to_placement, encode_obs};
+use tetris_core::rl::{
+    ACTION_SPACE_SIZE, OBS_DIM, action_mask, action_to_placement, afterstate_features, encode_obs,
+};
 
 use crate::reward::{RewardConfig, compute_reward};
 
@@ -13,6 +16,8 @@ type PyStepResult<'py> = PyResult<(
     bool,
     Bound<'py, PyDict>,
 )>;
+
+type PyAfterstateResult<'py> = PyResult<(Bound<'py, PyArray1<i64>>, Bound<'py, PyArray2<f32>>)>;
 
 #[derive(Debug, Clone)]
 pub struct StepOutcome {
@@ -101,6 +106,26 @@ impl TetrisEnv {
         PyArray1::from_vec(py, self.current_action_mask())
     }
 
+    /// For each legal placement: its action index and the 61-dim obs of the
+    /// resulting board. Returns `(actions [n], features [n, OBS_DIM])` for the
+    /// afterstate-DQN loop. Empty `actions` + `[0, OBS_DIM]` features when no
+    /// legal placement exists (terminal).
+    fn afterstate_features<'py>(&self, py: Python<'py>) -> PyAfterstateResult<'py> {
+        let pairs = self.current_afterstate_features();
+        let actions: Vec<i64> = pairs
+            .iter()
+            .map(|(a, _)| i64::try_from(*a).unwrap_or(0))
+            .collect();
+        let rows: Vec<Vec<f32>> = pairs.into_iter().map(|(_, f)| f).collect();
+        let actions_arr = PyArray1::from_vec(py, actions);
+        let feats_arr = if rows.is_empty() {
+            PyArray2::<f32>::zeros(py, [0, OBS_DIM], false)
+        } else {
+            PyArray2::from_vec2(py, &rows).map_err(|e| PyValueError::new_err(e.to_string()))?
+        };
+        Ok((actions_arr, feats_arr))
+    }
+
     #[staticmethod]
     fn action_space_size() -> usize {
         ACTION_SPACE_SIZE
@@ -178,6 +203,10 @@ impl TetrisEnv {
 
     pub fn current_action_mask(&self) -> Vec<bool> {
         action_mask(&self.engine.enumerate_placements())
+    }
+
+    pub fn current_afterstate_features(&self) -> Vec<(usize, Vec<f32>)> {
+        afterstate_features(&self.engine)
     }
 
     pub fn state_hash(&self) -> u32 {
@@ -328,5 +357,18 @@ mod tests {
     fn board_type_is_accessible_for_reward_snapshots() {
         let board = Board::<10, 20>::new();
         assert_eq!(board.holes(), 0);
+    }
+
+    #[test]
+    fn afterstate_actions_are_all_legal() {
+        let mut env = env();
+        env.reset_rust(42);
+        let mask = env.current_action_mask();
+        let feats = env.current_afterstate_features();
+        assert!(!feats.is_empty(), "a fresh game has legal placements");
+        for (action, vec) in &feats {
+            assert!(mask[*action], "every afterstate action must be legal");
+            assert_eq!(vec.len(), OBS_DIM);
+        }
     }
 }
