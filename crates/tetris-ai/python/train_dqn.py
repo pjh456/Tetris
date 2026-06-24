@@ -30,7 +30,7 @@ from gymnasium.vector import AsyncVectorEnv, SyncVectorEnv
 
 import tetris_env  # noqa: F401  registers the "Tetris-v0" gym env
 
-OBS_DIM = 61
+OBS_DIM = 80
 
 
 def set_seed(seed: int) -> None:
