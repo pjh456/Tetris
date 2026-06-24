@@ -93,6 +93,7 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   hold_col.appendChild(hold_canvas);
 
   const board_frame = document.createElement('div');
+  board_frame.className = 'board-frame';
   board_frame.style.cssText =
     'position:relative;display:inline-block;border:3px solid var(--color-panel-border);background:var(--color-bg);box-shadow:0 0 20px var(--color-panel-shadow);';
   const board_canvas = document.createElement('canvas');

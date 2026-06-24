@@ -944,6 +944,15 @@ html {
   .result-row {
     min-width: 380px;
   }
+
+  .board-frame {
+    max-width: calc(100vw - 32px);
+  }
+
+  .board-frame canvas {
+    max-width: 100% !important;
+    height: auto !important;
+  }
 }
 
 /* Leaderboard */
