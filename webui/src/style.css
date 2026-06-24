@@ -901,9 +901,9 @@ html {
   }
 
   .hud-panel {
-    flex-direction: row !important;
-    flex-wrap: wrap !important;
-    gap: var(--space-sm) !important;
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-sm) var(--space-md);
   }
 
   .settings-page {
