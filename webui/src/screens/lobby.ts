@@ -355,7 +355,7 @@ function build_room_code_section(): {
   code_display.className = 'room-code';
   code_display.textContent = room_code.value ?? '----';
 
-  const copy_btn = create_button('Copy', {
+  const copy_btn = create_button('复制', {
     onClick: () => {
       if (room_code.value) {
         navigator.clipboard.writeText(room_code.value).catch(() => {});
@@ -534,7 +534,7 @@ function build_chat_section(on_send: (text: string) => void): {
   input.maxLength = 256;
   input.placeholder = 'Type a message...';
 
-  const send_btn = create_button('Send');
+  const send_btn = create_button('发送');
 
   function send_message() {
     const text = input.value.trim();
