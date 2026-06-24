@@ -38,6 +38,10 @@ body[data-theme='cyberpunk'] {
   --color-card-solo-title: #a8b2ff;
   --color-card-settings-bg: linear-gradient(90deg, #1f3d3a, #1a2b2f);
   --color-card-settings-title: #7fffe1;
+  --color-card-watch-ai-bg: linear-gradient(90deg, #1a2a3a, #152535);
+  --color-card-watch-ai-title: #5de2ff;
+  --color-card-leaderboard-bg: linear-gradient(90deg, #3a3010, #2a2008);
+  --color-card-leaderboard-title: #ffd700;
 
   --text-label: 12px;
   --text-body: 14px;
@@ -90,6 +94,10 @@ body[data-theme='retro'] {
   --color-card-solo-title: #5dade2;
   --color-card-settings-bg: linear-gradient(90deg, #1a3030, #162020);
   --color-card-settings-title: #58d68d;
+  --color-card-watch-ai-bg: linear-gradient(90deg, #1a2a30, #152020);
+  --color-card-watch-ai-title: #5dade2;
+  --color-card-leaderboard-bg: linear-gradient(90deg, #3a3010, #2a2008);
+  --color-card-leaderboard-title: #f0b27a;
 }
 
 body[data-theme='minimal'] {
@@ -129,6 +137,10 @@ body[data-theme='minimal'] {
   --color-card-solo-title: #333333;
   --color-card-settings-bg: linear-gradient(90deg, #e6f0ee, #e0ece8);
   --color-card-settings-title: #555555;
+  --color-card-watch-ai-bg: linear-gradient(90deg, #e6f0fa, #e0eaf6);
+  --color-card-watch-ai-title: #333333;
+  --color-card-leaderboard-bg: linear-gradient(90deg, #f0ede0, #ece8d8);
+  --color-card-leaderboard-title: #555555;
 }
 
 .glass {
@@ -345,6 +357,22 @@ body {
 
 .menu-settings .menu-title {
   color: var(--color-card-settings-title);
+}
+
+.menu-watch-ai {
+  background: var(--color-card-watch-ai-bg);
+}
+
+.menu-watch-ai .menu-title {
+  color: var(--color-card-watch-ai-title);
+}
+
+.menu-leaderboard {
+  background: var(--color-card-leaderboard-bg);
+}
+
+.menu-leaderboard .menu-title {
+  color: var(--color-card-leaderboard-title);
 }
 
 .modal-overlay {
