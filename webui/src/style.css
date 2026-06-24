@@ -935,6 +935,15 @@ html {
     font-size: 8px !important;
     letter-spacing: 0 !important;
   }
+
+  .result-table {
+    min-width: 0 !important;
+    overflow-x: auto;
+  }
+
+  .result-row {
+    min-width: 380px;
+  }
 }
 
 /* Leaderboard */
