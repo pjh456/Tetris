@@ -21,12 +21,18 @@ class TetrisEnv(gym.Env):
 
     def __init__(self, max_steps: int = 10_000, **reward_kwargs: Any) -> None:
         super().__init__()
-        # Survival-dominant reward (08-07). Defaults mirror the Rust
-        # RewardConfig::default() so omitting kwargs matches the crate default.
+        # Clear-dominant reward (08-08): lines^2 * clear_width dominates; a SMALL
+        # alive bonus breaks the sparse -death plateau (survival forces clearing,
+        # since the board tops out in ~50 placements without a clear); game-over
+        # pays only -death_penalty (no terminal leak); shaping disabled (ZERO).
+        # Defaults mirror the Rust RewardConfig::default() so omitting kwargs matches
+        # the crate default (gamma 0.99, alive 0.1, death_penalty 50.0, clear_width 10.0).
         self._env = RustTetrisEnv(
             max_steps=max_steps,
-            alive=reward_kwargs.get("alive", 1.0),
-            hole_penalty=reward_kwargs.get("hole_penalty", 0.1),
+            gamma=reward_kwargs.get("gamma", 0.99),
+            alive=reward_kwargs.get("alive", 0.1),
+            death_penalty=reward_kwargs.get("death_penalty", 50.0),
+            clear_width=reward_kwargs.get("clear_width", 10.0),
         )
         self.action_space = gym.spaces.Discrete(ACTION_SPACE_SIZE)
         self.observation_space = gym.spaces.Box(

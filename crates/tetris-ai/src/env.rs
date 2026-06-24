@@ -52,14 +52,23 @@ pub struct TetrisEnv {
 #[pymethods]
 impl TetrisEnv {
     #[new]
-    #[pyo3(signature = (max_steps=None, alive=None, hole_penalty=None))]
-    fn new(max_steps: Option<u32>, alive: Option<f32>, hole_penalty: Option<f32>) -> Self {
+    #[pyo3(signature = (max_steps=None, gamma=None, alive=None, death_penalty=None, clear_width=None))]
+    fn new(
+        max_steps: Option<u32>,
+        gamma: Option<f32>,
+        alive: Option<f32>,
+        death_penalty: Option<f32>,
+        clear_width: Option<f32>,
+    ) -> Self {
         let d = RewardConfig::default();
         Self::new_with_config(
             max_steps.unwrap_or(10_000),
             RewardConfig {
+                potential: d.potential,
+                gamma: gamma.unwrap_or(d.gamma),
                 alive: alive.unwrap_or(d.alive),
-                hole_penalty: hole_penalty.unwrap_or(d.hole_penalty),
+                death_penalty: death_penalty.unwrap_or(d.death_penalty),
+                clear_width: clear_width.unwrap_or(d.clear_width),
             },
         )
     }
