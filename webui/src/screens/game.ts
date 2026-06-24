@@ -128,6 +128,7 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
     render: (g: ArrayLike<number>, c: string[]) => void;
     destroy: () => void;
   }> = [];
+  const opponent_status_els: HTMLElement[] = [];
 
   const mp_ws = is_multiplayer.value ? get_multiplayer_ws() : null;
   const opponent_grids: Map<number, Uint8Array> = new Map();
@@ -143,9 +144,10 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
 
     // Reserve slots for up to 3 opponents
     for (let i = 0; i < 3; i++) {
-      const { slot, name_el, renderer } = create_opponent_panel(`P${i + 2}`);
+      const { slot, name_el, status_el, renderer } = create_opponent_panel(`P${i + 2}`);
       opponent_slots.push(slot);
       opponent_labels.push(name_el);
+      opponent_status_els.push(status_el);
       opponent_renderers.push(renderer);
       opponent_col.appendChild(slot);
     }
@@ -388,10 +390,13 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
         }
         label.textContent = `${player.name}${player.away ? ' (AWAY)' : player.alive ? '' : ' (KO)'}`;
         if (slot) {
-          slot.classList.toggle(
-            'opponent-connection-dim',
-            connection_status.value === 'slow' || connection_status.value === 'disconnected',
-          );
+          const dim =
+            connection_status.value === 'slow' || connection_status.value === 'disconnected';
+          slot.classList.toggle('opponent-connection-dim', dim);
+          if (opponent_status_els[i]) {
+            opponent_status_els[i].textContent = dim ? '仅重力' : '';
+            opponent_status_els[i].style.display = dim ? '' : 'none';
+          }
         }
         replay_player_for(player.player_id);
         const grid = get_opponent_player_grid(player.player_id);

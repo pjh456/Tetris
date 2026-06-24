@@ -64,10 +64,18 @@ vi.mock('../../render/board', () => ({
     const name_el = document.createElement('div');
     name_el.className = 'opponent-name';
     name_el.textContent = name;
+    const status_el = document.createElement('div');
     const canvas = document.createElement('canvas');
     slot.appendChild(name_el);
+    slot.appendChild(status_el);
     slot.appendChild(canvas);
-    return { slot, name_el, canvas, renderer: { canvas, render: vi.fn(), destroy: vi.fn() } };
+    return {
+      slot,
+      name_el,
+      status_el,
+      canvas,
+      renderer: { canvas, render: vi.fn(), destroy: vi.fn() },
+    };
   }),
 }));
 

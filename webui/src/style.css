@@ -1230,13 +1230,6 @@ html {
   filter: grayscale(0.7);
 }
 
-.opponent-connection-dim::after {
-  content: 'GRAVITY ONLY';
-  font-size: 9px;
-  color: var(--color-muted);
-  letter-spacing: 1px;
-}
-
 .opponent-name {
   font-size: 11px;
   color: var(--color-muted);
