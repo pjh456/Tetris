@@ -40,7 +40,7 @@ export function create_multiplayer_result_screen(): HTMLElement {
       row.name,
       String(row.score),
       String(row.lines),
-      `${Math.round(row.survival_ticks / 60)}s`,
+      row.survival_ticks > 0 ? `${Math.round(row.survival_ticks / 60)}s` : '--',
     ];
     for (const value of cells) {
       const cell = document.createElement('span');
