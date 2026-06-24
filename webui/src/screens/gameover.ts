@@ -58,9 +58,9 @@ export function create_gameover_screen(): HTMLElement {
       <h1 class="gameover-title">GAME OVER</h1>
       <div class="gameover-stats">${stats_html}</div>
       <div class="gameover-buttons">
-        <button class="btn" id="go-retry">Retry Game</button>
-        <button class="btn" id="go-new">New Game</button>
-        <button class="btn" id="go-menu">Menu</button>
+        <button class="btn" id="go-retry">再来一局</button>
+        <button class="btn" id="go-new">新游戏</button>
+        <button class="btn" id="go-menu">主菜单</button>
       </div>
     </div>
   `;

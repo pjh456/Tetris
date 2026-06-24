@@ -109,7 +109,7 @@ function build_buttons(overlay: HTMLElement): HTMLElement {
   const bar = document.createElement('div');
   bar.className = 'leaderboard-buttons';
 
-  const play_btn = create_button('Play Again', {
+  const play_btn = create_button('再来一局', {
     onClick: () => {
       page.value = 'game';
     },
@@ -117,12 +117,12 @@ function build_buttons(overlay: HTMLElement): HTMLElement {
 
   const clear_btn = document.createElement('button');
   clear_btn.className = 'btn btn-danger';
-  clear_btn.textContent = 'Clear All';
+  clear_btn.textContent = '清空';
   clear_btn.addEventListener('click', () => {
     show_confirm(overlay);
   });
 
-  const close_btn = create_button('Close', {
+  const close_btn = create_button('关闭', {
     onClick: () => {
       page.value = 'home';
     },
@@ -137,10 +137,10 @@ function show_confirm(overlay: HTMLElement) {
   modal.className = 'confirm-overlay';
   modal.innerHTML = `
     <div class="confirm-panel glass">
-      <p>Clear All Scores? This cannot be undone.</p>
+      <p>确定清空所有分数？此操作不可撤销。</p>
       <div class="confirm-buttons">
-        <button class="btn" id="confirm-cancel">Cancel</button>
-        <button class="btn btn-danger" id="confirm-clear">Clear</button>
+        <button class="btn" id="confirm-cancel">取消</button>
+        <button class="btn btn-danger" id="confirm-clear">确认清空</button>
       </div>
     </div>
   `;

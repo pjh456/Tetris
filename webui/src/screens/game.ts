@@ -498,9 +498,9 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
     pause_overlay_el.innerHTML = `
       <div class="pause-panel glass">
         <h2 class="pause-title">PAUSED</h2>
-        <button class="btn" id="btn-resume">Resume Game</button>
-        <button class="btn" id="btn-restart">Restart Game</button>
-        <button class="btn" id="btn-menu">Menu</button>
+        <button class="btn" id="btn-resume">继续游戏</button>
+        <button class="btn" id="btn-restart">重新开始</button>
+        <button class="btn" id="btn-menu">主菜单</button>
       </div>
     `;
     pause_overlay_el.querySelector('#btn-resume')!.addEventListener('click', () => {
@@ -666,7 +666,7 @@ function run_countdown(container: HTMLElement): Promise<void> {
     container.appendChild(overlay);
 
     const seq = ['3', '2', '1', 'GO!'];
-    const tips = ['Get Ready!', 'Press Space to Drop', 'Clear Lines!', 'Go Go Go!'];
+    const tips = ['准备!', '空格下落', '消行!', '冲冲冲!'];
     let i = 0;
 
     function show_next() {
