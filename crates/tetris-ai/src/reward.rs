@@ -202,7 +202,10 @@ mod tests {
         let cfg = RewardConfig::default();
         // Even a messy board with a "clear" flagged: game over pays exactly -death.
         let r = compute_reward(4, true, true, true, &messy(), &messy(), &cfg);
-        assert!((r + 50.0).abs() < 1e-6, "game over == -death_penalty, no leak");
+        assert!(
+            (r + 50.0).abs() < 1e-6,
+            "game over == -death_penalty, no leak"
+        );
     }
 
     #[test]
@@ -226,7 +229,10 @@ mod tests {
     #[test]
     fn potential_zero_on_empty_negative_on_messy() {
         let w = PotentialWeights::default();
-        assert!((potential(&empty(), &w)).abs() < 1e-6, "empty board potential == 0");
+        assert!(
+            (potential(&empty(), &w)).abs() < 1e-6,
+            "empty board potential == 0"
+        );
         assert!(potential(&messy(), &w) < 0.0, "messy board potential < 0");
     }
 
@@ -240,7 +246,10 @@ mod tests {
         // Shaping vanishes (phi == 0 everywhere) => live reward == clear bonus exactly,
         // even on a messy board with before != after.
         let r = compute_reward(1, false, false, false, &empty(), &messy(), &cfg);
-        assert!((r - 10.0).abs() < 1e-6, "zeroed shaping + alive => pure lines^2*W");
+        assert!(
+            (r - 10.0).abs() < 1e-6,
+            "zeroed shaping + alive => pure lines^2*W"
+        );
     }
 
     #[test]
@@ -250,7 +259,13 @@ mod tests {
         // clear (10) so clearing still dominates an episode.
         let cfg = RewardConfig::default();
         let r = compute_reward(0, false, false, false, &empty(), &empty(), &cfg);
-        assert!((r - 0.1).abs() < 1e-6, "no-clear survival step pays the alive bonus");
-        assert!(r > 0.0 && r < 10.0, "alive is positive but far below a single clear");
+        assert!(
+            (r - 0.1).abs() < 1e-6,
+            "no-clear survival step pays the alive bonus"
+        );
+        assert!(
+            r > 0.0 && r < 10.0,
+            "alive is positive but far below a single clear"
+        );
     }
 }
