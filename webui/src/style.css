@@ -953,6 +953,12 @@ html {
     max-width: 100% !important;
     height: auto !important;
   }
+
+  .watch-ai-root canvas,
+  .spectator-board canvas {
+    max-width: calc(100vw - 40px) !important;
+    height: auto !important;
+  }
 }
 
 /* Leaderboard */
