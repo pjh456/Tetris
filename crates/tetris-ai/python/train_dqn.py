@@ -31,6 +31,7 @@ from gymnasium.vector import AsyncVectorEnv, SyncVectorEnv
 import tetris_env  # noqa: F401  registers the "Tetris-v0" gym env
 
 OBS_DIM = 71
+TAU = 0.005  # Polyak soft update rate for target network
 
 
 def set_seed(seed: int) -> None:
@@ -298,8 +299,9 @@ def train(args: argparse.Namespace) -> ValueMLP:
                 for _ in range(updates_per_iter):
                     train_step(online, target, replay.sample(args.batch_size), optimizer, args.gamma, device)
                     update_count += 1
-                    if update_count % args.target_sync == 0:
-                        target.load_state_dict(online.state_dict())
+                    # Polyak soft update: smooth target network transition
+                    for tp, op in zip(target.parameters(), online.parameters()):
+                        tp.data.mul_(1 - TAU).add_(op.data, alpha=TAU)
     finally:
         venv.close()
 
