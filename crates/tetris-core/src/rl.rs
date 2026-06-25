@@ -5,20 +5,8 @@ pub const BOARD_H: usize = 20;
 pub const PIECE_COUNT: usize = 7;
 pub const NEXT_COUNT: usize = 5;
 pub const ACTION_SPACE_SIZE: usize = BOARD_W * 4;
-pub const OBS_DIM: usize = 10
-    + 1
-    + 1
-    + 1
-    + 1
-    + 1
-    + 1
-    + 1
-    + PIECE_COUNT
-    + PIECE_COUNT * NEXT_COUNT
-    + 1
-    + 1
-    + BOARD_W
-    + (BOARD_W - 1);
+pub const OBS_DIM: usize =
+    10 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + PIECE_COUNT + PIECE_COUNT * NEXT_COUNT + 1 + 1 + BOARD_W;
 
 const BOARD_HEIGHT_DIVISOR: f32 = 20.0;
 const BOARD_AREA_DIVISOR: f32 = 200.0;
@@ -69,12 +57,6 @@ pub fn encode_obs_into(obs: &mut Vec<f32>, state: &State<BOARD_W, BOARD_H>) {
             }
             obs.push(f32::from(overhang) / BOARD_HEIGHT_DIVISOR);
         }
-    }
-
-    // adjacent_height_diff: abs difference between adjacent column heights, /20.
-    for c in 0..BOARD_W - 1 {
-        let diff = (heights[c] as i16 - heights[c + 1] as i16).unsigned_abs();
-        obs.push(f32::from(diff as u8) / BOARD_HEIGHT_DIVISOR);
     }
 
     push_piece_one_hot(obs, state.hold as usize);
@@ -190,7 +172,7 @@ mod tests {
         let mut engine = Engine::<10, 20>::new();
         engine.reset(42);
         assert_eq!(encode_obs(&engine.state).len(), OBS_DIM);
-        assert_eq!(OBS_DIM, 80);
+        assert_eq!(OBS_DIM, 71);
     }
 
     #[test]
@@ -211,17 +193,6 @@ mod tests {
         // column_overhang starts at index 17 (10 heights + 7 scalars = 17)
         for i in 17..27 {
             assert_eq!(obs[i], 0.0, "empty board overhang[{i}] must be 0");
-        }
-    }
-
-    #[test]
-    fn adjacent_height_diff_empty_board_all_zero() {
-        let mut engine = Engine::<10, 20>::new();
-        engine.reset(42);
-        let obs = encode_obs(&engine.state);
-        // adjacent_height_diff starts at index 27 (17 + 10 = 27), 9 values
-        for i in 27..36 {
-            assert_eq!(obs[i], 0.0, "empty board adj_diff[{i}] must be 0");
         }
     }
 

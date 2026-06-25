@@ -230,6 +230,7 @@ impl<const W: usize, const H: usize> Engine<W, H> {
             .saturating_add(self.state.pending_garbage)
     }
 
+    #[allow(dead_code)]
     fn next_rand(&mut self) -> u32 {
         self.state.rng = self
             .state

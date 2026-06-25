@@ -1,4 +1,16 @@
 use crate::Layer;
+use crate::weights::LayerNorm;
+
+fn layer_norm(x: &[f32], norm: &LayerNorm) -> Vec<f32> {
+    let n = x.len() as f32;
+    let mean: f32 = x.iter().sum::<f32>() / n;
+    let variance: f32 = x.iter().map(|v| (v - mean) * (v - mean)).sum::<f32>() / n;
+    let std = (variance + norm.eps).sqrt();
+    x.iter()
+        .enumerate()
+        .map(|(i, &v)| norm.gamma[i] * (v - mean) / std + norm.beta[i])
+        .collect()
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MlpPolicy {
@@ -39,6 +51,11 @@ impl MlpPolicy {
     pub fn forward(&self, x: &[f32]) -> Vec<f32> {
         let mut activation = x.to_vec();
         for (layer_index, layer) in self.layers.iter().enumerate() {
+            // Optional LayerNorm before linear (input normalization).
+            if let Some(norm) = &layer.norm {
+                activation = layer_norm(&activation, norm);
+            }
+
             let mut next = layer.bias.clone();
             for (output_index, row) in layer.weight.iter().enumerate() {
                 let sum = row

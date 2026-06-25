@@ -4,7 +4,7 @@ mod weights;
 
 pub use decide::{decide, decide_seeded, zero_policy};
 pub use mlp::{MlpPolicy, softmax_sample, softmax_sample_seeded};
-pub use weights::{Layer, WeightsFile, load_from_slice, load_from_str};
+pub use weights::{Layer, LayerNorm, WeightsFile, load_from_slice, load_from_str};
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum InferError {

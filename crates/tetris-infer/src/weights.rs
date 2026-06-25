@@ -16,6 +16,20 @@ pub struct WeightsFile {
 pub struct Layer {
     pub weight: Vec<Vec<f32>>,
     pub bias: Vec<f32>,
+    #[serde(default)]
+    pub norm: Option<LayerNorm>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LayerNorm {
+    pub gamma: Vec<f32>,
+    pub beta: Vec<f32>,
+    #[serde(default = "default_norm_eps")]
+    pub eps: f32,
+}
+
+fn default_norm_eps() -> f32 {
+    1e-5
 }
 
 pub fn load_from_slice(bytes: &[u8]) -> Result<MlpPolicy, InferError> {

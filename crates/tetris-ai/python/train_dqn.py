@@ -30,7 +30,7 @@ from gymnasium.vector import AsyncVectorEnv, SyncVectorEnv
 
 import tetris_env  # noqa: F401  registers the "Tetris-v0" gym env
 
-OBS_DIM = 80
+OBS_DIM = 71
 
 
 def set_seed(seed: int) -> None:
@@ -42,23 +42,22 @@ def set_seed(seed: int) -> None:
 
 
 class ValueMLP(nn.Module):
-    """Scores a board afterstate. Input: (batch, 61). Output: (batch, 1)."""
+    """Scores a board afterstate. Input: (batch, OBS_DIM). Output: (batch, 1)."""
 
     def __init__(self, input_dim: int = OBS_DIM, hidden: int = 64) -> None:
         super().__init__()
-        # Tanh (not ReLU) to match tetris-infer MlpPolicy::forward, which hardcodes
-        # tanh between layers — keeps Rust/Python parity (08-11) exact.
-        self.net = nn.Sequential(
-            nn.Linear(input_dim, hidden),
-            nn.Tanh(),
-            nn.Linear(hidden, hidden),
-            nn.Tanh(),
-            nn.Linear(hidden, 1),
-        )
+        self.ln1 = nn.LayerNorm(input_dim, eps=1e-5)
+        self.fc1 = nn.Linear(input_dim, hidden)
+        self.ln2 = nn.LayerNorm(hidden, eps=1e-5)
+        self.fc2 = nn.Linear(hidden, hidden)
+        self.fc3 = nn.Linear(hidden, 1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # x: (batch, 61) -> (batch, 1)
-        return self.net(x)
+        x = self.ln1(x)
+        x = torch.tanh(self.fc1(x))
+        x = self.ln2(x)
+        x = torch.tanh(self.fc2(x))
+        return self.fc3(x)
 
 
 @dataclass

@@ -9,7 +9,7 @@ import numpy as np
 from gymnasium.envs.registration import register
 from tetris_ai import TetrisEnv as RustTetrisEnv
 
-OBS_DIM = 80
+OBS_DIM = 71
 ACTION_SPACE_SIZE = 40
 ENV_ID = "Tetris-v0"
 

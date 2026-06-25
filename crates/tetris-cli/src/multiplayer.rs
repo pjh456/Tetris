@@ -706,6 +706,7 @@ mod tests {
             vec![Layer {
                 weight: vec![vec![0.0; rl::OBS_DIM]; rl::ACTION_SPACE_SIZE],
                 bias: vec![0.0; rl::ACTION_SPACE_SIZE],
+                norm: None,
             }],
         )
     }

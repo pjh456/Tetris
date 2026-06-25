@@ -8,10 +8,12 @@ fn policy() -> MlpPolicy {
             Layer {
                 weight: vec![vec![1.0, 1.0], vec![1.0, -1.0]],
                 bias: vec![0.0, 0.0],
+                norm: None,
             },
             Layer {
                 weight: vec![vec![2.0, 1.0], vec![-1.0, 3.0]],
                 bias: vec![0.5, -0.25],
+                norm: None,
             },
         ],
     )
