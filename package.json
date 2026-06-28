@@ -16,6 +16,8 @@
     "clean": "node scripts/clean.js",
     "tauri": "npx @tauri-apps/cli",
     "build:desktop": "node scripts/build-desktop.js",
+    "build:android": "node scripts/build-android.js",
+    "build:all": "npm run build && npm run build:desktop && npm run build:android",
     "dev:desktop": "cd crates/tetris-tauri && cargo tauri dev",
     "build:ai": "cd crates/tetris-ai && python build_ai.py",
     "build:ai:release": "cd crates/tetris-ai && python build_ai.py --release",

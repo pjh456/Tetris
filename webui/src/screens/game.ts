@@ -80,6 +80,7 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   layout.style.cssText = 'display:flex;gap:16px;align-items:flex-start;justify-content:center;';
 
   const hold_col = document.createElement('div');
+  hold_col.className = 'hold-panel';
   hold_col.style.cssText = 'display:flex;flex-direction:column;gap:8px;';
   const hold_label = document.createElement('div');
   hold_label.textContent = 'HOLD';
@@ -96,6 +97,8 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   board_frame.className = 'board-frame';
   board_frame.style.cssText =
     'position:relative;display:inline-block;border:3px solid var(--color-panel-border);background:var(--color-bg);box-shadow:0 0 20px var(--color-panel-shadow);';
+  const board_inner = document.createElement('div');
+  board_inner.style.cssText = 'position:relative;width:100%;height:100%;';
   const board_canvas = document.createElement('canvas');
   setup_hidpi_canvas(board_canvas, board_css_w, board_css_h);
   const fx_canvas = document.createElement('canvas');
@@ -103,10 +106,12 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   fx_canvas.style.inset = '0';
   fx_canvas.style.pointerEvents = 'none';
   setup_hidpi_canvas(fx_canvas, board_css_w, board_css_h);
-  board_frame.appendChild(board_canvas);
-  board_frame.appendChild(fx_canvas);
+  board_inner.appendChild(board_canvas);
+  board_inner.appendChild(fx_canvas);
+  board_frame.appendChild(board_inner);
 
   const right_col = document.createElement('div');
+  right_col.className = 'next-panel';
   right_col.style.cssText = 'display:flex;flex-direction:column;gap:8px;';
   const next_label = document.createElement('div');
   next_label.textContent = 'NEXT';
@@ -119,7 +124,9 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   right_col.appendChild(next_label);
   right_col.appendChild(next_canvas);
 
-  const hud = create_hud_overlay(right_col);
+  const hud_wrapper = document.createElement('div');
+  hud_wrapper.className = 'hud-wrapper';
+  const hud = create_hud_overlay(hud_wrapper);
 
   // Opponent mini-grids (multiplayer only)
   const opponent_col = document.createElement('div');
@@ -158,6 +165,7 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   layout.appendChild(board_frame);
   layout.appendChild(right_col);
   if (mp_ws) layout.appendChild(opponent_col);
+  root.appendChild(hud_wrapper);
   wrapper.appendChild(layout);
   if (mp_ws) wrapper.appendChild(connection_badge);
   root.appendChild(wrapper);
@@ -177,7 +185,6 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   let last_tick = performance.now();
   let last_fx = performance.now();
   let cleanup_keyboard: (() => void) | null = null;
-  let popup_el: HTMLElement | null = null;
   let edge_active = false;
   let edge_dir = 0;
   let is_tearing_down = false;
@@ -264,7 +271,7 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
     if (edge_active) return;
     edge_active = true;
     edge_dir = dir;
-    board_frame.style.transition = 'transform 160ms ease-out';
+    board_frame.style.transition = 'transform 220ms cubic-bezier(0.25, 0.46, 0.45, 0.94)';
     board_frame.style.transform = `translateX(${dir * 14}px)`;
   }
 
@@ -272,24 +279,36 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
     if (!edge_active) return;
     edge_active = false;
     edge_dir = 0;
-    board_frame.style.transition = 'transform 70ms ease-in';
+    board_frame.style.transition = 'transform 360ms cubic-bezier(0.175, 0.885, 0.32, 1.275)';
     board_frame.style.transform = 'translateX(0px)';
   }
 
+  let popup_el: HTMLElement | null = null;
   let popup_timer: ReturnType<typeof setTimeout> | null = null;
 
   function show_popup(text: string) {
-    if (popup_el) popup_el.remove();
+    if (!popup_el) {
+      popup_el = document.createElement('div');
+      popup_el.className = 'combo-popup';
+      document.body.appendChild(popup_el);
+    }
     if (popup_timer) clearTimeout(popup_timer);
-    popup_el = document.createElement('div');
-    popup_el.className = 'combo-popup';
     popup_el.textContent = text;
-    board_frame.appendChild(popup_el);
+    // snap to big + visible (no transition)
+    popup_el.style.transition = 'none';
+    popup_el.style.opacity = '1';
+    popup_el.style.transform = 'translate(-50%, -50%) scale(1.25)';
+    void popup_el.offsetHeight;
+    // shrink to normal size
+    popup_el.style.transition = 'transform 200ms ease-out';
+    popup_el.style.transform = 'translate(-50%, -50%) scale(1)';
+    // fade out after 900ms visible
     popup_timer = setTimeout(() => {
-      popup_el?.remove();
-      popup_el = null;
+      if (!popup_el) return;
+      popup_el.style.transition = 'opacity 500ms ease-out';
+      popup_el.style.opacity = '0';
       popup_timer = null;
-    }, 1000);
+    }, 900);
   }
 
   function cleanup_runtime() {
@@ -351,7 +370,7 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
     last_tick = now;
 
     if (has_garbage_inserted(tick_result)) {
-      shake_screen(board_frame);
+      shake_screen(board_inner);
     }
 
     const hud_after: unknown = wasm.get_hud_data();
@@ -542,6 +561,8 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   let _destroy: () => void;
 
   function destroy() {
+    popup_el?.remove();
+    popup_el = null;
     collapse_cancel?.();
     collapse_cancel = null;
     cleanup_runtime();
@@ -571,7 +592,7 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
       const colors = get_theme_colors();
       const color = colors[hd_info.piece + 3] ?? '#c8f0ff';
       harddrop_fx.trigger(hd_info.cols, hd_info.start_y * cell, hd_info.end_y * cell, color);
-      shake_screen(board_frame);
+      shake_screen(board_inner);
     }
   }
 

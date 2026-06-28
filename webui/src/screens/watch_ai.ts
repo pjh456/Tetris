@@ -34,6 +34,7 @@ export function create_watch_ai_screen(root: HTMLElement): () => void {
 
   // Hold column
   const hold_col = document.createElement('div');
+  hold_col.className = 'hold-panel';
   hold_col.style.cssText = 'display:flex;flex-direction:column;gap:8px;';
   const hold_label = document.createElement('div');
   hold_label.textContent = 'HOLD';
@@ -59,6 +60,7 @@ export function create_watch_ai_screen(root: HTMLElement): () => void {
 
   // Next column
   const right_col = document.createElement('div');
+  right_col.className = 'next-panel';
   right_col.style.cssText = 'display:flex;flex-direction:column;gap:8px;';
   const next_label = document.createElement('div');
   next_label.textContent = 'NEXT';

@@ -41,7 +41,7 @@ effect(() => {
 const app = document.getElementById('app')!;
 
 let _zoom = 1.0;
-const ZOOM_MIN = 0.5;
+const ZOOM_MIN = 0.3;
 const ZOOM_MAX = 2.0;
 const ZOOM_STEP = 0.1;
 
