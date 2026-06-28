@@ -13,6 +13,9 @@ node_modules/
 # Android / Gradle
 .gradle/
 local.properties
+*.keystore
+*.jks
+**/keystore.properties
 
 # Production Build
 dist/
