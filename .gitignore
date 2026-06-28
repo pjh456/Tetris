@@ -8,6 +8,11 @@ webui/wasm/
 
 # Tauri
 crates/tetris-tauri/gen/
+node_modules/
+
+# Android / Gradle
+.gradle/
+local.properties
 
 # Production Build
 dist/
