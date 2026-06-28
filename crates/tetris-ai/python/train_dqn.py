@@ -30,7 +30,7 @@ from gymnasium.vector import AsyncVectorEnv, SyncVectorEnv
 
 import tetris_env  # noqa: F401  registers the "Tetris-v0" gym env
 
-OBS_DIM = 71
+OBS_DIM = 72
 TAU = 0.005  # Polyak soft update rate for target network
 
 

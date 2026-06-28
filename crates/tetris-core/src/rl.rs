@@ -6,7 +6,7 @@ pub const PIECE_COUNT: usize = 7;
 pub const NEXT_COUNT: usize = 5;
 pub const ACTION_SPACE_SIZE: usize = BOARD_W * 4;
 pub const OBS_DIM: usize =
-    10 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + PIECE_COUNT + PIECE_COUNT * NEXT_COUNT + 1 + 1 + BOARD_W;
+    10 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + PIECE_COUNT + PIECE_COUNT * NEXT_COUNT + 1 + 1 + 1 + BOARD_W;
 
 const BOARD_HEIGHT_DIVISOR: f32 = 20.0;
 const BOARD_AREA_DIVISOR: f32 = 200.0;
@@ -65,6 +65,7 @@ pub fn encode_obs_into(obs: &mut Vec<f32>, state: &State<BOARD_W, BOARD_H>) {
     }
 
     let combo = u8::try_from(state.combo.clamp(0, 20)).unwrap_or(0);
+    obs.push(u8::from(state.hold_used).into());
     obs.push(f32::from(combo) / COMBO_DIVISOR);
     obs.push(u8::from(state.b2b).into());
 }
