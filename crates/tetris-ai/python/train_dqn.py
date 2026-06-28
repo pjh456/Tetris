@@ -172,6 +172,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--batch-size", type=int, default=512)
     p.add_argument("--gamma", type=float, default=0.95)
     p.add_argument("--lr", type=float, default=1e-3)
+    p.add_argument("--hidden", type=int, default=64)
     p.add_argument("--epsilon-end-frac", type=float, default=0.75)
     p.add_argument("--epsilon-min", type=float, default=0.02)
     # Anneal epsilon over a FIXED number of episodes (decoupled from --episodes),
@@ -228,8 +229,8 @@ def train(args: argparse.Namespace) -> ValueMLP:
     # Per-env current candidates: list of (actions, feats) from each parallel env.
     cur = list(venv.call("afterstate_features_with_hold"))
 
-    online = ValueMLP().to(device)
-    target = ValueMLP().to(device)
+    online = ValueMLP(hidden=args.hidden).to(device)
+    target = ValueMLP(hidden=args.hidden).to(device)
     optimizer = torch.optim.Adam(online.parameters(), lr=args.lr)
     replay = ReplayBuffer(args.replay_size)
 

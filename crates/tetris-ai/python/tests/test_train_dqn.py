@@ -85,8 +85,9 @@ def test_short_train_run_smoke() -> None:
         replay_size=500,
         batch_size=16,
         gamma=0.95,
-        lr=1e-3,
-        epsilon_end_frac=0.75,
+            lr=1e-3,
+            hidden=64,
+            epsilon_end_frac=0.75,
         epsilon_min=0.02,
         epsilon_decay_episodes=10,
         target_sync=50,
@@ -96,8 +97,8 @@ def test_short_train_run_smoke() -> None:
         n_envs=2,
         vec_backend="sync",
         seed=1,
-            save_path="models/dqn_value_smoke.pt",
-            resume=None,
-        )
+        save_path="models/dqn_value_smoke.pt",
+        resume=None,
+    )
     net = train(args)
     assert net is not None
