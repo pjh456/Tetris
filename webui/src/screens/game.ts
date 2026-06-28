@@ -31,7 +31,7 @@ import { HardDropFx } from '../fx/harddrop_fx';
 import { shake_screen } from '../fx/shake';
 import { run_collapse_animation } from '../fx/gameover_fx';
 import { bindKeyboard, type KeyboardConfig } from '../input/keyboard';
-import { Actions } from '../game/actions';
+import { Actions, type ActionValue } from '../game/actions';
 import { audio_manager } from '../core/audio';
 import { create_label } from '../core/dom';
 import { create_touch_overlay } from '../input/touch';
@@ -596,46 +596,52 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
     }
   }
 
+  function handle_player_action(action: ActionValue, pressed: boolean) {
+    if (wasm.is_game_over || paused) return;
+
+    if (pressed) {
+      if (action === Actions.MoveLeft && !wasm.can_move(-1)) {
+        edge_bump(-1);
+        return;
+      }
+      if (action === Actions.MoveRight && !wasm.can_move(1)) {
+        edge_bump(1);
+        return;
+      }
+      if (action === Actions.MoveLeft && edge_dir === -1) edge_release();
+      if (action === Actions.MoveRight && edge_dir === 1) edge_release();
+
+      const prev_lines = lines.value;
+      queue_multiplayer_input(action, true);
+      wasm.handle_action(action);
+
+      if (action === Actions.HardDrop) {
+        check_harddrop_fx();
+        const hud_now: unknown = wasm.get_hud_data();
+        if (is_hud_data(hud_now) && hud_now.lines > prev_lines) {
+          audio_manager.play_sfx(hud_now.tspin > 0 ? 't_spin' : 'line_clear');
+        } else {
+          audio_manager.play_sfx('hard_drop');
+        }
+      } else if (action === Actions.MoveLeft || action === Actions.MoveRight)
+        audio_manager.play_sfx('move');
+      else if (action === Actions.SoftDrop) audio_manager.play_sfx('soft_drop');
+      else if (action === Actions.RotateCW || action === Actions.RotateCCW)
+        audio_manager.play_sfx('rotate');
+      else if (action === Actions.Hold) audio_manager.play_sfx('hold');
+    } else {
+      queue_multiplayer_input(action, false);
+      if (action === Actions.MoveLeft) edge_release();
+      if (action === Actions.MoveRight) edge_release();
+    }
+  }
+
   cleanup_keyboard = bindKeyboard(
     {
-      handleAction: (action) => {
-        if (action === Actions.MoveLeft && !wasm.can_move(-1)) {
-          edge_bump(-1);
-          return;
-        }
-        if (action === Actions.MoveRight && !wasm.can_move(1)) {
-          edge_bump(1);
-          return;
-        }
-        if (action === Actions.MoveLeft && edge_dir === -1) edge_release();
-        if (action === Actions.MoveRight && edge_dir === 1) edge_release();
-
-        const prev_lines = lines.value;
-        queue_multiplayer_input(action, true);
-        wasm.handle_action(action);
-
-        if (action === Actions.HardDrop) {
-          check_harddrop_fx();
-          const hud_now: unknown = wasm.get_hud_data();
-          if (is_hud_data(hud_now) && hud_now.lines > prev_lines) {
-            audio_manager.play_sfx(hud_now.tspin > 0 ? 't_spin' : 'line_clear');
-          } else {
-            audio_manager.play_sfx('hard_drop');
-          }
-        } else if (action === Actions.MoveLeft || action === Actions.MoveRight)
-          audio_manager.play_sfx('move');
-        else if (action === Actions.SoftDrop) audio_manager.play_sfx('soft_drop');
-        else if (action === Actions.RotateCW || action === Actions.RotateCCW)
-          audio_manager.play_sfx('rotate');
-        else if (action === Actions.Hold) audio_manager.play_sfx('hold');
-      },
+      handleAction: (action) => handle_player_action(action, true),
       isGameOver: () => wasm.is_game_over,
       render: render_all,
-      onRelease: (action) => {
-        queue_multiplayer_input(action, false);
-        if (action === Actions.MoveLeft) edge_release();
-        if (action === Actions.MoveRight) edge_release();
-      },
+      onRelease: (action) => handle_player_action(action, false),
       onPause: toggle_pause,
     },
     kbd_config,
@@ -644,15 +650,7 @@ export async function create_game_screen(root: HTMLElement): Promise<() => void>
   document.addEventListener('visibilitychange', on_visibility_change);
 
   const touch_overlay = create_touch_overlay(root, (action_val, pressed) => {
-    if (!pressed) {
-      // Always forward release so the server clears the held key (touch B7-2).
-      queue_multiplayer_input(action_val, false);
-      return;
-    }
-    if (!wasm.is_game_over && !paused) {
-      queue_multiplayer_input(action_val, true);
-      wasm.handle_action(action_val);
-    }
+    handle_player_action(action_val as ActionValue, pressed);
   });
 
   last_tick = performance.now();
