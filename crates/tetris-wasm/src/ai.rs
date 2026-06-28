@@ -103,8 +103,42 @@ impl WasmAi {
         js_sys::Uint8Array::from(self.get_grid_vec().as_slice())
     }
 
+    pub fn get_hold(&self) -> i32 {
+        if self.engine.has_hold {
+            self.engine.state.hold as i32
+        } else {
+            -1
+        }
+    }
+
+    pub fn decide_plan(&mut self) -> Vec<u8> {
+        let Some((col, rot, _action_index)) =
+            tetris_infer::decide(&self.engine, &self.policy, self.temperature)
+        else {
+            return Vec::new();
+        };
+        let actions = self.engine.placement_to_actions(col, rot);
+        actions.iter().map(|a| *a as u8).collect()
+    }
+
+    pub fn execute_action(&mut self, action: u8) {
+        let action = tetris_core::engine::Action::from_u8(action);
+        let attack = self.engine.handle_action(action);
+        self.record_attack(attack);
+    }
+
     pub fn is_game_over(&self) -> bool {
         self.engine.game_over
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn get_next(&self) -> js_sys::Uint8Array {
+        let next = crate::utils::build_next(&self.engine.state);
+        let arr = js_sys::Uint8Array::new_with_length(5);
+        for (i, &v) in next.iter().enumerate() {
+            arr.set_index(i as u32, v);
+        }
+        arr
     }
 }
 
