@@ -39,7 +39,7 @@ def test_replay_buffer_caps_at_capacity() -> None:
     buf = ReplayBuffer(3)
     empty_next = np.zeros((0, OBS_DIM), dtype=np.float32)
     for _ in range(5):
-        buf.push(Transition(np.zeros(OBS_DIM, dtype=np.float32), 0.0, empty_next, True))
+        buf.push(Transition(np.zeros(OBS_DIM, dtype=np.float32), 0.0, empty_next, 0.0))
     assert len(buf) == 3
 
 
@@ -59,7 +59,8 @@ def test_train_step_returns_finite_loss() -> None:
         else:
             m = int(rng.integers(1, 6))
             nxt = rng.standard_normal((m, OBS_DIM)).astype(np.float32)
-        batch.append(Transition(chosen, float(rng.standard_normal()), nxt, done))
+            gamma_n = 0.0 if done else 0.95
+            batch.append(Transition(chosen, float(rng.standard_normal()), nxt, gamma_n))
     loss = train_step(online, target, batch, opt, gamma=0.95, device=device)
     assert np.isfinite(loss)
 
@@ -93,6 +94,7 @@ def test_short_train_run_smoke() -> None:
         target_sync=50,
         train_start=16,
         train_interval=1,
+        n_step=2,
         device="cpu",
         n_envs=2,
         vec_backend="sync",

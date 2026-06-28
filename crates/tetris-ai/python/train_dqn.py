@@ -32,6 +32,7 @@ import tetris_env  # noqa: F401  registers the "Tetris-v0" gym env
 
 OBS_DIM = 72
 TAU = 0.005  # Polyak soft update rate for target network
+N_STEP = 2  # default, can be overridden via --n-step
 
 
 def set_seed(seed: int) -> None:
@@ -73,10 +74,10 @@ class ValueMLP(nn.Module):
 
 @dataclass
 class Transition:
-    chosen: np.ndarray  # (61,) afterstate features of the played placement
-    reward: float
-    next_feats: np.ndarray  # (m, 61) afterstates available at s'; (0, 61) if done
-    done: bool
+    chosen: np.ndarray  # (OBS_DIM,) afterstate features of the played placement
+    reward: float  # n-step discounted sum of rewards
+    next_feats: np.ndarray  # (m, OBS_DIM) afterstates available after n steps; (0,OBS_DIM) if terminal
+    gamma_n: float  # γ^n (bootstrap discount factor for n-step return)
 
 
 class ReplayBuffer:
@@ -91,6 +92,34 @@ class ReplayBuffer:
 
     def __len__(self) -> int:
         return len(self.buf)
+
+
+def _flush_nstep(
+    buf: deque[tuple[np.ndarray, float, np.ndarray]],
+    replay: ReplayBuffer,
+    gamma: float,
+    *,
+    done: bool,
+) -> None:
+    if done:
+        while buf:
+            entries = list(buf)
+            r_acc = 0.0
+            g = 1.0
+            for _, r, _ in entries:
+                r_acc += g * r
+                g *= gamma
+            replay.push(Transition(entries[0][0], r_acc, entries[-1][2], g))
+            buf.popleft()
+    else:
+        entries = list(buf)
+        r_acc = 0.0
+        g = 1.0
+        for i in range(N_STEP):
+            r_acc += g * entries[i][1]
+            g *= gamma
+        replay.push(Transition(entries[0][0], r_acc, entries[N_STEP - 1][2], g))
+        buf.popleft()
 
 
 def epsilon_at(step: int, total: int, end_frac: float) -> float:
@@ -139,7 +168,7 @@ def train_step(
     spans: list[tuple[int, int, int]] = []  # (sample_idx, start, end)
     cursor = 0
     for i, t in enumerate(batch):
-        if t.done or t.next_feats.shape[0] == 0:
+        if t.next_feats.shape[0] == 0:
             continue
         m = t.next_feats.shape[0]
         flat.append(t.next_feats)
@@ -153,7 +182,8 @@ def train_step(
         for i, s, e in spans:
             next_max[i] = allv[s:e].max()
 
-    targets = rewards + gamma * next_max  # done samples keep next_max == 0 -> targets == reward
+    gamma_n = torch.tensor([t.gamma_n for t in batch], dtype=torch.float32, device=device)
+    targets = rewards + gamma_n * next_max
     preds = online(chosen).squeeze(1)  # (B,)
     loss = nn.functional.mse_loss(preds, targets)
 
@@ -186,6 +216,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--train-interval", type=int, default=16)
     # Tiny MLP (61->64->64->1): GPU host<->device transfer often costs more than
     # the matmul. "auto" picks cuda if present; try "cpu" for this small net.
+    p.add_argument("--n-step", type=int, default=2)
     p.add_argument("--device", type=str, default="auto", choices=["auto", "cpu", "cuda"])
     # Parallel environments: AsyncVectorEnv runs N envs in separate processes
     # (dodges the GIL so the Rust env work runs truly in parallel). Set near your
@@ -263,6 +294,11 @@ def train(args: argparse.Namespace) -> ValueMLP:
     # otherwise more parallel envs silently dilutes the training signal.
     updates_per_iter = max(1, n // args.train_interval)
 
+    n_step = args.n_step
+    nstep_buf: list[deque[tuple[np.ndarray, float, np.ndarray]]] = [
+        deque(maxlen=n_step) for _ in range(n)
+    ]
+
     try:
         while episodes_done < args.episodes:
             eps = max(args.epsilon_min, epsilon_at(episodes_done, args.epsilon_decay_episodes, 1.0))
@@ -296,7 +332,13 @@ def train(args: argparse.Namespace) -> ValueMLP:
                     if done
                     else np.asarray(nxt[i][1], dtype=np.float32)
                 )
-                replay.push(Transition(chosen[i], float(rews[i]), next_feats, done))
+                nstep_buf[i].append((chosen[i], float(rews[i]), next_feats))
+
+                if done:
+                    _flush_nstep(nstep_buf[i], replay, args.gamma, done=True)
+                    nstep_buf[i].clear()
+                elif len(nstep_buf[i]) >= n_step:
+                    _flush_nstep(nstep_buf[i], replay, args.gamma, done=False)
                 ep_rew[i] += float(rews[i])
                 ep_len[i] += 1
                 if total_lines is not None and tl_mask is not None and tl_mask[i]:
