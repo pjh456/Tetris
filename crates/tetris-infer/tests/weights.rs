@@ -10,11 +10,13 @@ fn sample_weights() -> WeightsFile {
                 weight: vec![vec![1.0, 0.0], vec![0.0, 1.0]],
                 bias: vec![0.0, 0.0],
                 norm: None,
+                residual: false,
             },
             Layer {
                 weight: vec![vec![1.0, 1.0], vec![1.0, -1.0]],
                 bias: vec![0.5, -0.5],
                 norm: None,
+                residual: false,
             },
         ],
     }

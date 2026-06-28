@@ -51,7 +51,12 @@ impl MlpPolicy {
     pub fn forward(&self, x: &[f32]) -> Vec<f32> {
         let mut activation = x.to_vec();
         for (layer_index, layer) in self.layers.iter().enumerate() {
-            // Optional LayerNorm before linear (input normalization).
+            let skip: Option<Vec<f32>> = if layer.residual {
+                Some(activation.clone())
+            } else {
+                None
+            };
+
             if let Some(norm) = &layer.norm {
                 activation = layer_norm(&activation, norm);
             }
@@ -65,6 +70,12 @@ impl MlpPolicy {
                         acc + weight * value
                     });
                 next[output_index] = sum;
+            }
+
+            if let Some(s) = skip {
+                for (n, &s_val) in next.iter_mut().zip(s.iter()) {
+                    *n += s_val;
+                }
             }
 
             if layer_index + 1 < self.layers.len() {

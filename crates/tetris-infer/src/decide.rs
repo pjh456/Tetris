@@ -49,6 +49,7 @@ pub fn zero_policy(input_dim: usize, output_dim: usize) -> MlpPolicy {
             weight: vec![vec![0.0; input_dim]; output_dim],
             bias: vec![0.0; output_dim],
             norm: None,
+            residual: false,
         }],
     )
 }

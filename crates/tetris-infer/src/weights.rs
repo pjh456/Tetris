@@ -18,6 +18,8 @@ pub struct Layer {
     pub bias: Vec<f32>,
     #[serde(default)]
     pub norm: Option<LayerNorm>,
+    #[serde(default)]
+    pub residual: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
