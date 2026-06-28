@@ -65,8 +65,9 @@ class ValueMLP(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.ln1(x)
         x = torch.tanh(self.fc1(x))
-        x = self.ln2(x)
-        x = torch.tanh(self.fc2(x))
+        skip = x
+        x = self.ln2(skip)
+        x = torch.tanh(self.fc2(x) + skip)
         return self.fc3(x)
 
 
