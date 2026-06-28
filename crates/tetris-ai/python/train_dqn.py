@@ -182,7 +182,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--train-start", type=int, default=1000)
     # Speed: train once every N env steps (not every step). nuno-faria trains ~1x
     # per episode; every-step is ~19x more backprops than needed.
-    p.add_argument("--train-interval", type=int, default=4)
+    p.add_argument("--train-interval", type=int, default=16)
     # Tiny MLP (61->64->64->1): GPU host<->device transfer often costs more than
     # the matmul. "auto" picks cuda if present; try "cpu" for this small net.
     p.add_argument("--device", type=str, default="auto", choices=["auto", "cpu", "cuda"])
@@ -190,7 +190,7 @@ def parse_args() -> argparse.Namespace:
     # (dodges the GIL so the Rust env work runs truly in parallel). Set near your
     # physical core count for the biggest speedup.
     p.add_argument("--n-envs", type=int, default=16)
-    p.add_argument("--vec-backend", type=str, default="async", choices=["async", "sync"])
+    p.add_argument("--vec-backend", type=str, default="sync", choices=["async", "sync"])
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--save-path", type=str, default="models/dqn_value.pt")
     return p.parse_args()
