@@ -225,7 +225,7 @@ def train(args: argparse.Namespace) -> ValueMLP:
     venv = build_vec_env(args)
     venv.reset(seed=args.seed)
     # Per-env current candidates: list of (actions, feats) from each parallel env.
-    cur = list(venv.call("afterstate_features"))
+    cur = list(venv.call("afterstate_features_with_hold"))
 
     online = ValueMLP().to(device)
     target = ValueMLP().to(device)
@@ -264,7 +264,7 @@ def train(args: argparse.Namespace) -> ValueMLP:
                 chosen[i] = c_i
 
             _obs, rews, terms, truncs, infos = venv.step(actions)
-            nxt = list(venv.call("afterstate_features"))
+            nxt = list(venv.call("afterstate_features_with_hold"))
             total_lines = infos.get("total_lines")
             tl_mask = infos.get("_total_lines")
 
