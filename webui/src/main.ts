@@ -40,6 +40,41 @@ effect(() => {
 
 const app = document.getElementById('app')!;
 
+let _zoom = 1.0;
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 2.0;
+const ZOOM_STEP = 0.1;
+
+function apply_zoom(delta: number) {
+  _zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, _zoom + delta * ZOOM_STEP));
+  app.style.zoom = String(_zoom);
+}
+
+document.addEventListener('wheel', (e) => {
+  if (!e.ctrlKey) return;
+  e.preventDefault();
+  apply_zoom(-Math.sign(e.deltaY));
+}, { passive: false });
+
+let _pinch_dist: number | null = null;
+document.addEventListener('touchstart', (e) => {
+  if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    _pinch_dist = Math.hypot(dx, dy);
+  }
+});
+document.addEventListener('touchmove', (e) => {
+  if (_pinch_dist === null || e.touches.length !== 2) return;
+  const dx = e.touches[0].clientX - e.touches[1].clientX;
+  const dy = e.touches[0].clientY - e.touches[1].clientY;
+  const dist = Math.hypot(dx, dy);
+  const ratio = dist / _pinch_dist;
+  if (ratio > 1.1) { apply_zoom(1); _pinch_dist = dist; }
+  else if (ratio < 0.9) { apply_zoom(-1); _pinch_dist = dist; }
+});
+document.addEventListener('touchend', () => { _pinch_dist = null; });
+
 function mount_topbar(container: HTMLElement) {
   const topbar = document.createElement('div');
   topbar.className = 'topbar';
