@@ -3,6 +3,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use tetris_core::Engine;
+use tetris_core::Rot;
 use tetris_core::rl::{
     ACTION_SPACE_SIZE, OBS_DIM, action_mask, action_to_placement, afterstate_features_flat,
     encode_obs,
@@ -124,6 +125,26 @@ impl TetrisEnv {
         Ok((actions_arr, feats_arr))
     }
 
+    /// Afterstate candidates with hold. Actions 0-39 are placements for the
+    /// current piece; actions 40-79 are placements for the held piece (if
+    /// hold is available). `step(action)` handles hold internally.
+    fn afterstate_features_with_hold<'py>(&self, py: Python<'py>) -> PyAfterstateResult<'py> {
+        let (actions, flat) = self.current_afterstate_features_with_hold_rust();
+        let n = actions.len();
+        let actions_arr: Bound<'py, PyArray1<i64>> = PyArray1::from_vec(py, actions);
+        let feats_arr: Bound<'py, PyArray2<f32>> = if n == 0 {
+            PyArray2::zeros(py, [0, OBS_DIM], false)
+        } else {
+            let flat_arr = PyArray1::from_vec(py, flat);
+            flat_arr.reshape([n, OBS_DIM])?
+        };
+        Ok((actions_arr, feats_arr))
+    }
+
+    fn can_hold(&self) -> bool {
+        self.engine.has_hold && !self.engine.state.hold_used
+    }
+
     #[staticmethod]
     fn action_space_size() -> usize {
         ACTION_SPACE_SIZE
@@ -156,6 +177,24 @@ impl TetrisEnv {
     }
 
     pub fn step_rust(&mut self, action: usize) -> StepOutcome {
+        // Hold actions: 40-79 map to placements for the held piece
+        if action >= ACTION_SPACE_SIZE {
+            if !self.engine.has_hold || self.engine.state.hold_used {
+                return self.invalid_action_outcome();
+            }
+            if self.engine.has_hold {
+                std::mem::swap(&mut self.engine.state.hold, &mut self.engine.state.piece);
+                self.engine.state.rot = Rot::R0;
+                self.engine.state.x = (10 / 2) as i8 - 2;
+                self.engine.state.y = 0;
+            } else {
+                self.engine.state.hold = self.engine.state.piece;
+                self.engine.spawn();
+            }
+            self.engine.state.hold_used = true;
+            return self.step_rust(action - ACTION_SPACE_SIZE);
+        }
+
         let board_before = self.engine.state.board.clone();
         let Some((col, rot)) = action_to_placement(action) else {
             return self.invalid_action_outcome();
@@ -205,6 +244,31 @@ impl TetrisEnv {
 
     pub fn current_afterstate_features_flat(&self) -> (Vec<i64>, Vec<f32>) {
         afterstate_features_flat(&self.engine)
+    }
+
+    pub fn current_afterstate_features_with_hold_rust(&self) -> (Vec<i64>, Vec<f32>) {
+        let (mut actions, mut feats) = afterstate_features_flat(&self.engine);
+        if !self.engine.has_hold || self.engine.state.hold_used {
+            return (actions, feats);
+        }
+        let mut clone = self.engine.clone();
+        if clone.has_hold {
+            std::mem::swap(&mut clone.state.hold, &mut clone.state.piece);
+            clone.state.rot = Rot::R0;
+            clone.state.x = (10 / 2) as i8 - 2;
+            clone.state.y = 0;
+        } else {
+            clone.state.hold = clone.state.piece;
+            clone.spawn();
+        }
+        clone.state.hold_used = true;
+        let (hold_actions, hold_feats) = afterstate_features_flat(&clone);
+        let offset = ACTION_SPACE_SIZE as i64;
+        for a in &hold_actions {
+            actions.push(a + offset);
+        }
+        feats.extend(hold_feats);
+        (actions, feats)
     }
 
     pub fn state_hash(&self) -> u32 {

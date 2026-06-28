@@ -96,7 +96,8 @@ def test_short_train_run_smoke() -> None:
         n_envs=2,
         vec_backend="sync",
         seed=1,
-        save_path="models/dqn_value_smoke.pt",
-    )
+            save_path="models/dqn_value_smoke.pt",
+            resume=None,
+        )
     net = train(args)
     assert net is not None

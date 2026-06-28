@@ -193,6 +193,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--vec-backend", type=str, default="sync", choices=["async", "sync"])
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--save-path", type=str, default="models/dqn_value.pt")
+    p.add_argument("--resume", type=str, default=None)
     return p.parse_args()
 
 
@@ -229,9 +230,19 @@ def train(args: argparse.Namespace) -> ValueMLP:
 
     online = ValueMLP().to(device)
     target = ValueMLP().to(device)
-    target.load_state_dict(online.state_dict())
     optimizer = torch.optim.Adam(online.parameters(), lr=args.lr)
     replay = ReplayBuffer(args.replay_size)
+
+    episodes_done = 0
+    if args.resume:
+        ckpt = torch.load(args.resume, map_location=device, weights_only=False)
+        online.load_state_dict(ckpt["state_dict"])
+        target.load_state_dict(ckpt.get("target_dict", ckpt["state_dict"]))
+        optimizer.load_state_dict(ckpt["optimizer"])
+        episodes_done = ckpt.get("episodes", 0)
+        print(f"Resumed from episode {episodes_done}")
+    else:
+        target.load_state_dict(online.state_dict())
 
     recent_rew: deque[float] = deque(maxlen=50)
     recent_len: deque[float] = deque(maxlen=50)
@@ -302,6 +313,14 @@ def train(args: argparse.Namespace) -> ValueMLP:
                             f"rew {np.mean(recent_rew):7.2f} | len {np.mean(recent_len):6.1f} | "
                             f"lines/ep {np.mean(recent_lines):6.2f}"
                         )
+                    if episodes_done % 500 == 0 and episodes_done > 0:
+                        torch.save({
+                            "state_dict": online.state_dict(),
+                            "target_dict": target.state_dict(),
+                            "optimizer": optimizer.state_dict(),
+                            "episodes": episodes_done,
+                        }, args.save_path.replace(".pt", "_ckpt.pt"))
+                        print(f"  [checkpoint saved]")
                 else:
                     cur[i] = nxt[i]
 
@@ -312,8 +331,18 @@ def train(args: argparse.Namespace) -> ValueMLP:
                     # Polyak soft update: smooth target network transition
                     for tp, op in zip(target.parameters(), online.parameters()):
                         tp.data.mul_(1 - TAU).add_(op.data, alpha=TAU)
+    except KeyboardInterrupt:
+        print("\nInterrupted — saving checkpoint...")
     finally:
         venv.close()
+        ckpt_path = args.save_path.replace(".pt", "_ckpt.pt")
+        torch.save({
+            "state_dict": online.state_dict(),
+            "target_dict": target.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "episodes": episodes_done,
+        }, ckpt_path)
+        print(f"Checkpoint: {ckpt_path} (episode {episodes_done})")
 
     os.makedirs(os.path.dirname(args.save_path) or ".", exist_ok=True)
     torch.save(online.state_dict(), args.save_path)

@@ -70,6 +70,11 @@ class TetrisEnv(gym.Env):
         actions, feats = self._env.afterstate_features()
         return np.asarray(actions, dtype=np.int64), np.asarray(feats, dtype=np.float32)
 
+    def afterstate_features_with_hold(self) -> tuple[np.ndarray, np.ndarray]:
+        """Combined afterstate candidates: 0-39 current piece, 40-79 held piece."""
+        actions, feats = self._env.afterstate_features_with_hold()
+        return np.asarray(actions, dtype=np.int64), np.asarray(feats, dtype=np.float32)
+
     def action_mask(self) -> np.ndarray:
         return np.asarray(self._env.action_mask(), dtype=bool)
 
