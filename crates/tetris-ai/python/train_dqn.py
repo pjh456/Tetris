@@ -166,7 +166,7 @@ def train_step(
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
-    p.add_argument("--episodes", type=int, default=2000)
+    p.add_argument("--episodes", type=int, default=5000)
     p.add_argument("--max-steps", type=int, default=10_000)
     p.add_argument("--replay-size", type=int, default=20_000)
     p.add_argument("--batch-size", type=int, default=512)
@@ -178,7 +178,7 @@ def parse_args() -> argparse.Namespace:
     # Anneal epsilon over a FIXED number of episodes (decoupled from --episodes),
     # so raising --episodes lengthens the low-epsilon LEARNING tail instead of
     # stretching the random-exploration phase.
-    p.add_argument("--epsilon-decay-episodes", type=int, default=1500)
+    p.add_argument("--epsilon-decay-episodes", type=int, default=3000)
     p.add_argument("--target-sync", type=int, default=500)
     p.add_argument("--train-start", type=int, default=1000)
     # Speed: train once every N env steps (not every step). nuno-faria trains ~1x
