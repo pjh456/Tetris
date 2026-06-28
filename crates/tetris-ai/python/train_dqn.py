@@ -217,6 +217,7 @@ def parse_args() -> argparse.Namespace:
     # Tiny MLP (61->64->64->1): GPU host<->device transfer often costs more than
     # the matmul. "auto" picks cuda if present; try "cpu" for this small net.
     p.add_argument("--n-step", type=int, default=2)
+    p.add_argument("--polyak-interval", type=int, default=1)
     p.add_argument("--device", type=str, default="auto", choices=["auto", "cpu", "cuda"])
     # Parallel environments: AsyncVectorEnv runs N envs in separate processes
     # (dodges the GIL so the Rust env work runs truly in parallel). Set near your
@@ -371,9 +372,9 @@ def train(args: argparse.Namespace) -> ValueMLP:
                 for _ in range(updates_per_iter):
                     train_step(online, target, replay.sample(args.batch_size), optimizer, args.gamma, device)
                     update_count += 1
-                    # Polyak soft update: smooth target network transition
-                    for tp, op in zip(target.parameters(), online.parameters()):
-                        tp.data.mul_(1 - TAU).add_(op.data, alpha=TAU)
+                    if update_count % args.polyak_interval == 0:
+                        for tp, op in zip(target.parameters(), online.parameters()):
+                            tp.data.mul_(1 - TAU).add_(op.data, alpha=TAU)
     except KeyboardInterrupt:
         print("\nInterrupted — saving checkpoint...")
     finally:

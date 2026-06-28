@@ -95,6 +95,7 @@ def test_short_train_run_smoke() -> None:
         train_start=16,
         train_interval=1,
         n_step=2,
+        polyak_interval=1,
         device="cpu",
         n_envs=2,
         vec_backend="sync",
