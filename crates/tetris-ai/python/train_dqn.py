@@ -52,6 +52,15 @@ class ValueMLP(nn.Module):
         self.ln2 = nn.LayerNorm(hidden, eps=1e-5)
         self.fc2 = nn.Linear(hidden, hidden)
         self.fc3 = nn.Linear(hidden, 1)
+        self._init_weights()
+
+    def _init_weights(self) -> None:
+        gain = nn.init.calculate_gain("tanh")
+        for name, mod in self.named_modules():
+            if isinstance(mod, nn.Linear) and "fc" in name:
+                nn.init.xavier_uniform_(mod.weight, gain=gain)
+                if mod.bias is not None:
+                    nn.init.zeros_(mod.bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.ln1(x)
