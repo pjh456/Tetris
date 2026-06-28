@@ -189,7 +189,7 @@ def parse_args() -> argparse.Namespace:
     # Parallel environments: AsyncVectorEnv runs N envs in separate processes
     # (dodges the GIL so the Rust env work runs truly in parallel). Set near your
     # physical core count for the biggest speedup.
-    p.add_argument("--n-envs", type=int, default=8)
+    p.add_argument("--n-envs", type=int, default=16)
     p.add_argument("--vec-backend", type=str, default="async", choices=["async", "sync"])
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--save-path", type=str, default="models/dqn_value.pt")
